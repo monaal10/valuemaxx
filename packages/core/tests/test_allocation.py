@@ -62,6 +62,21 @@ def test_shared_requires_allocation_key() -> None:
     assert ok.allocation_key == "gpu_seconds"
 
 
+def test_shared_or_fixed_must_be_allocated() -> None:
+    """A SHARED/FIXED line labeled measured (not allocated) is rejected."""
+    with pytest.raises(ValidationError):
+        AllocatedLine(
+            tier=AllocationTier.SHARED_PROPORTIONAL,
+            label=Provenance.MEASURED,  # wrong: shared must be allocated
+            amount_usd=Decimal("1.00"),
+            allocation_key="gpu_seconds",
+            confidence=ConfidenceLabel.MEDIUM,
+            sensitivity_pct=Decimal("5.0"),
+            rule_version="v1",
+            quarantined=False,
+        )
+
+
 def test_quarantined_iff_fixed_overhead() -> None:
     """T-AL-3: quarantined is True iff the tier is FIXED_OVERHEAD."""
     fixed = AllocatedLine(

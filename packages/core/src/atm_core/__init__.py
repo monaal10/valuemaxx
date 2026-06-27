@@ -5,8 +5,109 @@ the strict pydantic bases, domain event models, rollup helpers, and the
 repository ABCs every other package depends on. No other package may redefine a
 domain type (enforced by the ``no_type_outside_core`` conformance rule).
 
-The full public surface (with an explicit ``__all__``) is assembled in
-F0-CORE-INIT once the submodules exist.
+The public surface is re-exported explicitly below (no wildcards) so importers
+and the JSON-Schema/registry projection have one authoritative list.
 """
 
-__all__: list[str] = []
+from __future__ import annotations
+
+from atm_core.allocation import AllocatedLine
+from atm_core.attribution import AttributionCandidate, AttributionResult
+from atm_core.base import StrictModel, TenantScopedModel
+from atm_core.cost import CostEvent
+from atm_core.enums import (
+    AllocationTier,
+    BindingTier,
+    CaptureGranularity,
+    ConfidenceLabel,
+    EvalGrade,
+    LabelSource,
+    Provenance,
+    ReconciliationState,
+    SignalClass,
+    TokenClass,
+)
+from atm_core.errors import (
+    AtmError,
+    BindingAmbiguityError,
+    CaptureError,
+    HonestyInvariantError,
+    ProvenanceWarning,
+    TenantScopeError,
+)
+from atm_core.ids import (
+    AttemptId,
+    AttributionId,
+    CorrelationId,
+    CostEventId,
+    OutcomeEventId,
+    ReconciliationRecordId,
+    RunId,
+    TenantId,
+)
+from atm_core.metrics import MetricDefinition
+from atm_core.outcome import OutcomeBinding, OutcomeEvent
+from atm_core.provenance import ProvenanceLabel
+from atm_core.reconciliation import ReconciliationRecord
+from atm_core.repositories import (
+    AllocationRepository,
+    AttributionResultRepository,
+    CostEventRepository,
+    OutcomeEventRepository,
+    RawRecordRepository,
+    ReconciliationRepository,
+    RunRepository,
+)
+from atm_core.rollup import RollupConfidence, RunCostRollup, compose_label
+from atm_core.run import Run
+from atm_core.tokens import TokenVector
+
+__all__ = [
+    "AllocatedLine",
+    "AllocationRepository",
+    "AllocationTier",
+    "AtmError",
+    "AttemptId",
+    "AttributionCandidate",
+    "AttributionId",
+    "AttributionResult",
+    "AttributionResultRepository",
+    "BindingAmbiguityError",
+    "BindingTier",
+    "CaptureError",
+    "CaptureGranularity",
+    "ConfidenceLabel",
+    "CorrelationId",
+    "CostEvent",
+    "CostEventId",
+    "CostEventRepository",
+    "EvalGrade",
+    "HonestyInvariantError",
+    "LabelSource",
+    "MetricDefinition",
+    "OutcomeBinding",
+    "OutcomeEvent",
+    "OutcomeEventId",
+    "OutcomeEventRepository",
+    "Provenance",
+    "ProvenanceLabel",
+    "ProvenanceWarning",
+    "RawRecordRepository",
+    "ReconciliationRecord",
+    "ReconciliationRecordId",
+    "ReconciliationRepository",
+    "ReconciliationState",
+    "RollupConfidence",
+    "Run",
+    "RunCostRollup",
+    "RunId",
+    "RunRepository",
+    "SignalClass",
+    "StrictModel",
+    "TenantId",
+    "TenantScopeError",
+    "TenantScopedModel",
+    "TokenClass",
+    "TokenVector",
+    "compose_label",
+]
