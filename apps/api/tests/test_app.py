@@ -17,7 +17,13 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
-from _api_helpers import get, post, registry_with_notes, route_paths
+from _api_helpers import (
+    get,
+    post,
+    registry_with_notes,
+    registry_with_tuple_capability,
+    route_paths,
+)
 from fastapi.testclient import TestClient
 from valuemaxx.agent_integrability.discovery import build_default_registry
 from valuemaxx.api.app import build_app
@@ -124,6 +130,22 @@ def test_tenant_a_cannot_read_tenant_b() -> None:
     # the authenticated tenant overrides the body — A never sees B's notes
     assert body["tenant_id"] == "tenant-a"
     assert "b-secret-note" not in body["notes"]
+
+
+# --- wire validation uses JSON-mode coercion (a JSON array -> a tuple field) ---
+
+
+def test_tuple_field_accepts_a_json_array_on_the_wire() -> None:
+    """A JSON array validates into a strict ``tuple[str, ...]`` capability field.
+
+    The body is parsed JSON; strict pydantic rejects a Python ``list`` for a tuple
+    in dict mode but accepts a JSON array in JSON mode. The projection must validate
+    with JSON-mode semantics so the wire contract matches what JSON can express.
+    """
+    client = _client(registry_with_tuple_capability())
+    resp = post(client, "/echo_tags", json={"tags": ["a", "b"]}, headers={"X-API-Key": "key-a"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["tags"] == ["a", "b"]
 
 
 # --- rollup responses carry both H7 fields ------------------------------------

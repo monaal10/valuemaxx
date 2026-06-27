@@ -65,8 +65,13 @@ def _scope(payload: dict[str, object], tenant_id: str, cap: AnyCapability) -> di
 
 
 def _validate(cap: AnyCapability, payload: dict[str, object]) -> BaseModel:
+    # Validate with JSON-mode semantics, not dict-mode ``model_validate``: a strict
+    # capability input (StrictModel, e.g. MetricDefinition) rejects a Python ``list``
+    # for a ``tuple`` field in dict mode but accepts a JSON array in JSON mode. The
+    # wire payload IS JSON, so re-serializing the (tenant-scoped) dict and validating
+    # via ``model_validate_json`` makes the route accept exactly what JSON can express.
     try:
-        return cap.input_model.model_validate(payload)
+        return cap.input_model.model_validate_json(json.dumps(payload))
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=exc.errors()) from exc
 

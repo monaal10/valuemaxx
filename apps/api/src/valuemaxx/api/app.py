@@ -19,6 +19,7 @@ from valuemaxx.api.jobs import JobStore
 from valuemaxx.api.projection import mount_capabilities
 
 if TYPE_CHECKING:
+    from starlette.types import Lifespan
     from valuemaxx.capabilities import Registry
 
 
@@ -27,6 +28,7 @@ def build_app(
     *,
     api_keys: dict[str, str],
     webhook_secret: bytes,
+    lifespan: Lifespan[FastAPI] | None = None,
 ) -> FastAPI:
     """Build the API app: project every ``Surface.API`` capability onto a route.
 
@@ -35,10 +37,15 @@ def build_app(
             ``valuemaxx.agent_integrability.discovery.build_default_registry``).
         api_keys: the ingest/API key -> tenant map used to resolve the tenant.
         webhook_secret: the HMAC secret for verifying ``webhook_inbound`` bodies.
+        lifespan: an optional ASGI lifespan context manager run on startup/shutdown
+            (the assembly app uses it to open its store + wire persistence runtimes,
+            and dispose the engine on shutdown). When ``None`` there is no
+            startup/shutdown behavior — the pure projection.
     """
     app = FastAPI(
         title="valuemaxx",
         description="AI margin intelligence — cost-per-outcome with confidence.",
+        lifespan=lifespan,
     )
     auth = ApiKeyAuthenticator(api_keys)
     jobs = JobStore()
