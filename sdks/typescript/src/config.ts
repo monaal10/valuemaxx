@@ -88,9 +88,7 @@ export function resolveConfig(config: InitConfig): EffectiveConfig {
     throw new InitConfigError("endpoint is required and must be a string");
   }
   if (!config.endpoint.startsWith("http://") && !config.endpoint.startsWith("https://")) {
-    throw new InitConfigError(
-      `endpoint must be http(s), got ${JSON.stringify(config.endpoint)}`,
-    );
+    throw new InitConfigError(`endpoint must be http(s), got ${JSON.stringify(config.endpoint)}`);
   }
   return {
     tenantId: config.tenantId,

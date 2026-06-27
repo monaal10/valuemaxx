@@ -183,13 +183,12 @@ export function init(options: InitOptions): InitResult {
         }
         try {
           handles.push(
-            instrumentMethod(
-              { owner, method: "create", provider: target.provider },
-              deps,
-            ),
+            instrumentMethod({ owner, method: "create", provider: target.provider }, deps),
           );
         } catch (err: unknown) {
-          warnings.push(`valuemaxx: could not instrument ${target.provider}.${path} (${String(err)})`);
+          warnings.push(
+            `valuemaxx: could not instrument ${target.provider}.${path} (${String(err)})`,
+          );
         }
       }
     }

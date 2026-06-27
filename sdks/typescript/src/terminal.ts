@@ -127,10 +127,7 @@ export class AnthropicStreamAccumulator {
    * Build the observation for a NON-streaming response (full terminal usage in
    * one object): `isStreaming` and `partialRecovered` are both false.
    */
-  finalizeObservationNonStreaming(args: {
-    provider: string;
-    model: string;
-  }): AttemptObservation {
+  finalizeObservationNonStreaming(args: { provider: string; model: string }): AttemptObservation {
     return {
       provider: args.provider,
       model: args.model,
@@ -211,10 +208,7 @@ export class OpenAIStreamAccumulator {
    * Build the observation for a NON-streaming response (usage present on the
    * single response object): `isStreaming` and `partialRecovered` are false.
    */
-  finalizeObservationNonStreaming(args: {
-    provider: string;
-    model: string;
-  }): AttemptObservation {
+  finalizeObservationNonStreaming(args: { provider: string; model: string }): AttemptObservation {
     return {
       provider: args.provider,
       model: args.model,

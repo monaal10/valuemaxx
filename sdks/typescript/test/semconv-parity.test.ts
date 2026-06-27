@@ -16,10 +16,7 @@ import { describe, expect, it } from "vitest";
 
 import { ALL_KEYS } from "../src/semconv.js";
 
-const FIXTURE_URL = new URL(
-  "../../../tests/wire_contract/semconv_keys.json",
-  import.meta.url,
-);
+const FIXTURE_URL = new URL("../../../tests/wire_contract/semconv_keys.json", import.meta.url);
 
 interface SemconvFixture {
   readonly keys: string[];

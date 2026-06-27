@@ -156,8 +156,9 @@ describe("init() captures a cost span with run-context binding", () => {
 describe("init() streaming capture", () => {
   it("accumulates streaming chunks to a terminal cost span (not delta-summed)", async () => {
     const exporter = new InMemorySpanExporter();
-    // A fake Anthropic-shaped streaming client.
+    // A fake Anthropic-shaped streaming client; await models real chunk arrival.
     async function* stream(): AsyncGenerator<Record<string, unknown>> {
+      await Promise.resolve();
       yield {
         type: "message_start",
         message: { usage: { input_tokens: 100, output_tokens: 0 } },

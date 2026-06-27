@@ -27,6 +27,12 @@ export default tseslint.config(
       "@typescript-eslint/no-unsafe-argument": "error",
       "@typescript-eslint/consistent-type-imports": "error",
       "@typescript-eslint/no-floating-promises": "error",
+      // Allow intentionally-unused args/vars prefixed with `_` (e.g. ignored
+      // request payloads in instrumentation wrappers and test fakes).
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_" },
+      ],
     },
   },
   {
