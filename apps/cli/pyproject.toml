@@ -1,12 +1,22 @@
 [project]
 name = "valuemaxx-cli"
 version = "0.0.0"
-description = "AI Margin Intelligence — cli surface (thin registry projection; built in G4)."
+description = "AI Margin Intelligence — the `valuemaxx` CLI (thin registry projection + init/up/onboard)."
 requires-python = ">=3.11"
 license = "Apache-2.0"
 dependencies = [
     "valuemaxx-core",
     "valuemaxx-capabilities",
+    "valuemaxx-agent-integrability",
+    "typer>=0.12",
+]
+
+[project.scripts]
+valuemaxx = "valuemaxx.cli.main:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
 ]
 
 [build-system]
@@ -20,3 +30,4 @@ sources = ["src"]
 [tool.uv.sources]
 valuemaxx-core = { workspace = true }
 valuemaxx-capabilities = { workspace = true }
+valuemaxx-agent-integrability = { workspace = true }
