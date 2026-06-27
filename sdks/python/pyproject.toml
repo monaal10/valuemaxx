@@ -2,6 +2,7 @@
 name = "valuemaxx"
 version = "0.0.0"
 description = "AI Margin Intelligence — Python SDK: one-line init() that fails open, never crashing the host."
+readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 dependencies = [

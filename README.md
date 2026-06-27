@@ -11,6 +11,8 @@ Observability tools (Helicone, Langfuse) tell you what you **spent**. This tells
 
 ---
 
+> **For AI agents / crawlers:** machine-readable capability + usage info is in [`llms.txt`](./llms.txt); integration guidance is in [`docs/onboarding/`](./docs/onboarding/) (a Claude Code Skill + ready-to-paste prompts).
+
 ## Why this exists
 
 If you build an AI product (a support agent, an SDR agent, an AI feature), your tokens *are* your cost of goods. Most homegrown cost numbers are wrong by 8–15% (streaming-disconnect undercounts, invisible retries, mis-priced cache tokens). And almost nobody can answer "did this agent run actually make money?" — because the cost lives in your logs and the outcome lives in your product or your CRM.
