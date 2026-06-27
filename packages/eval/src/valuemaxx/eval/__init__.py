@@ -15,6 +15,12 @@ injected Protocols (``ProviderClient``, ``LlmJudge``, ``Embedder``, ``Clock``,
 
 from __future__ import annotations
 
+from valuemaxx.eval.cadence import should_reeval, surface_switch_if_warranted
+from valuemaxx.eval.capabilities import (
+    EvalNotWiredError,
+    bind_runtime,
+    register,
+)
 from valuemaxx.eval.costgate import (
     Phase1Approval,
     Phase2Approval,
@@ -68,6 +74,7 @@ from valuemaxx.eval.search import (
     pick_winner,
     smoke_eval,
 )
+from valuemaxx.eval.service import EvalService
 from valuemaxx.eval.types import (
     CadenceTrigger,
     CapturedCall,
@@ -89,6 +96,8 @@ __all__ = [
     "CaseGrade",
     "ClusterCandidate",
     "EvalError",
+    "EvalNotWiredError",
+    "EvalService",
     "GateNotApprovedError",
     "GradeInputs",
     "GradedCase",
@@ -106,6 +115,7 @@ __all__ = [
     "Stratum",
     "TaskType",
     "TraceRecord",
+    "bind_runtime",
     "build_dataset",
     "build_recommendation",
     "confirmation_eval",
@@ -123,12 +133,15 @@ __all__ = [
     "pareto_frontier",
     "pick_winner",
     "reference_output_of",
+    "register",
     "render_markdown",
     "resolve_provider_key",
     "select_label_source",
+    "should_reeval",
     "skeleton_hash",
     "smoke_eval",
     "stratum_of",
+    "surface_switch_if_warranted",
     "templatize",
     "tool_set_fingerprint",
     "validate_judge",
