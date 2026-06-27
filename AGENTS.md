@@ -138,6 +138,16 @@ Conformance rules we maintain (extend this list every time a new class of issue 
 - **No secret logging** — provider keys/ingest keys must not reach loggers.
 - **SDK ingest is key-auth, not signature-gated** — the OTLP-in capability an SDK exporter posts to (`ingest_otlp_span`) must be `request_response` (tenant resolved from `X-API-Key`), never a signed `webhook_inbound`. A real OTLP exporter authenticates with only the ingest key and cannot HMAC-sign the body, so a signed route would 401 every real exporter's spans. HMAC signing stays on EXTERNAL third-party webhooks (`ingest_webhook_outcome`).
 
+### Onboarding scanner: language + ignore-list (ratchet, caught on real vibechk)
+
+The onboarding scanner (`packages/onboarding`) must (a) skip dependency/build/VCS
+dirs (`node_modules`, `.git`, `.worktrees`, `dist`, dot-dirs — `_IGNORED_DIRS`) and
+(b) scan BOTH Python (`ast`) and TypeScript/JS (`tree-sitter`, `ts_scan.py`) — valuemaxx
+ships a TS SDK, so a Python-only scanner finds nothing on a real TS repo. Regression
+tests live in `tests/test_ts_scan.py` (finds generateText sites, ignores node_modules,
+redacts secrets, mixed-language repos). Never reintroduce a bare `root.rglob("*.py")`
+walk without the ignore-list, and never drop TS support.
+
 When you hit a bug whose class isn't yet covered, **add a conformance rule for it here and in `tests/conformance/`** as part of the same PR. A bug fix without its guardrail is incomplete.
 
 ### Test layout rule (multi-package collision avoidance — ratchet, 2026-06-27)

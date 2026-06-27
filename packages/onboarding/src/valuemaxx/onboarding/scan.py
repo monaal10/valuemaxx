@@ -231,18 +231,83 @@ def _is_mark_function(func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     return any(name.startswith(prefix) or name == prefix for prefix in _MARK_PREFIXES)
 
 
-def scan_codebase(root: Path) -> ScanResult:
-    """Scan every ``.py`` file under ``root`` (read-only) and classify outcome sites.
+# Directories never worth scanning — dependencies, VCS, build output, caches.
+# Walking these is slow, noisy (false outcome sites inside vendored code), and a
+# privacy hazard (third-party source). A real repo MUST skip them.
+_IGNORED_DIRS: Final[frozenset[str]] = frozenset(
+    {
+        "node_modules",
+        ".git",
+        ".worktrees",
+        ".claude",
+        ".codex",
+        ".cursor",
+        ".stellar",
+        "dist",
+        "build",
+        ".next",
+        ".nuxt",
+        ".venv",
+        "venv",
+        "__pycache__",
+        "coverage",
+        ".wrangler",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".ruff_cache",
+        ".tmp",
+        "vendor",
+        "target",
+    }
+)
 
-    Unparseable files are skipped with a warning (never a crash). Returns a
-    :class:`ScanResult` whose every captured string has been secret-redacted.
+
+def _iter_source_files(root: Path, suffixes: tuple[str, ...]) -> list[Path]:
+    """Walk ``root`` for files with one of ``suffixes``, skipping ignored dirs.
+
+    Prunes :data:`_IGNORED_DIRS` and any other dot-directory so a real repo's
+    dependencies/build output/caches are never scanned.
     """
+    found: list[Path] = []
+    stack: list[Path] = [root]
+    while stack:
+        current = stack.pop()
+        try:
+            entries = sorted(current.iterdir())
+        except (PermissionError, OSError):
+            continue
+        for entry in entries:
+            if entry.is_dir():
+                name = entry.name
+                if name in _IGNORED_DIRS or name.startswith("."):
+                    continue
+                stack.append(entry)
+            elif entry.suffix in suffixes:
+                found.append(entry)
+    return sorted(found)
+
+
+def scan_codebase(root: Path) -> ScanResult:
+    """Scan ``root`` (read-only) for run boundaries + outcome sites, Python AND TS/JS.
+
+    Walks ``.py`` (stdlib ast) and ``.ts/.tsx/.js/.mjs/.cjs/.jsx`` (tree-sitter),
+    skipping ignored dirs (``node_modules``/``.git``/build output/…). Unparseable
+    files are skipped with a warning (never a crash). Every captured string is
+    secret-redacted. tree-sitter is imported lazily, only when a TS/JS file is found.
+    """
+    from valuemaxx.onboarding.ts_scan import TS_SUFFIXES, scan_ts_source
+
     run_boundaries: list[ScanSite] = []
     outcome_sites: list[ScanSite] = []
     entity_ids: list[str] = []
     warnings: list[str] = []
 
-    for py in sorted(root.rglob("*.py")):
+    def _add_entities(found: list[str]) -> None:
+        for eid in found:
+            if eid not in entity_ids:
+                entity_ids.append(eid)
+
+    for py in _iter_source_files(root, (".py",)):
         rel = str(py.relative_to(root))
         text = py.read_text(encoding="utf-8")
         try:
@@ -257,9 +322,19 @@ def scan_codebase(root: Path) -> ScanResult:
                 )
                 run_boundaries.extend(fn_boundaries)
                 outcome_sites.extend(fn_outcomes)
-                for eid in fn_entities:
-                    if eid not in entity_ids:
-                        entity_ids.append(eid)
+                _add_entities(fn_entities)
+
+    for ts in _iter_source_files(root, TS_SUFFIXES):
+        rel = str(ts.relative_to(root))
+        text = ts.read_text(encoding="utf-8")
+        try:
+            ts_boundaries, ts_outcomes, ts_entities = scan_ts_source(text, file=rel)
+        except (ValueError, RuntimeError) as exc:  # tree-sitter init / decode issues
+            warnings.append(f"skipped unscannable TS file {rel}: {exc}")
+            continue
+        run_boundaries.extend(ts_boundaries)
+        outcome_sites.extend(ts_outcomes)
+        _add_entities(ts_entities)
 
     return ScanResult(
         run_boundaries=tuple(run_boundaries),

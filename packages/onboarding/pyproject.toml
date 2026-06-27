@@ -6,6 +6,8 @@ description = "AI Margin Intelligence — onboarding logic package (skeleton; bu
 requires-python = ">=3.11"
 license = "Apache-2.0"
 dependencies = [
+    "tree-sitter>=0.23",
+    "tree-sitter-typescript>=0.23",
     "valuemaxx-core",
     "valuemaxx-capabilities",
     "pyyaml>=6",
