@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - name: Set up Python
+        run: uv python install 3.11
+      - name: Sync workspace
+        run: uv sync --all-extras --dev
+
+      - name: Ruff lint
+        run: uv run ruff check .
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
+      - name: Pyright (strict)
+        run: uv run pyright
+
+      - name: Import-linter contracts
+        run: uv run lint-imports
+
+      # H3: regenerate the OTLP semconv fixture and fail on drift BEFORE the TS job.
+      # (Stub now; wired once atm_capture/otlp/semconv.py exists at G2-CAPTURE.)
+      - name: OTLP semconv parity (regen + diff)
+        run: |
+          if [ -f scripts/generate_semconv_fixture.py ]; then
+            uv run python scripts/generate_semconv_fixture.py
+            git diff --exit-code tests/wire_contract/semconv_keys.json
+          else
+            echo "semconv fixture generator not present yet (pre-G2-CAPTURE) — skipping"
+          fi
+
+      - name: Tests + coverage gate (>=90% core)
+        run: uv run pytest --cov --cov-report=term-missing --cov-fail-under=90
+
+      - name: Conformance suite (static + behavioral)
+        run: uv run pytest tests/conformance -v
+
+  typescript:
+    runs-on: ubuntu-latest
+    needs: python  # H3: TS consumes the committed semconv fixture validated above
+    defaults:
+      run:
+        working-directory: sdks/typescript
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install
+        run: |
+          if [ -f package.json ]; then npm ci; else echo "TS SDK not scaffolded yet — skipping"; fi
+      - name: Typecheck (strict)
+        run: if [ -f package.json ]; then npm run typecheck; fi
+      - name: Lint
+        run: if [ -f package.json ]; then npm run lint; fi
+      - name: Test
+        run: if [ -f package.json ]; then npm test; fi

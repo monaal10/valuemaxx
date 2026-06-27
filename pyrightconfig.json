@@ -1,0 +1,26 @@
+{
+  "typeCheckingMode": "strict",
+  "pythonVersion": "3.11",
+  "include": [
+    "packages",
+    "apps",
+    "sdks/python",
+    "tests"
+  ],
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.venv",
+    "**/_generated"
+  ],
+  "reportUnnecessaryTypeIgnoreComment": "error",
+  "reportMissingTypeStubs": "error",
+  "reportUnknownMemberType": "error",
+  "reportUnknownArgumentType": "error",
+  "reportUnknownVariableType": "error",
+  "reportImplicitOverride": "error",
+  "reportPrivateUsage": "warning",
+  "strictListInference": true,
+  "strictDictionaryInference": true,
+  "strictSetInference": true
+}

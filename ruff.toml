@@ -1,0 +1,35 @@
+target-version = "py311"
+line-length = 100
+src = ["packages", "apps", "sdks/python", "tests"]
+
+[lint]
+select = [
+    "E", "F", "W",      # pyflakes + pycodestyle
+    "I",                # isort
+    "N",                # pep8-naming
+    "UP",               # pyupgrade
+    "B",                # bugbear
+    "A",                # builtins shadowing
+    "C4",               # comprehensions
+    "SIM",              # simplify
+    "TID",              # tidy imports
+    "PT",               # pytest style
+    "RUF",              # ruff-specific
+    "ASYNC",            # async pitfalls
+    "TRY",              # exception anti-patterns
+    "TCH",              # type-checking imports
+]
+ignore = [
+    "TRY003",           # allow long messages in raise
+]
+
+# Conformance: tiktoken is BANNED for cost paths (AGENTS.md §5b, design §5.2).
+# Enforced repo-wide here; the explicitly-flagged fallback path opts out locally with a noqa+reason.
+[lint.flake8-tidy-imports.banned-api]
+"tiktoken".msg = "tiktoken undercounts Claude; never use it for cost. See AGENTS.md §5b (no_tiktoken_for_cost)."
+
+[lint.per-file-ignores]
+"tests/**" = ["S101"]  # asserts allowed in tests
+
+[format]
+quote-style = "double"
