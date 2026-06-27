@@ -6,8 +6,9 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import uuid4
 
+import pytest
 from valuemaxx.core import RunId, SignalClass, TenantId
-from valuemaxx.outcomes.instrument.emitter import EmitRequest, OutcomeEmitter
+from valuemaxx.outcomes.instrument.emitter import EmitRequest, OutcomeEmitter, coerce_money
 from valuemaxx.outcomes.repository import (
     FailingOutcomeEventRepository,
     InMemoryOutcomeEventRepository,
@@ -122,3 +123,22 @@ def test_emit_returns_event_id_on_success_and_none_on_failure() -> None:
     ok_repo = InMemoryOutcomeEventRepository()
     assert _emitter(ok_repo).emit(_request()) is not None
     assert _emitter(FailingOutcomeEventRepository()).emit(_request()) is None
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (None, None),
+        (Decimal("9.99"), Decimal("9.99")),
+        (True, None),  # a bool flag is never a money value
+        (False, None),
+        (1000, Decimal("1000")),
+        ("12.50", Decimal("12.50")),
+        ("not-a-number", None),
+        (12.5, Decimal("12.5")),
+        ([1, 2], None),  # a non-scalar is never a money value
+    ],
+)
+def test_coerce_money_covers_every_value_shape(value: object, expected: Decimal | None) -> None:
+    """coerce_money maps each value shape to an exact Decimal or None, never raising."""
+    assert coerce_money(value) == expected
