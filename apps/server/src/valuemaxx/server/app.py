@@ -120,12 +120,19 @@ def create_app(settings: ServerSettings | None = None) -> FastAPI:
         finally:
             bridge.close()
 
-    return build_app(
+    app = build_app(
         registry,
         api_keys=resolved.ingest_keys,
         webhook_secret=resolved.webhook_secret_bytes(),
         lifespan=lifespan,
     )
+    # The assembled registry is the composition root's affordance: it is the SAME
+    # ``Registry`` the surfaces project from and the runtimes bind against, so an
+    # operator/test can re-bind a capability runtime (e.g. re-point ``run_metric`` at
+    # the store's outcomes) without rebuilding the app. Exposed alongside the store
+    # bridge the lifespan already publishes.
+    app.state.registry = registry
+    return app
 
 
 app = create_app()
