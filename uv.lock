@@ -1255,14 +1255,46 @@ name = "valuemaxx-agent-integrability"
 version = "0.0.0"
 source = { editable = "apps/agent_integrability" }
 dependencies = [
+    { name = "pyyaml" },
+    { name = "valuemaxx-allocation" },
+    { name = "valuemaxx-attribution" },
     { name = "valuemaxx-capabilities" },
+    { name = "valuemaxx-capture" },
     { name = "valuemaxx-core" },
+    { name = "valuemaxx-eval" },
+    { name = "valuemaxx-metrics" },
+    { name = "valuemaxx-onboarding" },
+    { name = "valuemaxx-outcomes" },
+    { name = "valuemaxx-reconciliation" },
+    { name = "valuemaxx-store" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "types-pyyaml" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "valuemaxx-allocation", editable = "packages/allocation" },
+    { name = "valuemaxx-attribution", editable = "packages/attribution" },
     { name = "valuemaxx-capabilities", editable = "packages/capabilities" },
+    { name = "valuemaxx-capture", editable = "packages/capture" },
     { name = "valuemaxx-core", editable = "packages/core" },
+    { name = "valuemaxx-eval", editable = "packages/eval" },
+    { name = "valuemaxx-metrics", editable = "packages/metrics" },
+    { name = "valuemaxx-onboarding", editable = "packages/onboarding" },
+    { name = "valuemaxx-outcomes", editable = "packages/outcomes" },
+    { name = "valuemaxx-reconciliation", editable = "packages/reconciliation" },
+    { name = "valuemaxx-store", editable = "packages/store" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "types-pyyaml", specifier = ">=6.0" },
 ]
 
 [[package]]
