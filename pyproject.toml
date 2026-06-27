@@ -44,6 +44,11 @@ markers = [
     "behavioral: a runtime, sentinel-driven conformance rule (needs runtime fixtures)",
     "static: a static AST / import-graph conformance rule (no runtime needed)",
 ]
+filterwarnings = [
+    # Starlette's TestClient warns that pairing httpx with it is deprecated; this is
+    # a third-party deprecation from FastAPI's own re-export, outside our control.
+    "ignore:Using `httpx` with `starlette.testclient`",
+]
 
 # Coverage configuration lives in .coveragerc (the single source for the gate),
 # scoped to the core typed spine (valuemaxx.core/valuemaxx.capabilities). See AGENTS.md §5.

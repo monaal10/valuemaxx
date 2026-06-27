@@ -28,7 +28,8 @@ def test_resolver_emits_only_its_own_tier_is_enforced() -> None:
 @pytest.mark.conformance
 def test_candidate_likely_never_billing_grade_holds() -> None:
     """No advisory (candidate/likely) AttributionResult reports as billing-grade."""
-    offenders = rule_candidate_likely_never_billing_grade.foundation_advisory_results_are_not_billing_grade()
+    rule = rule_candidate_likely_never_billing_grade
+    offenders = rule.foundation_advisory_results_are_not_billing_grade()
     assert offenders == [], f"advisory tiers wrongly billing-grade: {offenders}"
 
 
