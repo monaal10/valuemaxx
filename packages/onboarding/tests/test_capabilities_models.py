@@ -11,7 +11,6 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 from valuemaxx.core import BindingTier, SignalClass
-
 from valuemaxx.onboarding.capabilities import (
     DryRunPreview,
     OutcomeRuleCandidate,
@@ -37,7 +36,7 @@ def test_scan_site_round_trips() -> None:
 def test_scan_site_is_frozen() -> None:
     site = ScanSite(kind="run_boundary", file="m.py", line=1, symbol="run", snippet="agent()")
     with pytest.raises(ValidationError):
-        site.line = 2  # type: ignore[misc]
+        site.line = 2
 
 
 def test_scan_result_holds_sites_entities_warnings() -> None:

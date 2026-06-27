@@ -1,0 +1,18 @@
+"""pytest bootstrap for the onboarding package tests.
+
+Adds this ``tests/`` directory to ``sys.path`` so test modules can ``import
+_helpers`` by its bare, package-unique name. Per AGENTS.md §5b (test-layout
+ratchet) shared helpers live in a uniquely-named non-``conftest`` module and are
+NEVER imported via a global ``tests.conftest`` name — that collides across
+packages under ``--import-mode=importlib`` in the combined repo run. This file
+itself defines no fixtures; it only makes the sibling ``_helpers`` importable.
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+_TESTS_DIR = str(Path(__file__).resolve().parent)
+if _TESTS_DIR not in sys.path:
+    sys.path.insert(0, _TESTS_DIR)

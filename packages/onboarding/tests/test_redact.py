@@ -8,7 +8,6 @@ string passes through it before it leaves the scanner.
 from __future__ import annotations
 
 import pytest
-
 from valuemaxx.onboarding.errors import SecretEncounteredError
 from valuemaxx.onboarding.redact import (
     REDACTION_PLACEHOLDER,

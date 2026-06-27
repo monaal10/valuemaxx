@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
+import _helpers
 from valuemaxx.core import SignalClass
 from valuemaxx.onboarding.capabilities import ScanResult, ScanSite
 from valuemaxx.onboarding.suggest import suggest_attribution_rule
-
-from tests.stubs import StubSignalMapper
 
 
 def _scan_with(*sites: ScanSite) -> ScanResult:
@@ -33,7 +32,7 @@ def test_suggest_returns_unconfirmed_candidate() -> None:
         "when a ticket is resolved",
         source="def mark_resolved(t): t.status='resolved'",
         scan=scan,
-        signal_mapper=StubSignalMapper(),
+        signal_mapper=_helpers.StubSignalMapper(),
     )
     assert sug.confirmed is False
     assert sug.rule.confirmed is False
@@ -45,7 +44,7 @@ def test_suggest_maps_nl_to_a_concrete_site() -> None:
         "resolved tickets",
         source="",
         scan=scan,
-        signal_mapper=StubSignalMapper(),
+        signal_mapper=_helpers.StubSignalMapper(),
     )
     assert "mark_resolved" in sug.rule.match_target
     assert sug.confidence > 0.5
@@ -54,7 +53,7 @@ def test_suggest_maps_nl_to_a_concrete_site() -> None:
 def test_suggest_signal_is_system_mapped() -> None:
     scan = _scan_with(_site("mark_resolved"))
     sug = suggest_attribution_rule(
-        "ticket resolved", source="", scan=scan, signal_mapper=StubSignalMapper()
+        "ticket resolved", source="", scan=scan, signal_mapper=_helpers.StubSignalMapper()
     )
     # status setter -> system maps to confirmed (never taken from the NL text)
     assert sug.rule.signal == SignalClass.OUTCOME_CONFIRMED
@@ -66,7 +65,7 @@ def test_suggest_low_confidence_when_no_matching_site() -> None:
         "when the moon is full",
         source="",
         scan=scan,
-        signal_mapper=StubSignalMapper(),
+        signal_mapper=_helpers.StubSignalMapper(),
     )
     assert sug.confidence < 0.5
 
@@ -78,7 +77,7 @@ def test_suggest_redacts_secret_in_source_and_nl() -> None:
         f"resolved {leak}",
         source=f"def mark_resolved(): {leak}",
         scan=scan,
-        signal_mapper=StubSignalMapper(),
+        signal_mapper=_helpers.StubSignalMapper(),
     )
     blob = sug.model_dump_json()
     assert "sk-ant-api03-SUGGESTLEAK0123456789abcdefghij" not in blob

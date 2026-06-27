@@ -10,8 +10,12 @@ without importing a sibling logic package or the store.
 from __future__ import annotations
 
 import ast
+from typing import TYPE_CHECKING
 
 from valuemaxx.onboarding.errors import UnsafePredicateError
+
+if TYPE_CHECKING:
+    from valuemaxx.onboarding.capabilities import CostPerOutcome
 
 
 class StubSignalMapper:
@@ -46,3 +50,18 @@ class StubPredicateValidator:
             bad_name = isinstance(node, ast.Name) and node.id in {"eval", "exec", "__import__"}
             if bad_call or bad_dunder or bad_name:
                 raise UnsafePredicateError(f"disallowed construct: {type(node).__name__}")
+
+
+class StubRollupReader:
+    """An in-memory ``MetricsRollupReader`` returning a fixed cost-per-outcome.
+
+    Stands in for the real metrics/store-backed reader (which onboarding must not
+    import); the dry-run code is written against the Protocol, not this concrete.
+    """
+
+    def __init__(self, result: CostPerOutcome | None) -> None:
+        self._result = result
+
+    def cost_per_outcome(self, *, outcome_name: str) -> CostPerOutcome | None:
+        _ = outcome_name
+        return self._result

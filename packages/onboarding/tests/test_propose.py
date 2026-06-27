@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
+import _helpers
 from valuemaxx.core import BindingTier, SignalClass
 from valuemaxx.onboarding.capabilities import ScanResult, ScanSite
 from valuemaxx.onboarding.propose import build_proposal
-
-from tests.stubs import StubSignalMapper
 
 
 def _site(**kw: object) -> ScanSite:
@@ -28,7 +27,7 @@ def test_status_setter_proposes_exact_confirmed_rule() -> None:
         entity_ids=(),
         warnings=(),
     )
-    proposal = build_proposal(scan, signal_mapper=StubSignalMapper())
+    proposal = build_proposal(scan, signal_mapper=_helpers.StubSignalMapper())
     assert len(proposal.rules) == 1
     rule = proposal.rules[0]
     assert rule.tier in (BindingTier.EXACT, BindingTier.DETERMINISTIC)
@@ -50,7 +49,7 @@ def test_echoing_external_write_gets_t3_injection_deterministic() -> None:
         entity_ids=(),
         warnings=(),
     )
-    proposal = build_proposal(scan, signal_mapper=StubSignalMapper())
+    proposal = build_proposal(scan, signal_mapper=_helpers.StubSignalMapper())
     rule = proposal.rules[0]
     assert rule.tier == BindingTier.DETERMINISTIC
     assert rule.run_id_injection is not None
@@ -71,7 +70,7 @@ def test_non_echoing_external_write_is_candidate_with_warning_and_no_injection()
         entity_ids=(),
         warnings=(),
     )
-    proposal = build_proposal(scan, signal_mapper=StubSignalMapper())
+    proposal = build_proposal(scan, signal_mapper=_helpers.StubSignalMapper())
     rule = proposal.rules[0]
     assert rule.tier == BindingTier.CANDIDATE
     assert rule.run_id_injection is None
@@ -92,7 +91,7 @@ def test_external_write_function_site_cannot_become_confirmed() -> None:
         entity_ids=(),
         warnings=(),
     )
-    proposal = build_proposal(scan, signal_mapper=StubSignalMapper())
+    proposal = build_proposal(scan, signal_mapper=_helpers.StubSignalMapper())
     # external-write attempts are action_attempted, never confirmed (system-owned)
     assert proposal.rules[0].signal == SignalClass.ACTION_ATTEMPTED
 
@@ -104,7 +103,7 @@ def test_proposal_carries_entity_ids() -> None:
         entity_ids=("ticket_id", "customer_id"),
         warnings=(),
     )
-    proposal = build_proposal(scan, signal_mapper=StubSignalMapper())
+    proposal = build_proposal(scan, signal_mapper=_helpers.StubSignalMapper())
     assert proposal.entity_ids == ("ticket_id", "customer_id")
 
 
@@ -112,7 +111,7 @@ def test_shared_costs_absent_when_no_tier23_inputs() -> None:
     scan = ScanResult(
         run_boundaries=(), outcome_sites=(_site(),), entity_ids=(), warnings=()
     )
-    proposal = build_proposal(scan, signal_mapper=StubSignalMapper())
+    proposal = build_proposal(scan, signal_mapper=_helpers.StubSignalMapper())
     assert proposal.shared_costs_present is False
 
 
@@ -124,7 +123,7 @@ def test_proposal_contains_no_secret() -> None:
         entity_ids=(),
         warnings=(),
     )
-    proposal = build_proposal(scan, signal_mapper=StubSignalMapper())
+    proposal = build_proposal(scan, signal_mapper=_helpers.StubSignalMapper())
     assert "sk-ant-api03-LEAKEDvalue0123456789abcdefgh" not in proposal.model_dump_json()
 
 
@@ -135,7 +134,7 @@ def test_webhook_handler_proposes_confirmed_rule() -> None:
         entity_ids=(),
         warnings=(),
     )
-    proposal = build_proposal(scan, signal_mapper=StubSignalMapper())
+    proposal = build_proposal(scan, signal_mapper=_helpers.StubSignalMapper())
     rule = proposal.rules[0]
     assert rule.match_kind == "webhook"
     assert rule.signal == SignalClass.OUTCOME_CONFIRMED

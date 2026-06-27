@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from valuemaxx.onboarding.errors import (
     GithubScopeError,
     OnboardingError,

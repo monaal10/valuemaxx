@@ -122,6 +122,19 @@ class ReviewableDiff(StrictModel):
     hunks: tuple[DiffHunk, ...]
 
 
+class CostPerOutcome(StrictModel):
+    """The injected rollup reader's result for one outcome (carries both H7 fields).
+
+    This is the wire shape the ``MetricsRollupReader`` seam returns — not a domain
+    type (the domain rollup lives in ``valuemaxx.core``). ``cost_usd`` is None when
+    no outcomes are bound yet.
+    """
+
+    cost_usd: Decimal | None
+    minimum_tier: BindingTier
+    confidence_distribution: Mapping[BindingTier, int]
+
+
 class DryRunPreview(StrictModel):
     """A cost-per-outcome preview carrying BOTH H7 confidence fields (§3.1).
 
@@ -137,6 +150,7 @@ class DryRunPreview(StrictModel):
 
 
 __all__ = [
+    "CostPerOutcome",
     "DiffHunk",
     "DryRunPreview",
     "MatchKind",
