@@ -85,10 +85,25 @@ export interface InitOptions extends InitConfig {
   readonly newId?: () => string;
 }
 
-/** The `create`-method locations we wrap per provider family. */
-const METHOD_PATHS: Readonly<Record<Provider, readonly string[]>> = {
-  openai: ["chat.completions", "responses"],
-  anthropic: ["messages"],
+/** One instrumentable method: the dotted owner path + the method name on it. */
+interface MethodSite {
+  readonly path: string;
+  readonly method: string;
+}
+
+/** The completion-method locations we wrap per provider family. */
+const METHOD_PATHS: Readonly<Record<Provider, readonly MethodSite[]>> = {
+  // OpenAI/Anthropic expose `create` on the completions owner; Google's GenAI SDK
+  // exposes `generateContent`/`generateContentStream` on `models`.
+  openai: [
+    { path: "chat.completions", method: "create" },
+    { path: "responses", method: "create" },
+  ],
+  anthropic: [{ path: "messages", method: "create" }],
+  google: [
+    { path: "models", method: "generateContent" },
+    { path: "models", method: "generateContentStream" },
+  ],
 };
 
 /** Resolve a dotted path (e.g. "chat.completions") to its owner object. */
@@ -176,18 +191,19 @@ export function init(options: InitOptions): InitResult {
     };
 
     for (const target of clients) {
-      for (const path of METHOD_PATHS[target.provider]) {
-        const owner = resolveOwner(target.client, path);
-        if (owner === null || typeof owner["create"] !== "function") {
+      for (const site of METHOD_PATHS[target.provider]) {
+        const owner = resolveOwner(target.client, site.path);
+        if (owner === null || typeof owner[site.method] !== "function") {
           continue; // this client shape doesn't expose this method — skip, don't fail.
         }
         try {
           handles.push(
-            instrumentMethod({ owner, method: "create", provider: target.provider }, deps),
+            instrumentMethod({ owner, method: site.method, provider: target.provider }, deps),
           );
         } catch (err: unknown) {
           warnings.push(
-            `valuemaxx: could not instrument ${target.provider}.${path} (${String(err)})`,
+            `valuemaxx: could not instrument ${target.provider}.${site.path}.${site.method} ` +
+              `(${String(err)})`,
           );
         }
       }

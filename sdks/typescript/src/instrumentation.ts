@@ -1,11 +1,13 @@
 /**
- * Real OTel instrumentation for the OpenAI / Anthropic Node clients (§5.1, H1).
+ * Real OTel instrumentation for the OpenAI / Anthropic / Google GenAI Node clients
+ * (§5.1, H1).
  *
- * The OpenAI/Anthropic Node SDKs do not natively emit OTel spans, so this is a
- * purpose-built monkey-patch — NOT a shim. We wrap the INJECTED client's own
- * `create` method on the **instance** (never the module/class), so an unrelated
- * client in the same process is completely untouched and capture is cleanly
- * reversible. Mirrors the Python instance-scoped transport patch.
+ * These Node SDKs do not natively emit OTel spans, so this is a purpose-built
+ * monkey-patch — NOT a shim. We wrap the INJECTED client's own completion method on
+ * the **instance** (OpenAI/Anthropic `create`; Google `generateContent` /
+ * `generateContentStream`), never the module/class, so an unrelated client in the same
+ * process is completely untouched and capture is cleanly reversible. Mirrors the Python
+ * instance-scoped transport patch.
  *
  * Everything off the host call path is wrapped in a fail-open guard: the host's
  * `create()` result (or its thrown error) always propagates untouched; any
@@ -22,7 +24,12 @@ import { buildSpanAttributes, type SpanIdentity } from "./emit.js";
 import type { AttemptObservation } from "./observation.js";
 import { activeRunId } from "./run.js";
 import type { CaptureGranularity } from "./selftest.js";
-import { AnthropicStreamAccumulator, OpenAIStreamAccumulator } from "./terminal.js";
+import {
+  AnthropicStreamAccumulator,
+  GeminiStreamAccumulator,
+  OpenAIStreamAccumulator,
+} from "./terminal.js";
+import { tokenVector } from "./tokens.js";
 
 const UNBOUND_RUN_PREFIX = "unbound:";
 
@@ -127,7 +134,7 @@ function hasIncludeUsage(args: unknown[]): boolean {
 }
 
 /** The provider family of a client (drives which accumulator/extractor we use). */
-export type Provider = "openai" | "anthropic";
+export type Provider = "openai" | "anthropic" | "google";
 
 interface WrapTarget {
   /** The object owning the `create` method (e.g. `client.chat.completions`). */
@@ -222,7 +229,9 @@ function captureStream(
   const accumulator =
     provider === "anthropic"
       ? new AnthropicStreamAccumulator()
-      : new OpenAIStreamAccumulator({ includeUsage: hasIncludeUsage(args) });
+      : provider === "google"
+        ? new GeminiStreamAccumulator()
+        : new OpenAIStreamAccumulator({ includeUsage: hasIncludeUsage(args) });
 
   const onTerminal = (): void => {
     try {
@@ -258,12 +267,61 @@ function isAsyncIterable(value: unknown): value is AsyncIterable<Record<string, 
   );
 }
 
-/** Pull terminal usage off a non-streaming OpenAI/Anthropic response object. */
+/** Coerce a possibly-undefined numeric usage field to a non-negative int. */
+function usageInt(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+}
+
+/**
+ * Pull terminal usage off a non-streaming Gemini response (`usageMetadata`).
+ *
+ * Gemini's `promptTokenCount` is the TOTAL input inclusive of cached content, so
+ * uncached input is the remainder after the cached subset. `thoughtsTokenCount`
+ * (reasoning) is embedded within the candidates output. Returns null when no
+ * `usageMetadata` is present (never fabricates tokens).
+ */
+export function extractGeminiUsage(result: unknown, model: string): AttemptObservation | null {
+  if (typeof result !== "object" || result === null) {
+    return null;
+  }
+  const obj = result as Record<string, unknown>;
+  const meta = obj["usageMetadata"];
+  if (typeof meta !== "object" || meta === null) {
+    return null;
+  }
+  const m = meta as Record<string, unknown>;
+  const totalInput = usageInt(m["promptTokenCount"]);
+  const cacheRead = Math.min(usageInt(m["cachedContentTokenCount"]), totalInput);
+  // Gemini counts thinking tokens (`thoughtsTokenCount`) SEPARATELY from the visible
+  // `candidatesTokenCount`, but both are billed as output. So total output is their sum,
+  // with reasoning embedded within it — satisfying the `output >= reasoning` invariant.
+  const reasoning = usageInt(m["thoughtsTokenCount"]);
+  const output = usageInt(m["candidatesTokenCount"]) + reasoning;
+  return {
+    provider: "google",
+    model: model || strProp(obj, "modelVersion"),
+    tokens: tokenVector({
+      inputUncached: totalInput - cacheRead,
+      cacheRead,
+      cacheWrite5m: 0,
+      cacheWrite1h: 0,
+      output,
+      reasoning,
+    }),
+    isStreaming: false,
+    partialRecovered: false,
+  };
+}
+
+/** Pull terminal usage off a non-streaming OpenAI/Anthropic/Gemini response object. */
 export function extractNonStreaming(
   result: unknown,
   model: string,
   provider: Provider,
 ): AttemptObservation | null {
+  if (provider === "google") {
+    return extractGeminiUsage(result, model);
+  }
   if (typeof result !== "object" || result === null) {
     return null;
   }

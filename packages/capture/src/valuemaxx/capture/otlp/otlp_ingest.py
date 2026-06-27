@@ -17,8 +17,10 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
+from valuemaxx.capture.default_pricing import resolve_card
 from valuemaxx.capture.invariants import check_invariants, price_or_abort
 from valuemaxx.capture.otlp import semconv
+from valuemaxx.capture.otlp.vendor_aliases import apply_vendor_token_aliases, normalize_provider
 from valuemaxx.core.cost import CostEvent
 from valuemaxx.core.enums import CaptureGranularity, Provenance
 from valuemaxx.core.ids import AttemptId, CostEventId, RunId
@@ -51,19 +53,50 @@ def _bool_attr(attrs: Mapping[str, object], key: str) -> bool:
     return attrs.get(key) is True
 
 
+def _provenance_of(attrs: Mapping[str, object], default: Provenance) -> Provenance:
+    """The cost-provenance label: an explicit, valid ``ai_margin.provenance`` wins, else default.
+
+    An unrecognized provenance string is ignored (falls back to ``default``) rather than
+    raising — a malformed producer attribute must never break ingest, and must never be
+    silently trusted as a billing-grade label.
+    """
+    declared = attrs.get(semconv.AI_MARGIN_PROVENANCE)
+    if isinstance(declared, str):
+        try:
+            return Provenance(declared)
+        except ValueError:
+            return default
+    return default
+
+
 def span_to_cost_event(
     attrs: Mapping[str, object],
     *,
     tenant_id: TenantId,
     pricebook: PriceBook | None,
     clock: Clock,
+    default_provenance: Provenance = Provenance.MEASURED,
 ) -> CostEvent:
     """Decode an OTLP span's attribute mapping into a CostEvent (tenant scope required).
 
     The token vector is rebuilt from the standard input/output totals plus the
     ``ai_margin.*`` cache/reasoning extensions. Cost is the authoritative inline
     value when the span carries one, else the computed token x price (PG1).
+
+    Spans produced by third-party frameworks (e.g. the Vercel AI SDK's
+    ``experimental_telemetry``) carry token usage under the framework's own keys
+    (``ai.usage.*``); :func:`apply_vendor_token_aliases` fills those into the canonical
+    ``gen_ai.*``/``ai_margin.*`` keys first, but never overrides a canonical key the
+    span already carries. valuemaxx's own SDKs emit the canonical keys directly.
+
+    Provenance honesty (the H7 axis, never laundered upward): the cost-provenance label
+    is the explicit ``ai_margin.provenance`` the span declares, else ``default_provenance``
+    (``measured`` by default — valuemaxx's own SDK captured real usage). A caller that
+    prices third-party spans against an *estimated* book (e.g. the server's default
+    snapshot pricebook) passes ``default_provenance=Provenance.ESTIMATED`` so the
+    computed cost can never be mistaken for a billing-grade one.
     """
+    attrs = apply_vendor_token_aliases(attrs)
     total_input = _int_attr(attrs, semconv.GEN_AI_USAGE_INPUT_TOKENS)
     cache_read = _int_attr(attrs, semconv.AI_MARGIN_CACHE_READ)
     cache_write_5m = _int_attr(attrs, semconv.AI_MARGIN_CACHE_WRITE_5M)
@@ -80,7 +113,7 @@ def span_to_cost_event(
         reasoning=reasoning,
     )
 
-    provider = _str_attr(attrs, semconv.GEN_AI_SYSTEM)
+    provider = normalize_provider(_str_attr(attrs, semconv.GEN_AI_SYSTEM))
     model = _str_attr(attrs, semconv.GEN_AI_REQUEST_MODEL)
     granularity = (
         CaptureGranularity.PER_ATTEMPT
@@ -96,7 +129,7 @@ def span_to_cost_event(
         warnings = ()
     else:
         card = (
-            pricebook.card_for(provider=provider, model=model, at=clock.now())
+            resolve_card(pricebook, provider=provider, model=model, at=clock.now())
             if pricebook is not None
             else None
         )
@@ -117,7 +150,7 @@ def span_to_cost_event(
         model=model,
         tokens=tokens,
         capture_granularity=granularity,
-        provenance=ProvenanceLabel(provenance=Provenance.MEASURED),
+        provenance=ProvenanceLabel(provenance=_provenance_of(attrs, default_provenance)),
         cost_usd=cost_usd,
         is_streaming=_bool_attr(attrs, semconv.AI_MARGIN_IS_STREAMING),
         partial_recovered=_bool_attr(attrs, semconv.AI_MARGIN_PARTIAL_RECOVERED),

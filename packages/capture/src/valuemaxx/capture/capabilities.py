@@ -27,7 +27,7 @@ from pydantic import BaseModel
 from valuemaxx.capabilities import Mode, Surface, capability
 from valuemaxx.capture.otlp.otlp_ingest import span_to_cost_event
 from valuemaxx.capture.selftest import KNOWN_GOOD
-from valuemaxx.core.enums import CaptureGranularity
+from valuemaxx.core.enums import CaptureGranularity, Provenance
 from valuemaxx.core.errors import AtmError
 from valuemaxx.core.ids import TenantId
 
@@ -99,11 +99,18 @@ class IngestRuntime:
     via the optional :class:`~valuemaxx.core.pricing.PriceBook`, and reads the clock
     through the injected :class:`~valuemaxx.core.context.Clock` so ingest is
     deterministic under test.
+
+    ``default_provenance`` is the cost-provenance label applied to a span that does not
+    declare its own ``ai_margin.provenance``. It defaults to ``measured`` (valuemaxx's
+    own SDK captured real usage); an app that prices third-party spans against an
+    *estimated* book (e.g. the server's default snapshot pricebook) sets it to
+    ``estimated`` so a computed cost is never laundered into a billing-grade one.
     """
 
     repo: CostEventRepository
     pricebook: PriceBook | None
     clock: Clock
+    default_provenance: Provenance = Provenance.MEASURED
 
 
 class _IngestHolder:
@@ -140,6 +147,7 @@ def _make_ingest_handler(
                 tenant_id=tenant_id,
                 pricebook=runtime.pricebook,
                 clock=runtime.clock,
+                default_provenance=runtime.default_provenance,
             )
             runtime.repo.upsert(tenant_id, event)
         return IngestOtlpSpanOutput(run_id=run_id, attempt_id=attempt_id, accepted=True)
@@ -160,6 +168,63 @@ def bind_ingest_runtime(registry: Registry, runtime: IngestRuntime) -> None:
             "no capture capabilities registered for this registry; call register() first"
         )
     holder.runtime = runtime
+
+
+def ingest_attribute_maps(
+    registry: Registry,
+    tenant_id: TenantId,
+    attribute_maps: list[dict[str, object]],
+) -> int:
+    """Persist a batch of decoded OTLP span attribute maps as CostEvents.
+
+    The wire entry point for the OTLP/HTTP collector (``POST /v1/traces``): the
+    SDK's exporter posts a real ``ExportTraceServiceRequest``, the collector route
+    decodes it to flat attribute maps (see
+    :func:`~valuemaxx.capture.otlp.collector.otlp_json_to_attribute_maps`), and this
+    persists each through the **same** bound runtime + :func:`span_to_cost_event` +
+    repo upsert as the single-span ``ingest_otlp_span`` handler — no duplicate
+    persistence path. Returns the number of spans persisted.
+
+    Raises :class:`IngestNotWiredError` if the registry has no bound runtime: a
+    collector that silently dropped spans would be a false "captured" claim (H9).
+    """
+    holder = _INGEST_HOLDERS.get(registry)
+    if holder is None or holder.runtime is None:
+        raise IngestNotWiredError(
+            "no ingest runtime bound for this registry; call bind_ingest_runtime() first"
+        )
+    runtime = holder.runtime
+    persisted = 0
+    for attrs in attribute_maps:
+        if _is_rollup_span(attrs):
+            continue  # a framework rollup (e.g. AI SDK ai.generateText) is not an attempt
+        event = span_to_cost_event(
+            attrs,
+            tenant_id=tenant_id,
+            pricebook=runtime.pricebook,
+            clock=runtime.clock,
+            default_provenance=runtime.default_provenance,
+        )
+        runtime.repo.upsert(tenant_id, event)
+        persisted += 1
+    return persisted
+
+
+def _is_rollup_span(attrs: dict[str, object]) -> bool:
+    """True for a non-billable framework rollup span (no resolvable provider).
+
+    The Vercel AI SDK exports both an ``ai.generateText.doGenerate`` ATTEMPT span (carrying
+    ``gen_ai.system`` = the provider, plus model + usage) and a parent ``ai.generateText``
+    ROLLUP span that aggregates ``ai.usage.*`` but sets NO ``gen_ai.system`` (the rollup
+    keeps only the AI-SDK-internal ``ai.model.id``, never the GenAI provider). Persisting the
+    rollup would create a spurious unpriced, empty-provider event and double-count the same
+    tokens already captured on the attempt span. The provider is exactly what distinguishes
+    a billable attempt from a rollup — and it is required to price — so a span that resolves
+    NO provider is skipped. valuemaxx's own SDK + OpenInference/OpenLLMetry spans always set a
+    provider, so they are never skipped.
+    """
+    provider = attrs.get("gen_ai.system") or attrs.get("llm.system") or attrs.get("llm.provider")
+    return not provider
 
 
 def _list_cost_sources(_request: ListCostSourcesInput) -> ListCostSourcesOutput:
@@ -235,5 +300,6 @@ __all__ = [
     "ListCostSourcesInput",
     "ListCostSourcesOutput",
     "bind_ingest_runtime",
+    "ingest_attribute_maps",
     "register",
 ]

@@ -23,6 +23,7 @@ from valuemaxx.capture.context_patch import (
     install_threadpool_context_propagation,
     run_id_for_child,
 )
+from valuemaxx.capture.default_pricing import default_pricebook, resolve_card
 from valuemaxx.capture.emit import Emitter
 from valuemaxx.capture.gateway import OpenRouterSource
 from valuemaxx.capture.guard import DropCounter, guard
@@ -67,6 +68,7 @@ __all__ = [
     "bind_ingest_runtime",
     "check_invariants",
     "compute_cost_usd",
+    "default_pricebook",
     "guard",
     "install_threadpool_context_propagation",
     "instrument_client",
@@ -74,6 +76,7 @@ __all__ = [
     "price_or_abort",
     "ptu_cost_event",
     "register",
+    "resolve_card",
     "run_id_for_child",
     "version_selftest",
 ]

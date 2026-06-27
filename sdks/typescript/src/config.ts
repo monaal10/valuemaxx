@@ -92,9 +92,35 @@ export function resolveConfig(config: InitConfig): EffectiveConfig {
   }
   return {
     tenantId: config.tenantId,
-    endpoint: config.endpoint,
+    endpoint: normalizeTracesEndpoint(config.endpoint),
     captureContent: config.captureContent ?? false,
     serviceName: config.serviceName ?? "valuemaxx",
     ingestKey: new SecretString(config.ingestKey),
   };
+}
+
+/**
+ * Resolve the OTLP traces URL the exporter actually POSTs to.
+ *
+ * The collector is mounted at `/v1/traces`. Following the OTel convention for
+ * `OTEL_EXPORTER_OTLP_ENDPOINT`, a *base* endpoint (no path, or just `/`) gets
+ * `/v1/traces` appended — so `http://127.0.0.1:8000` reaches the collector, not the
+ * root. An endpoint that already carries a path (a signal-specific URL ending in
+ * `/v1/traces`, or a deliberate custom gateway path) is used verbatim.
+ */
+function normalizeTracesEndpoint(endpoint: string): string {
+  let url: URL;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    // Not a parseable URL — leave it to the exporter (the http(s) prefix check passed);
+    // never throw here for a non-literal config issue.
+    return endpoint;
+  }
+  if (url.pathname === "" || url.pathname === "/") {
+    url.pathname = "/v1/traces";
+    // URL serializes a path-only base without a trailing slash question; toString is canonical.
+    return url.toString();
+  }
+  return endpoint;
 }

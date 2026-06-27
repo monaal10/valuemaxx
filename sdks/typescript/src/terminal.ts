@@ -218,3 +218,66 @@ export class OpenAIStreamAccumulator {
     };
   }
 }
+
+/**
+ * Accumulate terminal usage from a Gemini (`generateContentStream`) stream.
+ *
+ * Gemini emits `usageMetadata` cumulatively — each chunk that carries it has the
+ * running totals, and the final chunk has the terminal values. So we keep the LATEST
+ * `usageMetadata` seen (never sum across chunks, which would double-count). The token
+ * mapping matches the non-streaming extractor: `promptTokenCount` is total input
+ * inclusive of `cachedContentTokenCount`; thinking tokens are billed as output with
+ * reasoning embedded.
+ */
+export class GeminiStreamAccumulator {
+  private promptTokens = 0;
+  private cachedTokens = 0;
+  private candidatesTokens = 0;
+  private thoughtsTokens = 0;
+  private sawUsage = false;
+  private cancelled = false;
+
+  /** Fold one streaming chunk; keep the latest cumulative usageMetadata. */
+  observe(chunk: Record<string, unknown>): void {
+    const meta = chunk["usageMetadata"];
+    if (typeof meta !== "object" || meta === null || Array.isArray(meta)) {
+      return;
+    }
+    const m = meta as Record<string, unknown>;
+    this.sawUsage = true;
+    this.promptTokens = asInt(m["promptTokenCount"]);
+    this.cachedTokens = asInt(m["cachedContentTokenCount"]);
+    this.candidatesTokens = asInt(m["candidatesTokenCount"]);
+    this.thoughtsTokens = asInt(m["thoughtsTokenCount"]);
+  }
+
+  /** Record that the stream was cancelled before the final usage chunk. */
+  markCancelled(): void {
+    this.cancelled = true;
+  }
+
+  /** Build the terminal {@link TokenVector} (uncached = prompt - cached). */
+  finalize(): TokenVector {
+    const cacheRead = Math.min(this.cachedTokens, this.promptTokens);
+    return tokenVector({
+      inputUncached: this.promptTokens - cacheRead,
+      cacheRead,
+      cacheWrite5m: 0,
+      cacheWrite1h: 0,
+      // candidates + thoughts are both billed as output; reasoning embedded within.
+      output: this.candidatesTokens + this.thoughtsTokens,
+      reasoning: this.thoughtsTokens,
+    });
+  }
+
+  /** Build the {@link AttemptObservation}; flag partial if usage never arrived. */
+  finalizeObservation(args: { provider: string; model: string }): AttemptObservation {
+    return {
+      provider: args.provider,
+      model: args.model,
+      tokens: this.finalize(),
+      isStreaming: true,
+      partialRecovered: this.cancelled || !this.sawUsage,
+    };
+  }
+}

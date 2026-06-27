@@ -32,7 +32,8 @@ from uuid import UUID
 
 from valuemaxx.agent_integrability.discovery import build_default_registry
 from valuemaxx.api.app import build_app
-from valuemaxx.capture import IngestRuntime, bind_ingest_runtime
+from valuemaxx.capture import IngestRuntime, bind_ingest_runtime, default_pricebook
+from valuemaxx.core.enums import Provenance
 from valuemaxx.core.ids import TenantId
 from valuemaxx.metrics import MetricExecutor, MetricRuntime, MetricWindow
 from valuemaxx.metrics import bind_runtime as bind_metrics_runtime
@@ -76,9 +77,18 @@ def _first_tenant(ingest_keys: dict[str, str]) -> TenantId | None:
 def _wire_runtimes(registry: Registry, bridge: StoreBridge, settings: ServerSettings) -> None:
     """Inject the store repositories into the capture + metrics capability runtimes."""
     clock = _SystemClock()
+    # Price ingested spans with the curated starter book so a new user sees real dollar
+    # numbers out of the box. The book is a list-price SNAPSHOT, so its computed costs are
+    # ESTIMATED — never laundered to measured (the H7 axis). A span that declares its own
+    # ai_margin.provenance (e.g. valuemaxx's SDK, or a gateway-reconciled cost) overrides.
     bind_ingest_runtime(
         registry,
-        IngestRuntime(repo=bridge.cost_events, pricebook=None, clock=clock),
+        IngestRuntime(
+            repo=bridge.cost_events,
+            pricebook=default_pricebook(),
+            clock=clock,
+            default_provenance=Provenance.ESTIMATED,
+        ),
     )
     tenant = _first_tenant(settings.ingest_keys)
     if tenant is not None:

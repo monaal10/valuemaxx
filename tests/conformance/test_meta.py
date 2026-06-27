@@ -25,8 +25,8 @@ _IDS = [r.name for r in _RULES]
 def test_rules_were_discovered() -> None:
     """Collection is non-empty — the harness is wired, not silently empty."""
     assert _RULES, "no conformance rules discovered"
-    # the full §3 rule list (25 static + 3 behavioral = 28 rules)
-    assert len(_RULES) == 28, f"expected 28 rules, found {len(_RULES)}: {_IDS}"
+    # the full §3 rule list (25 static + 4 behavioral = 29 rules)
+    assert len(_RULES) == 29, f"expected 29 rules, found {len(_RULES)}: {_IDS}"
 
 
 @pytest.mark.conformance
@@ -63,11 +63,12 @@ def test_static_behavioral_split() -> None:
     for rule in _RULES:
         assert rule.kind in (RuleKind.STATIC, RuleKind.BEHAVIORAL)
     behavioral = {r.name for r in _RULES if r.kind is RuleKind.BEHAVIORAL}
-    # the three behavioral (runtime, sentinel-driven) rules per §3
+    # the behavioral (runtime, sentinel-driven) rules per §3
     assert behavioral == {
         "no_secret_logging",
         "sdk_fails_open",
         "honesty_axes_invariants",
+        "otlp_collector_wire_roundtrips",
     }
 
 
@@ -114,6 +115,7 @@ def test_full_rule_list_present() -> None:
         "no_secret_logging",
         "sdk_fails_open",
         "honesty_axes_invariants",
+        "otlp_collector_wire_roundtrips",
     }
     actual = {r.name for r in _RULES}
     assert actual == expected, f"missing: {expected - actual}; extra: {actual - expected}"

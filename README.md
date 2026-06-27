@@ -120,40 +120,27 @@ await run("checkout-agent-42", async () => {
 
 Streaming cost is accumulated to **terminal** token values across chunks before the span is emitted (no delta-summing, no cache double-counting). Full options, the Anthropic and Vercel-AI-SDK paths, and the wire contract are in [`sdks/typescript/README.md`](./sdks/typescript/README.md).
 
-> **Local-dev note (honest):** the local backend's ingest route (`/ingest_otlp_span`, used in step 3) takes a signed, inline-cost span shape rather than raw OTLP, so the simplest way to *prove the loop end to end on your machine today* is to POST a span yourself (step 3) and query it back (step 4). The SDK `init()` lines above are exactly the integration point you ship in production; they validate and run as written.
+> **Using the Vercel AI SDK?** `init()` returns a `tracer` — pass it to `experimental_telemetry` and every `generateText`/`streamText` call is captured: `init(...).tracer` then `generateText({ model, prompt, experimental_telemetry: { isEnabled: true, tracer } })`. The SDK exports those spans to the backend's OTLP collector for you (next section).
 
 ### 3. Send a cost span to the backend
 
-Cost lands as a **signed OTLP span** POSTed to `/ingest_otlp_span`. The body is HMAC-signed with your `VALUEMAXX_WEBHOOK_SECRET` (verified *before* parsing) and authenticated with your ingest key. Re-delivering the same `(run_id, attempt_id)` upserts — it never double-counts.
+The SDK ships cost to the backend's **OTLP/HTTP collector** at `POST /v1/traces` — a standard OpenTelemetry trace exporter, authenticated with your ingest key in the `x-valuemaxx-ingest-key` header (the OTLP exporter sends only the key; it doesn't HMAC-sign). The tenant is resolved from the key — never the body. Re-delivering the same `(run_id, attempt_id)` upserts, so it never double-counts.
+
+When you wire `init()` (step 2) the exporter does this automatically. To prove the loop by hand, POST one OTLP span — exactly the wire shape the SDK exporter emits (note OTLP-JSON encodes integer attribute values as strings):
 
 ```bash
-python3 - <<'PY'
-import hashlib, hmac, json, urllib.request
-
-SECRET = b"dev-webhook-secret"          # == VALUEMAXX_WEBHOOK_SECRET
-KEY    = "dev-key"                       # resolves your tenant
-BASE   = "http://127.0.0.1:8000"
-
-attrs = {
-    "gen_ai.system": "anthropic",
-    "gen_ai.request.model": "claude-opus-4-8",
-    "gen_ai.usage.input_tokens": 100,
-    "gen_ai.usage.output_tokens": 50,
-    "ai_margin.run_id": "checkout-agent-42",
-    "ai_margin.attempt_id": "attempt-1",
-    "ai_margin.capture_granularity": "per_attempt",
-    "ai_margin.cost_usd": "0.0250",      # an authoritative, gateway-supplied cost
-}
-body = json.dumps({"tenant_id": "ignored", "attributes": attrs}).encode()
-sig  = hmac.new(SECRET, body, hashlib.sha256).hexdigest()
-
-req = urllib.request.Request(
-    BASE + "/ingest_otlp_span", data=body, method="POST",
-    headers={"X-API-Key": KEY, "X-Signature": sig, "Content-Type": "application/json"},
-)
-print(urllib.request.urlopen(req).read().decode())
-# {"run_id":"checkout-agent-42","attempt_id":"attempt-1","accepted":true}
-PY
+curl -s http://127.0.0.1:8000/v1/traces \
+  -H "x-valuemaxx-ingest-key: dev-key" -H "Content-Type: application/json" \
+  -d '{"resourceSpans":[{"scopeSpans":[{"spans":[{"name":"ai.generateText","attributes":[
+        {"key":"gen_ai.system","value":{"stringValue":"anthropic"}},
+        {"key":"gen_ai.request.model","value":{"stringValue":"claude-opus-4-8"}},
+        {"key":"gen_ai.usage.input_tokens","value":{"intValue":"100"}},
+        {"key":"gen_ai.usage.output_tokens","value":{"intValue":"50"}},
+        {"key":"ai_margin.run_id","value":{"stringValue":"checkout-agent-42"}},
+        {"key":"ai_margin.attempt_id","value":{"stringValue":"attempt-1"}},
+        {"key":"ai_margin.cost_usd","value":{"stringValue":"0.0250"}}
+      ]}]}]}]}'
+# {}  — an empty body is the OTLP success response: the span was accepted and persisted.
 ```
 
 ### 4. Query your cost

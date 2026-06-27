@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 from typing import TYPE_CHECKING, cast
+from uuid import UUID
 
 from fastapi import Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -27,6 +28,9 @@ from pydantic import BaseModel, ValidationError
 from valuemaxx.api.errors import AuthError, JobNotFoundError, WebhookSignatureError
 from valuemaxx.api.webhooks import verify_signature
 from valuemaxx.capabilities import Mode, Surface
+from valuemaxx.capture.capabilities import IngestNotWiredError, ingest_attribute_maps
+from valuemaxx.capture.otlp.collector import otlp_json_to_attribute_maps
+from valuemaxx.core.ids import TenantId
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -153,6 +157,40 @@ def _mount_streaming(app: FastAPI, cap: AnyCapability, auth: ApiKeyAuthenticator
     app.post(f"/{cap.name}", name=cap.name)(stream)
 
 
+def mount_otlp_collector_route(
+    app: FastAPI, registry: Registry, auth: ApiKeyAuthenticator
+) -> None:
+    """Mount ``POST /v1/traces`` — the real OTLP/HTTP collector for SDK spans.
+
+    The SDK's ``@opentelemetry/exporter-trace-otlp-http`` posts a standard OTLP-JSON
+    ``ExportTraceServiceRequest`` here, authenticated with the per-tenant ingest key
+    in the ``x-valuemaxx-ingest-key`` header (the OTLP exporter cannot HMAC-sign, so
+    this is key-auth like every other ingest path; ``x-api-key`` is accepted as a
+    fallback for non-OTLP callers). Each span's ``gen_ai.*``/``ai_margin.*``
+    attributes are decoded to a flat map and persisted as a CostEvent via the bound
+    capture runtime. Returns the OTLP-conventional empty ``partialSuccess`` body.
+    """
+
+    async def collect(
+        request: Request,
+        x_valuemaxx_ingest_key: str | None = Header(default=None),
+        x_api_key: str | None = Header(default=None),
+    ) -> dict[str, object]:
+        tenant_id = _resolve(auth, x_valuemaxx_ingest_key or x_api_key)
+        body = _parse_raw(await request.body())
+        attribute_maps = otlp_json_to_attribute_maps(body)
+        try:
+            ingest_attribute_maps(registry, TenantId(UUID(tenant_id)), attribute_maps)
+        except IngestNotWiredError as exc:
+            # The collector is mounted but no persistence runtime is bound — surface
+            # it loudly (503) rather than 200-acking spans we silently dropped.
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        # OTLP success: an empty body (no partialSuccess) means every span was accepted.
+        return {}
+
+    app.post("/v1/traces", name="otlp_collect")(collect)
+
+
 def mount_jobs_route(app: FastAPI, auth: ApiKeyAuthenticator, jobs: JobStore) -> None:
     """Mount the shared ``GET /jobs/{job_id}`` poll route (tenant-scoped)."""
 
@@ -188,6 +226,9 @@ def mount_capabilities(
             _mount_streaming(app, cap, auth)
     if has_async:
         mount_jobs_route(app, auth, jobs)
+    # The OTLP/HTTP collector is a fixed transport route (not a capability projection):
+    # the SDK's exporter posts raw OTLP-JSON, which has no capability input model.
+    mount_otlp_collector_route(app, registry, auth)
 
 
-__all__ = ["mount_capabilities", "mount_jobs_route"]
+__all__ = ["mount_capabilities", "mount_jobs_route", "mount_otlp_collector_route"]
