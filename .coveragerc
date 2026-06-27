@@ -1,0 +1,29 @@
+# Coverage gate for AI Margin Intelligence (AGENTS.md §5: >=90% line+branch on core).
+#
+# The foundation coverage gate is scoped to the core typed spine (atm_core).
+# Projection/generated code (apps/* registry projections, clients/*) and pure
+# re-export __init__ files are excluded. As logic packages land in G2 they add
+# their own source entries; until then the gate measures the foundation.
+[run]
+branch = True
+source =
+    atm_core
+    atm_capabilities
+omit =
+    */tests/*
+    # projection / generated code excluded from the core coverage gate (AGENTS.md §5)
+    apps/*
+    */_generated/*
+    */clients/*
+
+[report]
+# Core logic packages must hold >=90% line+branch (AGENTS.md §5).
+fail_under = 90
+show_missing = True
+skip_covered = False
+exclude_lines =
+    pragma: no cover
+    if TYPE_CHECKING:
+    raise NotImplementedError
+    \.\.\.
+    @(abc\.)?abstractmethod

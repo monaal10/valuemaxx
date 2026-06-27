@@ -17,7 +17,7 @@ jobs:
       - name: Set up Python
         run: uv python install 3.11
       - name: Sync workspace
-        run: uv sync --all-extras --dev
+        run: uv sync --all-packages --all-extras --dev
 
       - name: Ruff lint
         run: uv run ruff check .
