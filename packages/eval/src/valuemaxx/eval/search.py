@@ -159,9 +159,7 @@ def pareto_frontier(scores: Sequence[CandidateScore]) -> tuple[ParetoPoint, ...]
 def _dominates(a: CandidateScore, b: CandidateScore) -> bool:
     """Whether ``a`` Pareto-dominates ``b`` (>= on all axes, strictly > on one)."""
     at_least_as_good = (
-        a.parity >= b.parity
-        and a.cost_usd <= b.cost_usd
-        and a.latency_ms_p50 <= b.latency_ms_p50
+        a.parity >= b.parity and a.cost_usd <= b.cost_usd and a.latency_ms_p50 <= b.latency_ms_p50
     )
     strictly_better = (
         a.parity > b.parity or a.cost_usd < b.cost_usd or a.latency_ms_p50 < b.latency_ms_p50

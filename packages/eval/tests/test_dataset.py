@@ -50,9 +50,7 @@ def _trace(
         stratum=stratum,
         is_outcome_bound=outcome_bound,
         outcome_label=True if outcome_bound else None,
-        label_source=(
-            LabelSource.OUTCOME_LABEL if outcome_bound else LabelSource.REFERENCE
-        ),
+        label_source=(LabelSource.OUTCOME_LABEL if outcome_bound else LabelSource.REFERENCE),
     )
 
 
@@ -133,9 +131,7 @@ def test_every_case_has_source_trace_id() -> None:
 def test_reference_output_is_incumbent() -> None:
     """The reference output stored on each case is the incumbent model's output."""
     traces = [_trace("t1", stratum=Stratum.FREQUENT, incumbent_output="INCUMBENT-ANSWER")]
-    ds = build_dataset(
-        tenant_id=_TENANT, name="s", traces=traces, target_size=1, rng=_SeededRng(0)
-    )
+    ds = build_dataset(tenant_id=_TENANT, name="s", traces=traces, target_size=1, rng=_SeededRng(0))
     assert reference_output_of(ds.cases[0]) == "INCUMBENT-ANSWER"
 
 
