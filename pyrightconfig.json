@@ -11,7 +11,8 @@
     "**/node_modules",
     "**/__pycache__",
     "**/.venv",
-    "**/_generated"
+    "**/_generated",
+    "apps/agent_integrability/src/valuemaxx/agent_integrability/examples"
   ],
   "reportUnnecessaryTypeIgnoreComment": "error",
   "reportMissingTypeStubs": "error",

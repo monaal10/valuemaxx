@@ -1,0 +1,7 @@
+# valuemaxx outcomes.yaml — Anthropic example.
+# One outcome: a lead is marked qualified in the CRM (confirmed via an ORM save).
+outcomes:
+  - name: lead_qualified
+    match: { orm_save: "app.crm.Lead", when: "args.stage == 'qualified'" }
+    bind: { entity_key: "args.lead_id" }
+    signal: outcome_confirmed

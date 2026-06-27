@@ -82,9 +82,15 @@ def build_default_registry() -> Registry:
     Returns a fully-populated :class:`~valuemaxx.capabilities.Registry`. Assembly
     is deterministic and total: the one documented duplicate name is de-duplicated
     (see :data:`KNOWN_DUPLICATE_NAMES`); any unexpected duplicate raises.
+    Also registers the agent-integrability scaffold/validate helper capabilities
+    (``scaffold_outcome_rule`` / ``validate_init``) — the ``scaffold_*`` / ``validate_*``
+    tools projected onto MCP among other surfaces.
     """
+    from valuemaxx.agent_integrability.scaffold_caps import register_scaffold_caps
+
     registry = Registry()
     register_modules(registry, DEFAULT_CAPABILITY_MODULES)
+    register_scaffold_caps(registry)
     return registry
 
 

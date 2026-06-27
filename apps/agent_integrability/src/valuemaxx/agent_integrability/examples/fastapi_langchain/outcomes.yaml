@@ -1,0 +1,8 @@
+# valuemaxx outcomes.yaml — FastAPI + LangChain example.
+# One outcome: a support ticket is resolved (confirmed via a status transition).
+# binding tier / signal_class are SYSTEM-OWNED; `signal:` only declares intent.
+outcomes:
+  - name: ticket_resolved
+    match: { function: "app.tickets.set_status", when: "args.status == 'resolved'" }
+    bind: { entity_key: "args.ticket_id" }
+    signal: outcome_confirmed
