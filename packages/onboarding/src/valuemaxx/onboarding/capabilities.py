@@ -122,6 +122,18 @@ class ReviewableDiff(StrictModel):
     hunks: tuple[DiffHunk, ...]
 
 
+class PullRequest(StrictModel):
+    """The result of opening a PR: a branch + a body carrying ONLY the diff (H12).
+
+    The body never contains raw repo file contents — the GitHub-App model emits the
+    diff, not the codebase, so there is no off-box raw-source path.
+    """
+
+    branch: str
+    title: str
+    body: str
+
+
 class CostPerOutcome(StrictModel):
     """The injected rollup reader's result for one outcome (carries both H7 fields).
 
@@ -156,6 +168,7 @@ __all__ = [
     "MatchKind",
     "OutcomeRuleCandidate",
     "Proposal",
+    "PullRequest",
     "ReviewableDiff",
     "RunIdInjection",
     "ScanResult",
