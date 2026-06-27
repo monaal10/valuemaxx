@@ -161,18 +161,84 @@ class DryRunPreview(StrictModel):
     confidence_distribution: Mapping[BindingTier, int]
 
 
+# --- capability request/response envelopes ------------------------------------
+# One typed request + response per registered capability (the surfaces project
+# these). They are config/IO envelopes, not domain types.
+
+
+class ScanRequest(StrictModel):
+    """Request for ``scan_codebase``: the filesystem root to scan."""
+
+    root: str
+
+
+class ProposeRequest(StrictModel):
+    """Request for ``propose_onboarding_diff``: a prior scan result."""
+
+    scan: ScanResult
+    shared_costs_inputs: bool = False
+
+
+class ProposeResponse(StrictModel):
+    """Response for ``propose_onboarding_diff``: the proposal + its reviewable diff."""
+
+    proposal: Proposal
+    diff: ReviewableDiff
+    outcomes_yaml: str
+
+
+class SuggestRequest(StrictModel):
+    """Request for ``suggest_attribution_rule`` (H10): NL + source + a scan to match."""
+
+    natural_language: str
+    source: str
+    scan: ScanResult
+
+
+class SuggestResponse(StrictModel):
+    """Response for ``suggest_attribution_rule``: an UNCONFIRMED suggested rule."""
+
+    suggestion: SuggestedRule
+
+
+class ValidateRequest(StrictModel):
+    """Request for ``validate_outcome_rule``: the candidate rule to validate."""
+
+    rule: OutcomeRuleCandidate
+
+
+class ValidateResponse(StrictModel):
+    """Response for ``validate_outcome_rule``: whether the rule passed validation."""
+
+    valid: bool
+
+
+class DryRunRequest(StrictModel):
+    """Request for ``dry_run_outcomes``: the outcome to preview."""
+
+    outcome_name: str
+
+
 __all__ = [
     "CostPerOutcome",
     "DiffHunk",
     "DryRunPreview",
+    "DryRunRequest",
     "MatchKind",
     "OutcomeRuleCandidate",
     "Proposal",
+    "ProposeRequest",
+    "ProposeResponse",
     "PullRequest",
     "ReviewableDiff",
     "RunIdInjection",
+    "ScanRequest",
     "ScanResult",
     "ScanSite",
     "SiteKind",
+    "SuggestRequest",
+    "SuggestResponse",
     "SuggestedRule",
+    "ValidateRequest",
+    "ValidateResponse",
 ]
