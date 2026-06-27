@@ -37,6 +37,13 @@ from valuemaxx.eval.errors import (
     GroundTruthUnavailableError,
     JudgeNotValidatedError,
 )
+from valuemaxx.eval.grade import (
+    CaseGrade,
+    GradeInputs,
+    grade_case,
+    grade_for_label_source,
+    select_label_source,
+)
 from valuemaxx.eval.types import (
     CadenceTrigger,
     CapturedCall,
@@ -54,9 +61,11 @@ __all__ = [
     "BudgetExceededError",
     "CadenceTrigger",
     "CapturedCall",
+    "CaseGrade",
     "ClusterCandidate",
     "EvalError",
     "GateNotApprovedError",
+    "GradeInputs",
     "GradedCase",
     "GroundTruthUnavailableError",
     "HumanLabel",
@@ -70,9 +79,12 @@ __all__ = [
     "build_dataset",
     "detect_task_type",
     "discover_clusters",
+    "grade_case",
+    "grade_for_label_source",
     "is_reconstructible_task",
     "load_committed_human_labels",
     "reference_output_of",
+    "select_label_source",
     "skeleton_hash",
     "stratum_of",
     "templatize",
