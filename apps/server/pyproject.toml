@@ -1,0 +1,46 @@
+[project]
+name = "valuemaxx-server"
+version = "0.0.0"
+classifiers = ["Private :: Do Not Upload"]
+description = "AI Margin Intelligence — the runnable backend assembly: builds the store, runs migrations, discovers + wires capabilities, and serves the FastAPI projection."
+requires-python = ">=3.11"
+license = "Apache-2.0"
+dependencies = [
+    "valuemaxx-core",
+    "valuemaxx-capabilities",
+    "valuemaxx-capture",
+    "valuemaxx-metrics",
+    "valuemaxx-store",
+    "valuemaxx-agent-integrability",
+    "valuemaxx-api",
+    "fastapi>=0.110",
+    "pydantic-settings>=2.2",
+    "uvicorn>=0.29",
+    "anyio>=4",
+    "aiosqlite>=0.19",
+    "typing-extensions>=4.12",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+only-include = ["src/valuemaxx/server"]
+sources = ["src"]
+
+[tool.uv.sources]
+valuemaxx-core = { workspace = true }
+valuemaxx-capabilities = { workspace = true }
+valuemaxx-capture = { workspace = true }
+valuemaxx-metrics = { workspace = true }
+valuemaxx-store = { workspace = true }
+valuemaxx-agent-integrability = { workspace = true }
+valuemaxx-api = { workspace = true }

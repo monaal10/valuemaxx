@@ -146,6 +146,14 @@ Because every package has a `tests/` directory, test modules MUST NOT be cross-i
 - Shared **fixtures** go in the package's `conftest.py` and are **auto-discovered** (request by parameter name) — never imported explicitly.
 - Shared **constants/helpers** go in `tests/_helpers.py` and are imported with a **bare `import _helpers` / `from _helpers import ...`** — NOT `from tests._helpers import ...`. Under `--import-mode=importlib` with `consider_namespace_packages=true`, `tests` is a namespace package shared across every `packages/*/tests`, so any `tests.<x>` import collides repo-wide; a bare sibling import resolves because importlib puts the test file's own directory on `sys.path` at import time. There must be **no `tests/__init__.py`** (it would re-break this).
 
+### Wire validation is JSON-mode, not dict-mode (ratchet, 2026-06-27)
+
+The API projection (`apps/api`) MUST validate a request body with **JSON-mode** semantics — `input_model.model_validate_json(json.dumps(scoped))` — **never** dict-mode `model_validate(parsed_dict)`. A `StrictModel` capability input (e.g. `MetricDefinition`, which has a `tuple[str, ...]` field) rejects a Python `list` for a `tuple` in dict mode but accepts a JSON array in JSON mode; the wire payload IS JSON, so dict-mode validation made strict-input capabilities un-callable over HTTP (a `run_metric` POST 422'd on `group_by: []`). Guardrail: `apps/api/tests/test_app.py::test_tuple_field_accepts_a_json_array_on_the_wire` drives a strict tuple-field capability over the wire and fails if the projection regresses to dict-mode validation.
+
+### Capability runtimes bind to the assembled registry, not a staging copy (ratchet, 2026-06-27)
+
+A logic package whose capability handler closes over a late-bound runtime holder keyed by the registry object (`WeakKeyDictionary[Registry, holder]`, e.g. capture/metrics/attribution) only works if **the holder is keyed by the same `Registry` the surfaces project from**. `register_modules` therefore calls each module's `register(registry)` **directly** on the final (`_DiscoveryRegistry`) instance — never a per-module staging `Registry` whose specs are copied across (the copy would orphan the holder, so `bind_runtime(final_registry, ...)` could never reach the handler's holder). The one documented duplicate name (`validate_outcome_rule`) is skipped by `_DiscoveryRegistry.register`, preserving the no-silent-overwrite contract. Guardrail: `apps/server/tests/test_e2e.py::test_ingested_span_persists_and_is_queryable` boots the full assembly and fails if a wired runtime is unreachable; `apps/agent_integrability/tests/test_discovery.py` keeps the dedup + collision contract.
+
 ## 6a. Parallel execution (for orchestrating agents)
 
 When implementing this project, **parallelize aggressively**: most packages and most tasks within a package are independent and should be built concurrently by subagents, not serially.
