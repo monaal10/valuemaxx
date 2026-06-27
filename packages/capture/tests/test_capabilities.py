@@ -1,7 +1,8 @@
 """PG5 — register(registry) adds the capture capabilities (§3, M10).
 
 ``register`` adds exactly three capabilities to the registry:
-  * ``ingest_otlp_span`` — webhook_inbound, API (the universal OTLP-in path);
+  * ``ingest_otlp_span`` — request_response, API (the universal OTLP-in path; KEY-auth,
+    not signature-gated, so a real OTLP exporter's spans are accepted);
   * ``list_cost_sources`` — request_response, API|MCP|CLI;
   * ``capture_healthcheck`` — request_response, API|MCP|CLI.
 
@@ -44,12 +45,19 @@ def test_register_adds_three_capabilities() -> None:
     assert names == {"ingest_otlp_span", "list_cost_sources", "capture_healthcheck"}
 
 
-def test_ingest_otlp_span_declares_webhook_inbound() -> None:
-    """test_ingest_otlp_span_declares_webhook_inbound: OTLP-in is a webhook_inbound API cap."""
+def test_ingest_otlp_span_is_key_authenticated_not_signature_gated() -> None:
+    """test_ingest_otlp_span_is_key_authenticated_not_signature_gated: OTLP-in is request_response.
+
+    A real SDK ships spans via a standard OTLP exporter authenticated with ONLY the
+    ingest key (it cannot HMAC-sign the body), so OTLP-in MUST be key-authenticated
+    (request_response), never a signature-gated webhook_inbound — that would 401 every
+    real exporter's spans. HMAC signing belongs on EXTERNAL webhooks
+    (``ingest_webhook_outcome``), where you cannot use your own key.
+    """
     cap = next(c for c in _registered().all() if c.name == "ingest_otlp_span")
-    assert cap.mode is Mode.WEBHOOK_INBOUND
+    assert cap.mode is Mode.REQUEST_RESPONSE
+    assert cap.mode is not Mode.WEBHOOK_INBOUND  # never signature-gated (the bug class)
     assert Surface.API in cap.surfaces
-    assert Surface.CLI not in cap.surfaces  # a webhook is not a CLI command
 
 
 def test_healthcheck_on_all_three_surfaces() -> None:

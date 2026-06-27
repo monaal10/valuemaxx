@@ -4,7 +4,9 @@ Surfaces (API/MCP/CLI/NOTIFY) are thin projections of the capability registry, s
 capture declares its operations here once and ``register`` adds them. Three
 capabilities:
 
-  * ``ingest_otlp_span`` — the universal OTLP-in path (``webhook_inbound``, API);
+  * ``ingest_otlp_span`` — the universal OTLP-in path (``request_response``, API):
+    KEY-authenticated (resolved from the ingest X-API-Key), NOT signature-gated, because
+    a real OTLP exporter sends only the ingest key and cannot HMAC-sign the body;
   * ``list_cost_sources`` — enumerate the wired cost sources (request_response);
   * ``capture_healthcheck`` — liveness + effective granularity (request_response).
 
@@ -189,7 +191,14 @@ def register(registry: Registry) -> None:
             handler=_make_ingest_handler(holder),
             description="Ingest one OTLP span as a CostEvent (universal/TS producer path).",
             surfaces=Surface.API,
-            mode=Mode.WEBHOOK_INBOUND,
+            # KEY-authenticated, NOT signature-required: a real SDK ships spans via a
+            # standard OTLP exporter authenticated with ONLY the per-tenant ingest key
+            # (it cannot HMAC-sign the OTLP body). The tenant is resolved from the
+            # X-API-Key like every other request_response capability. HMAC signing
+            # belongs on EXTERNAL webhooks (Stripe/CRM outcome callbacks —
+            # ingest_webhook_outcome stays webhook_inbound/signed, since there you
+            # cannot use your own key). See AGENTS.md §5b (SDK ingest is key-auth).
+            mode=Mode.REQUEST_RESPONSE,
         )
     )
     registry.register(
