@@ -1,6 +1,54 @@
-"""valuemaxx.eval — skeleton logic package (built in G2).
+"""valuemaxx.eval — eval-backed model recommendation (an EVIDENCE layer, §8).
 
-Depends only on valuemaxx.core ABCs/Protocols and valuemaxx.capabilities.
+This package is the honest, eval-backed model-recommendation funnel:
+``discover -> dataset -> grade -> search -> cost-gate -> recommend -> cadence``.
+It is deliberately *not* the product headline — the outcome of an un-run model is
+counterfactual, so a recommendation is graded on the best honestly-labeled
+ground-truth rung and is **evidence for a human decision, never an auto-switch**.
+
+It depends only on ``valuemaxx.core`` ABCs/Protocols and ``valuemaxx.capabilities``;
+it never imports a sibling logic package, a concrete store, a surface framework, or
+``tiktoken`` (asserted by conformance rules). All model interaction is through
+injected Protocols (``ProviderClient``, ``LlmJudge``, ``Embedder``, ``Clock``,
+``Rng``, ``UuidGen``) so the funnel is deterministic and needs no real model.
 """
 
-__all__: list[str] = []
+from __future__ import annotations
+
+from valuemaxx.eval.errors import (
+    BudgetExceededError,
+    EvalError,
+    GateNotApprovedError,
+    GroundTruthUnavailableError,
+    JudgeNotValidatedError,
+)
+from valuemaxx.eval.types import (
+    CadenceTrigger,
+    CapturedCall,
+    ClusterCandidate,
+    GradedCase,
+    HumanLabel,
+    JudgeValidation,
+    ReconstructibilityValidator,
+    Stratum,
+    TaskType,
+    is_reconstructible_task,
+)
+
+__all__ = [
+    "BudgetExceededError",
+    "CadenceTrigger",
+    "CapturedCall",
+    "ClusterCandidate",
+    "EvalError",
+    "GateNotApprovedError",
+    "GradedCase",
+    "GroundTruthUnavailableError",
+    "HumanLabel",
+    "JudgeNotValidatedError",
+    "JudgeValidation",
+    "ReconstructibilityValidator",
+    "Stratum",
+    "TaskType",
+    "is_reconstructible_task",
+]

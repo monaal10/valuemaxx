@@ -1,12 +1,27 @@
 [project]
 name = "valuemaxx-eval"
 version = "0.0.0"
-description = "AI Margin Intelligence — eval logic package (skeleton; built in G2)."
+description = "AI Margin Intelligence — eval-backed model recommendation (evidence layer, §8)."
 requires-python = ">=3.11"
 license = "Apache-2.0"
 dependencies = [
     "valuemaxx-core",
     "valuemaxx-capabilities",
+    # ``typing_extensions.override`` is recognised by the type checker at our 3.11
+    # target (``typing.override`` is 3.12+); used on injected-Protocol fake methods.
+    "typing-extensions>=4.12",
+]
+
+# NOTE: the build plan named scipy/numpy as deps, but every statistic this package
+# needs (Wilson score interval, p50/p95/p99 percentiles, CI separation) is a small
+# closed-form computation. Pure-Python ``math`` keeps the funnel fully deterministic
+# and testable, avoids a heavyweight native build that does not install cleanly in
+# this environment, and is the "the dependency is more complexity than the problem"
+# case from AGENTS.md. hypothesis/pytest-asyncio are the only added dev deps.
+[dependency-groups]
+dev = [
+    "hypothesis>=6.100",
+    "pytest-asyncio>=0.24",
 ]
 
 [build-system]

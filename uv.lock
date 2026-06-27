@@ -1,6 +1,10 @@
 version = 1
 revision = 3
 requires-python = ">=3.11"
+resolution-markers = [
+    "python_full_version >= '3.12'",
+    "python_full_version < '3.12'",
+]
 
 [manifest]
 members = [
@@ -1222,11 +1226,29 @@ name = "valuemaxx"
 version = "0.0.0"
 source = { editable = "sdks/python" }
 dependencies = [
+    { name = "pydantic" },
+    { name = "valuemaxx-capture" },
     { name = "valuemaxx-core" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "httpx" },
+    { name = "typing-extensions" },
+]
+
 [package.metadata]
-requires-dist = [{ name = "valuemaxx-core", editable = "packages/core" }]
+requires-dist = [
+    { name = "pydantic", specifier = ">=2" },
+    { name = "valuemaxx-capture", editable = "packages/capture" },
+    { name = "valuemaxx-core", editable = "packages/core" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "typing-extensions", specifier = ">=4.12" },
+]
 
 [[package]]
 name = "valuemaxx-agent-integrability"
@@ -1248,14 +1270,32 @@ name = "valuemaxx-allocation"
 version = "0.0.0"
 source = { editable = "packages/allocation" }
 dependencies = [
+    { name = "pyyaml" },
     { name = "valuemaxx-capabilities" },
     { name = "valuemaxx-core" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "hypothesis" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "types-pyyaml" },
+]
+
 [package.metadata]
 requires-dist = [
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "valuemaxx-capabilities", editable = "packages/capabilities" },
     { name = "valuemaxx-core", editable = "packages/core" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "hypothesis", specifier = ">=6.100" },
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "pytest-asyncio", specifier = ">=0.24" },
+    { name = "types-pyyaml", specifier = ">=6.0" },
 ]
 
 [[package]]
@@ -1361,14 +1401,28 @@ name = "valuemaxx-eval"
 version = "0.0.0"
 source = { editable = "packages/eval" }
 dependencies = [
+    { name = "typing-extensions" },
     { name = "valuemaxx-capabilities" },
     { name = "valuemaxx-core" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "hypothesis" },
+    { name = "pytest-asyncio" },
+]
+
 [package.metadata]
 requires-dist = [
+    { name = "typing-extensions", specifier = ">=4.12" },
     { name = "valuemaxx-capabilities", editable = "packages/capabilities" },
     { name = "valuemaxx-core", editable = "packages/core" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "hypothesis", specifier = ">=6.100" },
+    { name = "pytest-asyncio", specifier = ">=0.24" },
 ]
 
 [[package]]
@@ -1395,10 +1449,24 @@ dependencies = [
     { name = "valuemaxx-core" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "hypothesis" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "valuemaxx-capabilities", editable = "packages/capabilities" },
     { name = "valuemaxx-core", editable = "packages/core" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "hypothesis", specifier = ">=6.100" },
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "pytest-asyncio", specifier = ">=0.24" },
 ]
 
 [[package]]
@@ -1421,15 +1489,27 @@ name = "valuemaxx-onboarding"
 version = "0.0.0"
 source = { editable = "packages/onboarding" }
 dependencies = [
+    { name = "pyyaml" },
+    { name = "typing-extensions" },
     { name = "valuemaxx-capabilities" },
     { name = "valuemaxx-core" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "types-pyyaml" },
+]
+
 [package.metadata]
 requires-dist = [
+    { name = "pyyaml", specifier = ">=6" },
+    { name = "typing-extensions", specifier = ">=4.4" },
     { name = "valuemaxx-capabilities", editable = "packages/capabilities" },
     { name = "valuemaxx-core", editable = "packages/core" },
 ]
+
+[package.metadata.requires-dev]
+dev = [{ name = "types-pyyaml", specifier = ">=6" }]
 
 [[package]]
 name = "valuemaxx-outcomes"
@@ -1437,6 +1517,7 @@ version = "0.0.0"
 source = { editable = "packages/outcomes" }
 dependencies = [
     { name = "pyyaml" },
+    { name = "typing-extensions" },
     { name = "valuemaxx-capabilities" },
     { name = "valuemaxx-core" },
     { name = "wrapt" },
@@ -1450,6 +1531,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "pyyaml", specifier = ">=6" },
+    { name = "typing-extensions", specifier = ">=4.4" },
     { name = "valuemaxx-capabilities", editable = "packages/capabilities" },
     { name = "valuemaxx-core", editable = "packages/core" },
     { name = "wrapt", specifier = ">=1.16" },
@@ -1467,10 +1549,24 @@ dependencies = [
     { name = "valuemaxx-core" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "hypothesis" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "valuemaxx-capabilities", editable = "packages/capabilities" },
     { name = "valuemaxx-core", editable = "packages/core" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "hypothesis", specifier = ">=6.100" },
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "pytest-asyncio", specifier = ">=0.24" },
 ]
 
 [[package]]
