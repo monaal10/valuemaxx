@@ -1,12 +1,23 @@
 [project]
 name = "valuemaxx-store"
 version = "0.0.0"
-description = "AI Margin Intelligence — store logic package (skeleton; built in G2)."
+description = "AI Margin Intelligence — the persistence layer: concrete async SQLAlchemy repositories + the migration owner."
 requires-python = ">=3.11"
 license = "Apache-2.0"
 dependencies = [
     "valuemaxx-core",
     "valuemaxx-capabilities",
+    "sqlalchemy[asyncio]>=2,<3",
+    "alembic>=1.13",
+    "asyncpg>=0.29",
+    "aiosqlite>=0.20",
+]
+
+[dependency-groups]
+dev = [
+    "testcontainers[postgres]>=4,<5",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
 ]
 
 [build-system]
