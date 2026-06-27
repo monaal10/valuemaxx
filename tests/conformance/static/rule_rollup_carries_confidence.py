@@ -40,6 +40,20 @@ def _foundation_subject() -> object:
     return RunCostRollup
 
 
+def metrics_cell_carries_confidence() -> bool:
+    """True iff the metric result cell carries both H7 fields (METRICS owns this).
+
+    The metric engine's per-group result cell must carry a
+    :class:`~valuemaxx.core.RollupConfidence` so a surface can never collapse a
+    mixed-tier metric into a clean number. METRICS turns this rule green for its
+    rollup-shaped output (the build plan lists ALLOC/METRICS/ONBOARDING as the
+    carriers beyond the foundation).
+    """
+    from valuemaxx.metrics.schemas import MetricCell
+
+    return not _flags(MetricCell)
+
+
 RULE = Rule(
     name="rollup_carries_confidence",
     kind=RuleKind.STATIC,

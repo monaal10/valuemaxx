@@ -143,3 +143,18 @@ def test_honesty_axes_invariants_all_raise() -> None:
     from tests.conformance.behavioral import rule_honesty_axes_invariants
 
     assert rule_honesty_axes_invariants.all_illegal_states_raise() is True
+
+
+def test_metrics_owned_rules_green() -> None:
+    """METRICS upholds the two rules it owns: no eval in the DSL, cells carry H7.
+
+    The metric mini-DSL/compiler contain no eval/exec/dunder markers, and the
+    metric result cell carries both H7 fields (minimum_tier + distribution).
+    """
+    from tests.conformance.static import (
+        rule_no_eval_in_predicate,
+        rule_rollup_carries_confidence,
+    )
+
+    assert rule_no_eval_in_predicate.metrics_dsl_has_no_eval() == []
+    assert rule_rollup_carries_confidence.metrics_cell_carries_confidence() is True
