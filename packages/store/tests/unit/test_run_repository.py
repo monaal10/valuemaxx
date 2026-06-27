@@ -6,11 +6,10 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import pytest
+from _store_helpers import make_tenant
 from valuemaxx.core.ids import RunId, TenantId
 from valuemaxx.core.run import Run
 from valuemaxx.store.repositories.run import PgRunRepository
-
-from tests.unit.conftest import make_tenant
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker

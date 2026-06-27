@@ -104,9 +104,7 @@ class OutcomeEmitter:
 
     def _build(self, request: EmitRequest) -> OutcomeEvent:
         signal = SignalClass(
-            self._mapper.map_signal(
-                match_kind=request.match_kind, declared=request.declared_signal
-            )
+            self._mapper.map_signal(match_kind=request.match_kind, declared=request.declared_signal)
         )
         return OutcomeEvent(
             tenant_id=request.tenant_id,

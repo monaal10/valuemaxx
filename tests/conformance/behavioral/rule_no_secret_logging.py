@@ -8,9 +8,11 @@ it iff the sentinel leaked.
 The foundation subject runs the outcomes package's secret-handling path — the webhook
 receiver's *verify-before-parse* rejection, where the signing secret and ingest key are
 the sentinel — while capturing every log record. The receiver logs only "verification
-failed" with the source, never the secret, so the sentinel never appears. (The rule is
-co-owned by RECON/EVAL/ONBOARDING, which extend the exercised paths through G5; the
-OUTCOMES path is green now.)
+failed" with the source, never the secret, so the sentinel never appears. It THEN runs
+the ONBOARDING scan→propose→diff path over a fixture file that plants the sentinel, and
+appends the produced artifacts (proposal + reviewable diff) to the same sink dump: the
+onboarding redaction guarantee means the sentinel appears in none of them. (The rule is
+co-owned by RECON/EVAL through G5; the OUTCOMES and ONBOARDING paths are green now.)
 """
 
 from __future__ import annotations
@@ -108,7 +110,44 @@ def _foundation_subject() -> object:
     finally:
         root.removeHandler(handler)
         root.setLevel(previous_level)
-    return handler.dump
+    # ONBOARDING side: scan→propose→diff over a sentinel-planted fixture; the produced
+    # artifacts are appended to the sink dump and must never carry the sentinel.
+    return handler.dump + _onboarding_sink_dump()
+
+
+def _onboarding_sink_dump() -> list[str]:
+    """Run the onboarding scan→propose→diff path over a sentinel-planted file.
+
+    Returns the rendered artifacts (proposal JSON + reviewable-diff JSON). Onboarding's
+    redaction means the sentinel appears in none of them, so the rule stays green.
+    """
+    import tempfile
+    from pathlib import Path
+
+    from valuemaxx.core import SignalClass
+    from valuemaxx.onboarding.diff import build_reviewable_diff
+    from valuemaxx.onboarding.propose import build_proposal
+    from valuemaxx.onboarding.scan import scan_codebase
+
+    class _Mapper:
+        def map_signal(self, *, match_kind: str, declared: str) -> str:
+            _ = (match_kind, declared)
+            return SignalClass.OUTCOME_CONFIRMED.value
+
+    source = (
+        "def run_agent(ticket_id):\n"
+        f'    client = Anthropic(api_key="{SENTINEL}")\n'
+        "    return client.complete(ticket_id)\n\n\n"
+        "def mark_resolved(ticket):\n"
+        f'    ticket.status = "resolved"  # key={SENTINEL}\n'
+    )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        (Path(tmp) / "app.py").write_text(source)
+        scan = scan_codebase(Path(tmp))
+        proposal = build_proposal(scan, signal_mapper=_Mapper())
+        diff = build_reviewable_diff(proposal, scan)
+    return [proposal.model_dump_json(), diff.model_dump_json(), scan.model_dump_json()]
 
 
 class _StaticClock:

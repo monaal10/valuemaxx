@@ -107,9 +107,7 @@ def suggest_attribution_rule(
         warnings=(),
     )
     rule = build_proposal(single, signal_mapper=signal_mapper).rules[0]
-    return SuggestedRule(
-        natural_language=clean_nl, rule=rule, confidence=_confidence(best_score)
-    )
+    return SuggestedRule(natural_language=clean_nl, rule=rule, confidence=_confidence(best_score))
 
 
 __all__ = ["suggest_attribution_rule"]

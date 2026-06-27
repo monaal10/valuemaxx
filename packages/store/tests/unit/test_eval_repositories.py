@@ -6,12 +6,11 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 import pytest
+from _store_helpers import make_tenant
 from valuemaxx.core.enums import EvalGrade, LabelSource
 from valuemaxx.core.eval import EvalCase, EvalDataset, EvalRecommendation
 from valuemaxx.store.repositories.eval_dataset import PgEvalDatasetRepository
 from valuemaxx.store.repositories.eval_recommendation import PgEvalRecommendationRepository
-
-from tests.unit.conftest import make_tenant
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -36,9 +35,7 @@ def _dataset(tenant: TenantId, *, dataset_id: str, version: int) -> EvalDataset:
 
 
 def _recommendation(tenant: TenantId, *, incumbent: str, grade: EvalGrade) -> EvalRecommendation:
-    label = (
-        LabelSource.HUMAN_LABELED if grade is EvalGrade.RELIABLE else LabelSource.LLM_JUDGE
-    )
+    label = LabelSource.HUMAN_LABELED if grade is EvalGrade.RELIABLE else LabelSource.LLM_JUDGE
     return EvalRecommendation(
         tenant_id=tenant,
         recommended_model="claude-haiku-4",

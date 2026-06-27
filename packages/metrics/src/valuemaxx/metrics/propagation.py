@@ -79,9 +79,7 @@ class DenominatorBreakdown:
     advisory_excluded_count: int
     attempted_excluded_count: int
     retracted_excluded_count: int
-    tier_distribution: Counter[BindingTier] = field(
-        default_factory=lambda: Counter[BindingTier]()
-    )
+    tier_distribution: Counter[BindingTier] = field(default_factory=lambda: Counter[BindingTier]())
 
 
 def denominator_outcomes(outcomes: Iterable[OutcomeEvent]) -> DenominatorBreakdown:

@@ -106,6 +106,7 @@ def _arith(op: Callable[[float, float], float], left: object, right: object) -> 
         return op(left, right)
     raise PredicateValidationError("arithmetic requires numeric operands")
 
+
 Namespace = Mapping[str, object]
 Predicate = Callable[[Namespace], bool]
 Extractor = Callable[[Namespace], object]

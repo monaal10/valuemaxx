@@ -73,9 +73,7 @@ def install_run_id_injection(specs: Sequence[RunIdInjectionSpec]) -> InjectionRe
 
 def _make_injection_wrapper(
     inject_into: str,
-) -> Callable[
-    [Callable[..., object], object, tuple[object, ...], dict[str, object]], object
-]:
+) -> Callable[[Callable[..., object], object, tuple[object, ...], dict[str, object]], object]:
     path = tuple(inject_into.split("."))
 
     def _wrapper(

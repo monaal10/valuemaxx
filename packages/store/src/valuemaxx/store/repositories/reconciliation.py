@@ -65,9 +65,8 @@ class PgReconciliationRepository(BaseRepository):
         The alert reflects the *latest* record per match key (the most recent true-up),
         so a re-reconciliation that brings drift back under threshold clears the alert.
         """
-        stmt = (
-            require_tenant(select(recon_table), tenant_id, recon_table)
-            .order_by(recon_table.c.created_at.desc())
+        stmt = require_tenant(select(recon_table), tenant_id, recon_table).order_by(
+            recon_table.c.created_at.desc()
         )
         async with self._sessions() as session:
             rows = (await session.execute(stmt)).mappings().all()

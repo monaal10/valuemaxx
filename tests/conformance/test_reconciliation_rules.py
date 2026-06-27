@@ -45,10 +45,6 @@ def test_reconciliation_append_port_has_no_update_method() -> None:
     """The reconciliation write port exposes only ``append`` (no update/mutate)."""
     from valuemaxx.reconciliation.service import ReconciliationAppender
 
-    methods = {
-        name
-        for name in dir(ReconciliationAppender)
-        if not name.startswith("_")
-    }
+    methods = {name for name in dir(ReconciliationAppender) if not name.startswith("_")}
     assert methods == {"append"}, f"unexpected write-port methods: {methods}"
     assert not any(any(m in name.lower() for m in _FORBIDDEN) for name in methods)

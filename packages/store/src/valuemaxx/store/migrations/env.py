@@ -26,8 +26,10 @@ target_metadata = metadata
 def _resolve_url() -> str:
     """The migration URL: ``-x db_url=...`` > ``VALUEMAXX_DB_URL`` > ini, async-stripped."""
     x_args = context.get_x_argument(as_dictionary=True)
-    url = x_args.get("db_url") or os.environ.get("VALUEMAXX_DB_URL") or config.get_main_option(
-        "sqlalchemy.url"
+    url = (
+        x_args.get("db_url")
+        or os.environ.get("VALUEMAXX_DB_URL")
+        or config.get_main_option("sqlalchemy.url")
     )
     if not url:
         raise RuntimeError(

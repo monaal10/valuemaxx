@@ -45,6 +45,7 @@ if TYPE_CHECKING:
         RunRepository,
     )
 
+
 class Cascade:
     """Walks the binding resolvers in tier order and produces a labeled result."""
 

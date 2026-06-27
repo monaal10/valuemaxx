@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
+from _attribution_helpers import TENANT_A
 from typing_extensions import override
 from valuemaxx.attribution.resolver import (
     ResolveContext,
@@ -25,8 +26,6 @@ from valuemaxx.core import (
     OutcomeEventId,
     RunId,
 )
-
-from tests.conftest import TENANT_A
 
 
 def _ctx() -> ResolveContext:

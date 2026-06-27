@@ -36,9 +36,7 @@ class PgRunRepository(BaseRepository):
         """Insert or update a run (idempotent on the run id)."""
         values = mappers.run_to_row(tenant_id, run)
         async with self._sessions.begin() as session:
-            await session.execute(
-                upsert_stmt(session, run_table, values, ["tenant_id", "id"])
-            )
+            await session.execute(upsert_stmt(session, run_table, values, ["tenant_id", "id"]))
 
     async def get(self, tenant_id: TenantId, run_id: RunId) -> Run | None:
         """Fetch a run by id within the tenant scope, or None."""

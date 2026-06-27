@@ -5,7 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-import _helpers
+import _onboarding_helpers
 import pytest
 from valuemaxx.capabilities import Mode, Registry, Surface
 from valuemaxx.core import BindingTier, SignalClass
@@ -23,7 +23,7 @@ from valuemaxx.onboarding.service import (
 if TYPE_CHECKING:
     from pathlib import Path
 
-_APP = '''
+_APP = """
 def run_agent(ticket_id):
     client = Anthropic()
     return client.complete(ticket_id)
@@ -31,14 +31,14 @@ def run_agent(ticket_id):
 
 def mark_resolved(ticket):
     ticket.status = "resolved"
-'''
+"""
 
 
 def _service(reader_result: CostPerOutcome | None = None) -> OnboardingService:
     return OnboardingService(
-        signal_mapper=_helpers.StubSignalMapper(),
-        predicate_validator=_helpers.StubPredicateValidator(),
-        rollup_reader=_helpers.StubRollupReader(reader_result),
+        signal_mapper=_onboarding_helpers.StubSignalMapper(),
+        predicate_validator=_onboarding_helpers.StubPredicateValidator(),
+        rollup_reader=_onboarding_helpers.StubRollupReader(reader_result),
     )
 
 
@@ -149,9 +149,7 @@ def test_service_dry_run_carries_h7() -> None:
 
 def test_service_propose_response_never_contains_secret(tmp_path: Path) -> None:
     leak = "sk-ant-api03-SERVICELEAK0123456789abcdefghij"
-    (tmp_path / "leaky.py").write_text(
-        f'def mark_done(t):\n    t.status = "done"  # key={leak}\n'
-    )
+    (tmp_path / "leaky.py").write_text(f'def mark_done(t):\n    t.status = "done"  # key={leak}\n')
     svc = _service()
     scan = svc.scan(ScanRequest(root=str(tmp_path)))
     proposal = svc.propose(ProposeRequest(scan=scan))

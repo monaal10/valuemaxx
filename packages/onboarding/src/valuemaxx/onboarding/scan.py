@@ -151,9 +151,7 @@ def _scan_function(
         )
     if _is_mark_function(func):
         outcomes.append(
-            _make_site(
-                kind="mark_function", file=file, node=func, symbol=func.name, source=source
-            )
+            _make_site(kind="mark_function", file=file, node=func, symbol=func.name, source=source)
         )
     if is_run_boundary:
         run_boundaries.append(
@@ -177,9 +175,7 @@ def _status_setter_sites(
     for target in node.targets:
         if isinstance(target, ast.Attribute) and target.attr == "status":
             sites.append(
-                _make_site(
-                    kind="status_setter", file=file, node=node, symbol=symbol, source=source
-                )
+                _make_site(kind="status_setter", file=file, node=node, symbol=symbol, source=source)
             )
     return sites
 

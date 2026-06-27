@@ -100,9 +100,7 @@ def test_prorate_never_uses_float() -> None:
     ).filter(lambda xs: sum(xs) > 0),
     billed_cents=st.integers(min_value=0, max_value=1_000_000_000),
 )
-def test_prorated_always_sums_to_billed_property(
-    estimates: list[int], billed_cents: int
-) -> None:
+def test_prorated_always_sums_to_billed_property(estimates: list[int], billed_cents: int) -> None:
     """Property: for any estimates and any billed total, the shares sum exactly."""
     est = tuple(Decimal(e) for e in estimates)
     billed = Decimal(billed_cents) / Decimal(100)
@@ -112,14 +110,10 @@ def test_prorated_always_sums_to_billed_property(
 
 
 @given(
-    estimates=st.lists(
-        st.integers(min_value=1, max_value=1_000_000), min_size=1, max_size=20
-    ),
+    estimates=st.lists(st.integers(min_value=1, max_value=1_000_000), min_size=1, max_size=20),
     billed_cents=st.integers(min_value=1, max_value=100_000_000),
 )
-def test_shares_are_nonnegative_and_quantized(
-    estimates: list[int], billed_cents: int
-) -> None:
+def test_shares_are_nonnegative_and_quantized(estimates: list[int], billed_cents: int) -> None:
     """Each share is non-negative and quantized to 10 decimal places."""
     est = tuple(Decimal(e) for e in estimates)
     billed = Decimal(billed_cents) / Decimal(100)

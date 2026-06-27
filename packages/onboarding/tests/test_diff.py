@@ -100,8 +100,6 @@ def test_diff_raises_if_a_hunk_would_carry_a_secret() -> None:
         echoes_metadata=False,
         entity_ids=(),
     )
-    scan = ScanResult(
-        run_boundaries=(bad_boundary,), outcome_sites=(), entity_ids=(), warnings=()
-    )
+    scan = ScanResult(run_boundaries=(bad_boundary,), outcome_sites=(), entity_ids=(), warnings=())
     with pytest.raises(SecretEncounteredError):
         build_reviewable_diff(_proposal(), scan, redact_first=False)

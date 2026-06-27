@@ -90,9 +90,7 @@ def _to_decimal(raw: object, *, provider: str) -> Decimal:
 def _require_admin_key(key: str, *, provider: str) -> str:
     """Validate the admin-key precondition without ever logging the key."""
     if not key or not key.strip():
-        raise AdminKeyRequiredError(
-            f"{provider} cost API requires an Admin key; none was supplied"
-        )
+        raise AdminKeyRequiredError(f"{provider} cost API requires an Admin key; none was supplied")
     return key
 
 

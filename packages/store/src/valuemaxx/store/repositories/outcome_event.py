@@ -36,15 +36,13 @@ class PgOutcomeEventRepository(BaseRepository):
         """Upsert an outcome (idempotent on the outcome id)."""
         values = mappers.outcome_event_to_row(tenant_id, event)
         async with self._sessions.begin() as session:
-            await session.execute(
-                upsert_stmt(session, outcome_event_table, values, _CONFLICT_KEY)
-            )
+            await session.execute(upsert_stmt(session, outcome_event_table, values, _CONFLICT_KEY))
 
     async def get(self, tenant_id: TenantId, outcome_id: OutcomeEventId) -> OutcomeEvent | None:
         """Fetch an outcome by id within the tenant scope, or None."""
-        stmt = require_tenant(
-            select(outcome_event_table), tenant_id, outcome_event_table
-        ).where(outcome_event_table.c.id == outcome_id)
+        stmt = require_tenant(select(outcome_event_table), tenant_id, outcome_event_table).where(
+            outcome_event_table.c.id == outcome_id
+        )
         async with self._sessions() as session:
             row = (await session.execute(stmt)).mappings().one_or_none()
         return mappers.row_to_outcome_event(as_row(row)) if row is not None else None
@@ -80,9 +78,9 @@ class PgOutcomeEventRepository(BaseRepository):
 
     async def list_unbound(self, tenant_id: TenantId) -> Sequence[OutcomeEvent]:
         """List outcomes not yet bound to a run (the attribution work queue)."""
-        stmt = require_tenant(
-            select(outcome_event_table), tenant_id, outcome_event_table
-        ).where(outcome_event_table.c.bound_run_id.is_(None))
+        stmt = require_tenant(select(outcome_event_table), tenant_id, outcome_event_table).where(
+            outcome_event_table.c.bound_run_id.is_(None)
+        )
         async with self._sessions() as session:
             rows = (await session.execute(stmt)).mappings().all()
         return [mappers.row_to_outcome_event(as_row(row)) for row in rows]

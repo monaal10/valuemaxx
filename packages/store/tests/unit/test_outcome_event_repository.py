@@ -7,14 +7,13 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 import pytest
+from _store_helpers import make_tenant
 from sqlalchemy import func, select
 from valuemaxx.core.enums import BindingTier, SignalClass
 from valuemaxx.core.ids import CorrelationId, OutcomeEventId, RunId, TenantId
 from valuemaxx.core.outcome import OutcomeBinding, OutcomeEvent
 from valuemaxx.store.repositories.outcome_event import PgOutcomeEventRepository
 from valuemaxx.store.tables import outcome_event as outcome_event_table
-
-from tests.unit.conftest import make_tenant
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker

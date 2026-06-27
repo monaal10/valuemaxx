@@ -63,9 +63,7 @@ _ANTHROPIC_PAYLOAD = {
 
 def test_openai_client_returns_billed_totals() -> None:
     """The OpenAI client maps the Costs payload to BilledTotal rows (Decimal money)."""
-    client = OpenAICostClient(
-        transport=_StubTransport(_OPENAI_PAYLOAD), admin_key=_SENTINEL
-    )
+    client = OpenAICostClient(transport=_StubTransport(_OPENAI_PAYLOAD), admin_key=_SENTINEL)
     totals = client.fetch_daily_costs(day="2026-06-27")
     assert totals == (
         BilledTotal(
@@ -81,9 +79,7 @@ def test_openai_client_returns_billed_totals() -> None:
 
 def test_anthropic_client_returns_billed_totals() -> None:
     """The Anthropic client maps cost_report rows to BilledTotal (Decimal money)."""
-    client = AnthropicCostClient(
-        transport=_StubTransport(_ANTHROPIC_PAYLOAD), admin_key=_SENTINEL
-    )
+    client = AnthropicCostClient(transport=_StubTransport(_ANTHROPIC_PAYLOAD), admin_key=_SENTINEL)
     totals = client.fetch_daily_costs(day="2026-06-27")
     assert totals[0].provider == "anthropic"
     assert totals[0].billed_usd == Decimal("3.25")

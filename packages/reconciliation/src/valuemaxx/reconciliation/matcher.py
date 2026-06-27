@@ -60,9 +60,7 @@ def parse_match_key(key: str) -> tuple[str, str, str, str, str]:
     return (provider, project, model, token_class, day)
 
 
-def group_by_match_key(
-    items: Iterable[_T], *, key: Callable[[_T], str]
-) -> dict[str, list[_T]]:
+def group_by_match_key(items: Iterable[_T], *, key: Callable[[_T], str]) -> dict[str, list[_T]]:
     """Bucket ``items`` by their match key, preserving input order within each bucket.
 
     Args:

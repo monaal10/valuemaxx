@@ -78,9 +78,7 @@ DENOMINATOR_TOKENS: Final[frozenset[str]] = frozenset(
 ALLOWED_FILTER_FIELDS: Final[frozenset[str]] = frozenset(
     {dimension.value for dimension in Dimension}
 )
-ALLOWED_DIMENSIONS: Final[frozenset[str]] = frozenset(
-    {dimension.value for dimension in Dimension}
-)
+ALLOWED_DIMENSIONS: Final[frozenset[str]] = frozenset({dimension.value for dimension in Dimension})
 
 # A cost-over-outcomes ratio (``total_cost_usd`` numerator) is the headline
 # cost-per-outcome metric; it must use the billing-grade denominator so advisory

@@ -87,9 +87,7 @@ def _make_wrapper(
     *,
     emitter: OutcomeEmitter,
     tenant_id: TenantId,
-) -> Callable[
-    [Callable[..., object], object, tuple[object, ...], dict[str, object]], object
-]:
+) -> Callable[[Callable[..., object], object, tuple[object, ...], dict[str, object]], object]:
     predicate: Predicate | None = (
         compile_predicate(rule.match.when) if rule.match.when is not None else None
     )
@@ -144,9 +142,7 @@ def _maybe_emit(
         return
 
     value = coerce_money(value_expr(namespace)) if value_expr is not None else None
-    entity_keys = frozenset(
-        (name, str(expr(namespace))) for name, expr in bind_exprs.items()
-    )
+    entity_keys = frozenset((name, str(expr(namespace))) for name, expr in bind_exprs.items())
     emitter.emit(
         EmitRequest(
             tenant_id=tenant_id,

@@ -59,8 +59,7 @@ class PgEvalRecommendationRepository(BaseRepository):
         async with self._sessions() as session:
             rows = (await session.execute(stmt)).mappings().all()
         return [
-            EvalRecommendation.model_validate(as_row(row)["payload"], strict=False)
-            for row in rows
+            EvalRecommendation.model_validate(as_row(row)["payload"], strict=False) for row in rows
         ]
 
 

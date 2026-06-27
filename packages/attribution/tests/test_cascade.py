@@ -17,6 +17,14 @@ from __future__ import annotations
 from datetime import timedelta
 from decimal import Decimal
 
+from _attribution_helpers import (
+    TENANT_A,
+    InMemoryReviewQueue,
+    InMemoryRunRepository,
+    StubLlmJudge,
+    make_run,
+    utc,
+)
 from valuemaxx.attribution.cascade import Cascade
 from valuemaxx.core import (
     BindingTier,
@@ -25,15 +33,6 @@ from valuemaxx.core import (
     OutcomeEventId,
     RunId,
     SignalClass,
-)
-
-from tests.conftest import (
-    TENANT_A,
-    InMemoryReviewQueue,
-    InMemoryRunRepository,
-    StubLlmJudge,
-    make_run,
-    utc,
 )
 
 _OCCURRED = utc(2026, 1, 1, 12, 0)
@@ -189,8 +188,11 @@ def test_likely_is_review_required_never_billing_grade() -> None:
     # A run outside the entity window so T4 misses, inside the (wider) T5 window.
     repo.upsert(
         TENANT_A,
-        make_run(run_id="far-run", started_at=_OCCURRED + timedelta(hours=20),
-                 entity_keys=frozenset({("customer_id", "c-1")})),
+        make_run(
+            run_id="far-run",
+            started_at=_OCCURRED + timedelta(hours=20),
+            entity_keys=frozenset({("customer_id", "c-1")}),
+        ),
     )
     queue = InMemoryReviewQueue()
     cascade = Cascade(
@@ -229,9 +231,7 @@ def test_result_is_tenant_scoped_to_the_outcome() -> None:
     """The result carries the outcome's tenant id (structural isolation)."""
     repo = InMemoryRunRepository()
     _seed_run(repo, "run-1")
-    result = _cascade(repo, InMemoryReviewQueue()).bind(
-        _outcome(), ambient_run_id=RunId("run-1")
-    )
+    result = _cascade(repo, InMemoryReviewQueue()).bind(_outcome(), ambient_run_id=RunId("run-1"))
     assert result.tenant_id == TENANT_A
 
 
@@ -245,8 +245,11 @@ def test_candidate_likely_outcomes_always_review_required() -> None:
     repo_l = InMemoryRunRepository()
     repo_l.upsert(
         TENANT_A,
-        make_run(run_id="far-run", started_at=_OCCURRED + timedelta(hours=20),
-                 entity_keys=frozenset({("customer_id", "c-1")})),
+        make_run(
+            run_id="far-run",
+            started_at=_OCCURRED + timedelta(hours=20),
+            entity_keys=frozenset({("customer_id", "c-1")}),
+        ),
     )
     cascade_l = Cascade(
         run_repo=repo_l,

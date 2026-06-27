@@ -9,6 +9,11 @@ genuinely need Postgres live in ``tests/integration`` (real testcontainer).
 
 from __future__ import annotations
 
+import sys as _sys
+from pathlib import Path as _Path
+
+_sys.path.insert(0, str(_Path(__file__).parent))  # bare `import _store_helpers` — AGENTS.md §5b
+
 from typing import TYPE_CHECKING
 from uuid import uuid4
 

@@ -43,14 +43,10 @@ def _parse_amount(raw: str, *, line: int) -> Decimal:
     try:
         return Decimal(raw.strip())
     except InvalidOperation as exc:
-        raise ManualCsvError(
-            f"row {line}: billed_usd {raw!r} is not a valid decimal"
-        ) from exc
+        raise ManualCsvError(f"row {line}: billed_usd {raw!r} is not a valid decimal") from exc
 
 
-def parse_manual_csv(
-    text: str, *, tenant_id: TenantId
-) -> tuple[ManualReconciliationRow, ...]:
+def parse_manual_csv(text: str, *, tenant_id: TenantId) -> tuple[ManualReconciliationRow, ...]:
     """Parse an uploaded provider billing CSV into manual-reconciled rows.
 
     Args:

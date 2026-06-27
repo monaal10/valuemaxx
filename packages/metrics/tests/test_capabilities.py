@@ -13,7 +13,7 @@ from decimal import Decimal
 from uuid import uuid4
 
 import pytest
-from _helpers import InMemoryCostEventRepository, InMemoryOutcomeEventRepository
+from _metrics_helpers import InMemoryCostEventRepository, InMemoryOutcomeEventRepository
 from valuemaxx.capabilities import Mode, Registry, Surface
 from valuemaxx.core import (
     BindingTier,

@@ -80,9 +80,7 @@ def _is_high_entropy_secret(token: str) -> bool:
 def _high_entropy_spans(text: str) -> list[tuple[int, int]]:
     """The (start, end) spans of high-entropy credential blobs in ``text``."""
     return [
-        m.span()
-        for m in _HIGH_ENTROPY_TOKEN.finditer(text)
-        if _is_high_entropy_secret(m.group(0))
+        m.span() for m in _HIGH_ENTROPY_TOKEN.finditer(text) if _is_high_entropy_secret(m.group(0))
     ]
 
 

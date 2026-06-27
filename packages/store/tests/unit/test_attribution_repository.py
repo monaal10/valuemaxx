@@ -5,12 +5,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
+from _store_helpers import make_tenant
 from valuemaxx.core.attribution import AttributionCandidate, AttributionResult
 from valuemaxx.core.enums import BindingTier
 from valuemaxx.core.ids import OutcomeEventId, RunId, TenantId
 from valuemaxx.store.repositories.attribution import PgAttributionResultRepository
-
-from tests.unit.conftest import make_tenant
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker

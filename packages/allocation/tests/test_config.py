@@ -133,24 +133,14 @@ def test_entry_without_tier_rejected() -> None:
 
 def test_bad_amount_rejected() -> None:
     """A non-decimal amount is rejected with a typed message."""
-    bad = (
-        "shared_costs:\n"
-        "  - name: x\n"
-        "    amount_usd: not-a-number\n"
-        "    tier: fixed_overhead\n"
-    )
+    bad = "shared_costs:\n  - name: x\n    amount_usd: not-a-number\n    tier: fixed_overhead\n"
     with pytest.raises(ValueError, match="not a valid decimal"):
         load_shared_costs(bad, tenant_id=TENANT)
 
 
 def test_amount_wrong_type_rejected() -> None:
     """An amount that is neither string nor int (e.g. a list) is rejected."""
-    bad = (
-        "shared_costs:\n"
-        "  - name: x\n"
-        "    amount_usd: [1, 2]\n"
-        "    tier: fixed_overhead\n"
-    )
+    bad = "shared_costs:\n  - name: x\n    amount_usd: [1, 2]\n    tier: fixed_overhead\n"
     with pytest.raises(ValueError, match="decimal string or integer"):
         load_shared_costs(bad, tenant_id=TENANT)
 

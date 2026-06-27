@@ -5,9 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
+from _store_helpers import make_tenant
 from valuemaxx.store.repositories.raw_record import PgRawRecordRepository
-
-from tests.unit.conftest import make_tenant
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker

@@ -82,9 +82,7 @@ def test_unknown_group_by_dimension_rejected() -> None:
 def test_cost_per_outcome_requires_verified_outcome_denominator() -> None:
     """``cost_per_outcome`` numerator REQUIRES denominator=verified_outcome_count."""
     with pytest.raises(MetricGrammarError, match="verified_outcome_count"):
-        validate_definition(
-            _definition(numerator="total_cost_usd", denominator="attempt_count")
-        )
+        validate_definition(_definition(numerator="total_cost_usd", denominator="attempt_count"))
 
 
 def test_ratio_measure_pairs_allowed() -> None:

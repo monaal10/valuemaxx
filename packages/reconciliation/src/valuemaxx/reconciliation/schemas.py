@@ -44,9 +44,7 @@ class ManualReconciliationRow(TenantScopedModel):
     def _check(self) -> ManualReconciliationRow:
         """Enforce manual_reconciled provenance and a non-negative billed amount."""
         if self.provenance is not Provenance.MANUAL_RECONCILED:
-            raise ValueError(
-                "a manual CSV row must carry manual_reconciled provenance (§5.3)"
-            )
+            raise ValueError("a manual CSV row must carry manual_reconciled provenance (§5.3)")
         if self.billed_usd < 0:
             raise ValueError("billed_usd must be non-negative")
         return self

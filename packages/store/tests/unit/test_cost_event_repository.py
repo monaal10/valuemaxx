@@ -7,6 +7,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 import pytest
+from _store_helpers import make_tenant
 from sqlalchemy import func, select
 from valuemaxx.core.cost import CostEvent
 from valuemaxx.core.enums import CaptureGranularity, Provenance
@@ -15,8 +16,6 @@ from valuemaxx.core.provenance import ProvenanceLabel
 from valuemaxx.core.tokens import TokenVector
 from valuemaxx.store.repositories.cost_event import PgCostEventRepository
 from valuemaxx.store.tables import cost_event as cost_event_table
-
-from tests.unit.conftest import make_tenant
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker

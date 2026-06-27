@@ -61,9 +61,7 @@ class SharedCostInput(StrictModel):
                 "shared_costs.yaml"
             )
         if self.tier is AllocationTier.SHARED_PROPORTIONAL and self.allocation_key is None:
-            raise ValueError(
-                f"shared_proportional input {self.name!r} requires an allocation_key"
-            )
+            raise ValueError(f"shared_proportional input {self.name!r} requires an allocation_key")
         if self.amount_usd < 0:
             raise ValueError(f"shared cost {self.name!r} amount must be non-negative")
         return self

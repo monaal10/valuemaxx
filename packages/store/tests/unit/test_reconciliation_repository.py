@@ -7,13 +7,12 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 import pytest
+from _store_helpers import make_tenant
 from sqlalchemy import func, select
 from valuemaxx.core.ids import ReconciliationRecordId, TenantId
 from valuemaxx.core.reconciliation import ReconciliationRecord
 from valuemaxx.store.repositories.reconciliation import PgReconciliationRepository
 from valuemaxx.store.tables import reconciliation_record as recon_table
-
-from tests.unit.conftest import make_tenant
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -44,9 +43,7 @@ def _record(
 
 async def _count(sessionmaker: async_sessionmaker[AsyncSession]) -> int:
     async with sessionmaker() as session:
-        return (
-            await session.execute(select(func.count()).select_from(recon_table))
-        ).scalar_one()
+        return (await session.execute(select(func.count()).select_from(recon_table))).scalar_one()
 
 
 @pytest.mark.asyncio

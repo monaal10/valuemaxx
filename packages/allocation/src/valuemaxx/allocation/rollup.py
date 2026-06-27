@@ -93,8 +93,7 @@ def build_rollup(
 
     measured_total = tier1.measured_total
     allocated_total = (
-        sum((line.amount_usd for line in tier2), Decimal(0))
-        + tier3.fixed_overhead_in_unit_usd
+        sum((line.amount_usd for line in tier2), Decimal(0)) + tier3.fixed_overhead_in_unit_usd
     )
     # The unit cost accounts for measured + proportional + non-idle overhead. Idle GPU
     # is quarantined beside and intentionally excluded (never smeared into the unit).
@@ -105,8 +104,10 @@ def build_rollup(
     else:
         unallocated = max(total_true_cost_estimate - accounted, Decimal(0))
         pct_unallocated = (
-            unallocated / total_true_cost_estimate * Decimal(100)
-        ).quantize(_PCT_QUANTUM, rounding=ROUND_HALF_EVEN).normalize()
+            (unallocated / total_true_cost_estimate * Decimal(100))
+            .quantize(_PCT_QUANTUM, rounding=ROUND_HALF_EVEN)
+            .normalize()
+        )
 
     provenance_breakdown = ProvenanceBreakdown(
         reconciled_usd=measured_total,

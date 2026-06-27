@@ -9,11 +9,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from _attribution_helpers import TENANT_A
 from valuemaxx.attribution.binding.t2_baggage import BaggageResolver
 from valuemaxx.attribution.resolver import ResolveContext
 from valuemaxx.core import BindingTier, OutcomeEventId, RunId
-
-from tests.conftest import TENANT_A
 
 
 def _ctx(*, baggage: dict[str, str]) -> ResolveContext:

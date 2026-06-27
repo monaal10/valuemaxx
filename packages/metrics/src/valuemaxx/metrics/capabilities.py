@@ -94,9 +94,7 @@ def register(registry: Registry) -> None:
     def run_metric_handler(definition: MetricDefinition) -> MetricResult:
         runtime = holder.require()
         plan = compile_plan(definition)
-        return runtime.executor.run(
-            runtime.tenant_id, plan, runtime.window, runtime.outcomes
-        )
+        return runtime.executor.run(runtime.tenant_id, plan, runtime.window, runtime.outcomes)
 
     registry.register(
         capability(

@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import uuid4
 
-from _helpers import InMemoryCostEventRepository, InMemoryOutcomeEventRepository
+from _metrics_helpers import InMemoryCostEventRepository, InMemoryOutcomeEventRepository
 from valuemaxx.core import (
     AttemptId,
     BindingTier,
@@ -263,9 +263,7 @@ def test_only_attempted_outcomes_yield_advisory_confidence() -> None:
     """With no bound outcomes the cell confidence is purely advisory (LIKELY)."""
     executor, costs, outcomes = _executor()
     costs.upsert(_TENANT, _cost("run-1", usd="6.00"))
-    outcomes.upsert(
-        _TENANT, _outcome(signal_class=SignalClass.ACTION_ATTEMPTED, tier=None)
-    )
+    outcomes.upsert(_TENANT, _outcome(signal_class=SignalClass.ACTION_ATTEMPTED, tier=None))
     plan = compile_plan_attempts_per_outcome()
     result = executor.run(_TENANT, plan, _WINDOW, outcomes.list_all(_TENANT))
     cell = result.cells[0]
@@ -275,6 +273,7 @@ def test_only_attempted_outcomes_yield_advisory_confidence() -> None:
 
 
 # --- plan builders (kept here so each test reads independently) ---
+
 
 def compile_plan_cost_per_outcome():
     from valuemaxx.core import MetricDefinition

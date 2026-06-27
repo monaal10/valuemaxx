@@ -86,9 +86,7 @@ def test_render_shared_costs_returns_none_when_no_inputs() -> None:
 
 
 def test_render_shared_costs_returns_yaml_when_present() -> None:
-    proposal = Proposal(
-        rules=(_rule(),), entity_ids=(), shared_costs_present=True, warnings=()
-    )
+    proposal = Proposal(rules=(_rule(),), entity_ids=(), shared_costs_present=True, warnings=())
     rendered = render_shared_costs_yaml(proposal)
     assert rendered is not None
     assert yaml.safe_load(rendered) is not None

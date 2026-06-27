@@ -64,9 +64,7 @@ def postgres_url() -> Iterator[str]:
     implemented and run wherever Docker exists (CI), per the build plan's H2 rule.
     """
     if not _DOCKER_OK:
-        pytest.skip(
-            f"real-Postgres integration needs Docker (testcontainers); {_DOCKER_REASON}"
-        )
+        pytest.skip(f"real-Postgres integration needs Docker (testcontainers); {_DOCKER_REASON}")
     # testcontainers ships no type stubs; the import is test-only and Docker-gated above.
     from testcontainers.postgres import (  # pyright: ignore[reportMissingTypeStubs]
         PostgresContainer,

@@ -1,14 +1,24 @@
 """migration_no_autogen_drift —
-an alembic autogenerate that yields a non-empty diff (RED; owner STORE).
+``alembic upgrade head`` then ``--autogenerate`` yields an empty diff (owner STORE).
 
-Authored RED-but-meaningful: ``flags_violation`` flags the negative fixture (a
-synthetic violation source), proving the rule logic is real. The foundation
-assertion is skip-marked until STORE turns it green; ``foundation_subject`` is
-None until then (the meta-test only checks the negative fixture for not-yet-green
-rules).
+STORE owns every migration; recon/alloc/metrics never autogenerate. The guarantee:
+after applying the migrations the live schema matches ``valuemaxx.store.tables.metadata``
+exactly, so autogenerate has nothing to emit. ``flags_violation`` scans the *rendered*
+autogenerate body for a schema-changing op (``op.add_column`` / ``op.drop_column`` /
+``op.alter_column`` / ``op.create_table`` / ``op.drop_table``); a body containing any of
+those means drift.
+
+The foundation subject renders the real autogenerate body: it applies the migrations to
+a throwaway SQLite database and renders whatever alembic would generate. A body with no
+``op.*`` (just ``pass``) is the green state. The authoritative production-dialect edition
+runs on real Postgres in ``packages/store/tests/integration``; this dialect-agnostic
+edition keeps the rule green wherever the suite runs, including without Docker.
 """
 
 from __future__ import annotations
+
+import tempfile
+from pathlib import Path
 
 from tests.conformance.rulebase import Rule, RuleKind
 
@@ -17,6 +27,7 @@ _MARKERS: tuple[str, ...] = (
     "op.drop_column",
     "op.alter_column",
     "op.create_table",
+    "op.drop_table",
 )
 
 
@@ -29,12 +40,20 @@ def _negative_fixture() -> object:
     return "op.add_column('cost_event', sa.Column('drift', sa.Integer()))\n"
 
 
+def _foundation_subject() -> object:
+    from valuemaxx.store.migrations_api import render_autogenerate_body
+
+    with tempfile.TemporaryDirectory() as tmp:
+        url = f"sqlite:///{Path(tmp) / 'drift.db'}"
+        return render_autogenerate_body(url)
+
+
 RULE = Rule(
     name="migration_no_autogen_drift",
     kind=RuleKind.STATIC,
-    green_now=False,
+    green_now=True,
     owner_task="STORE",
     flags_violation=_flags,
     negative_fixture=_negative_fixture,
-    foundation_subject=None,
+    foundation_subject=_foundation_subject,
 )

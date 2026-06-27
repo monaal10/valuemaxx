@@ -63,9 +63,7 @@ def test_cost_metric_uses_billing_grade_join_strategy() -> None:
 
 def test_non_cost_metric_uses_all_outcomes_join_strategy() -> None:
     """A non-billing-grade denominator joins on all outcomes."""
-    plan = compile_plan(
-        _definition(numerator="attempt_count", denominator="outcome_count")
-    )
+    plan = compile_plan(_definition(numerator="attempt_count", denominator="outcome_count"))
     assert plan.join_strategy is JoinStrategy.ALL_OUTCOMES
 
 

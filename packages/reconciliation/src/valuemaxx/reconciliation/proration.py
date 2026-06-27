@@ -49,15 +49,11 @@ def proration_factor(estimates: tuple[Decimal, ...], billed_total: Decimal) -> D
     if total == 0:
         if billed_total == 0:
             return Decimal(0)
-        raise ValueError(
-            "cannot prorate a non-zero billed total across estimates that sum to zero"
-        )
+        raise ValueError("cannot prorate a non-zero billed total across estimates that sum to zero")
     return billed_total / total
 
 
-def prorate(
-    estimates: tuple[Decimal, ...], billed_total: Decimal
-) -> tuple[Decimal, ...]:
+def prorate(estimates: tuple[Decimal, ...], billed_total: Decimal) -> tuple[Decimal, ...]:
     """Scale ``estimates`` so the reconciled shares sum exactly to ``billed_total``.
 
     Uses the largest-remainder method: each share is the estimate's proportional
@@ -87,9 +83,7 @@ def prorate(
     if total == 0:
         if billed_total == 0:
             return tuple(Decimal(0).quantize(_QUANTUM) for _ in estimates)
-        raise ValueError(
-            "cannot prorate a non-zero billed total across estimates that sum to zero"
-        )
+        raise ValueError("cannot prorate a non-zero billed total across estimates that sum to zero")
 
     factor = billed_total / total
     # Exact ideal share per estimate, then quantize each down to the quantum.

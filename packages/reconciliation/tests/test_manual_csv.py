@@ -68,9 +68,7 @@ def test_non_decimal_amount_raises_typed_error() -> None:
 
 def test_empty_csv_returns_no_rows() -> None:
     """A header-only CSV parses to zero rows (not an error)."""
-    rows = parse_manual_csv(
-        "provider,project,model,token_class,day,billed_usd\n", tenant_id=TENANT
-    )
+    rows = parse_manual_csv("provider,project,model,token_class,day,billed_usd\n", tenant_id=TENANT)
     assert rows == ()
 
 

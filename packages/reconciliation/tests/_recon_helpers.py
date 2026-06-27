@@ -56,9 +56,7 @@ class InMemoryReconciliationRepository(ReconciliationRepository):
         self, tenant_id: TenantId, match_key: tuple[str, str, str, str, str]
     ) -> Sequence[ReconciliationRecord]:
         return [
-            rec
-            for tid, rec in self._records
-            if tid == tenant_id and rec.match_key == match_key
+            rec for tid, rec in self._records if tid == tenant_id and rec.match_key == match_key
         ]
 
     @override

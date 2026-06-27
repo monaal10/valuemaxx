@@ -6,6 +6,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 import pytest
+from _store_helpers import make_tenant
 from valuemaxx.core.allocation import AllocatedLine, AllocatedRollup
 from valuemaxx.core.enums import (
     AllocationTier,
@@ -17,8 +18,6 @@ from valuemaxx.core.ids import RunId, TenantId
 from valuemaxx.core.reconciliation import ProvenanceBreakdown
 from valuemaxx.core.rollup import RollupConfidence
 from valuemaxx.store.repositories.allocation import PgAllocationRepository
-
-from tests.unit.conftest import make_tenant
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker

@@ -195,11 +195,7 @@ def test_service_never_mutates_an_estimate() -> None:
     (CostEvent) is immutable.
     """
     source = (
-        Path(__file__).resolve().parents[1]
-        / "src"
-        / "valuemaxx"
-        / "reconciliation"
-        / "service.py"
+        Path(__file__).resolve().parents[1] / "src" / "valuemaxx" / "reconciliation" / "service.py"
     ).read_text()
     tree = ast.parse(source)
     forbidden = {"update", "mutate", "replace", "overwrite", "patch", "set_cost"}

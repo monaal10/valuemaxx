@@ -64,8 +64,7 @@ def allocate(total: Decimal, weights: Mapping[_K, Decimal]) -> dict[_K, Decimal]
 
     exact = {key: total * weights[key] / weight_total for key in keys}
     floored = {
-        key: value.quantize(_QUANTUM, rounding=ROUND_HALF_EVEN)
-        for key, value in exact.items()
+        key: value.quantize(_QUANTUM, rounding=ROUND_HALF_EVEN) for key, value in exact.items()
     }
 
     residue = total - sum(floored.values(), Decimal(0))

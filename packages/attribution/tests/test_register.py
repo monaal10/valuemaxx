@@ -17,6 +17,13 @@ from datetime import timedelta
 from decimal import Decimal
 
 import pytest
+from _attribution_helpers import (
+    TENANT_A,
+    InMemoryReviewQueue,
+    InMemoryRunRepository,
+    make_run,
+    utc,
+)
 from valuemaxx.attribution import register
 from valuemaxx.attribution.capabilities import AttributionRuntime, bind_runtime
 from valuemaxx.capabilities import Mode, Registry, Surface
@@ -29,14 +36,6 @@ from valuemaxx.core import (
     OutcomeEventId,
     RunId,
     SignalClass,
-)
-
-from tests.conftest import (
-    TENANT_A,
-    InMemoryReviewQueue,
-    InMemoryRunRepository,
-    make_run,
-    utc,
 )
 
 _OCCURRED = utc(2026, 1, 1, 12, 0)
@@ -133,8 +132,11 @@ def test_candidate_bind_through_capability_is_never_billing_grade() -> None:
     repo = InMemoryRunRepository()
     repo.upsert(
         TENANT_A,
-        make_run(run_id="entity-run", started_at=_OCCURRED,
-                 entity_keys=frozenset({("customer_id", "c-1")})),
+        make_run(
+            run_id="entity-run",
+            started_at=_OCCURRED,
+            entity_keys=frozenset({("customer_id", "c-1")}),
+        ),
     )
     runtime = AttributionRuntime(
         run_repo=repo, review_queue=InMemoryReviewQueue(), entity_window=timedelta(hours=6)

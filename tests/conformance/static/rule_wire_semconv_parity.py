@@ -38,7 +38,8 @@ def _flags(subject: object) -> bool:
     except (json.JSONDecodeError, ValueError):
         return False
     if isinstance(payload, dict) and "keys" in payload:
-        return set(payload["keys"]) != set(semconv.ALL_KEYS)
+        keys: list[str] = list(payload["keys"])  # type: ignore[arg-type]
+        return set(keys) != set(semconv.ALL_KEYS)
     return False
 
 

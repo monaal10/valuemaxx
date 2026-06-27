@@ -81,9 +81,7 @@ class InMemoryAllocationRepository(AllocationRepository):
         self._rollups: dict[tuple[TenantId, RunId], AllocatedRollup] = {}
 
     @override
-    def upsert_lines(
-        self, tenant_id: TenantId, run_id: RunId, lines: Sequence[object]
-    ) -> None:
+    def upsert_lines(self, tenant_id: TenantId, run_id: RunId, lines: Sequence[object]) -> None:
         typed = tuple(line for line in lines if isinstance(line, AllocatedLine))
         self._lines[(tenant_id, run_id)] = typed
 

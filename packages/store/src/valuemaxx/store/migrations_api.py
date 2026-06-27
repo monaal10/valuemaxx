@@ -83,3 +83,16 @@ def autogenerate_upgrade_ops(url: str) -> list[object]:
 
 
 __all__ = ["autogenerate_upgrade_ops", "upgrade_to_head"]
+
+
+def render_autogenerate_body(url: str) -> str:
+    """Upgrade a fresh DB to head, then render the autogenerate diff as a string.
+
+    An **empty string** means the migration set is in sync with
+    :data:`valuemaxx.store.tables.metadata` (no drift). Any non-empty body is the
+    set of operations alembic would emit — i.e. real drift. Used by the
+    ``migration_no_autogen_drift`` conformance rule.
+    """
+    upgrade_to_head(url)
+    ops = autogenerate_upgrade_ops(url)
+    return "\n".join(repr(op) for op in ops)

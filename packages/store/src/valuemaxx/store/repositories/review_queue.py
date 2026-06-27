@@ -70,9 +70,8 @@ class PgReviewQueue(BaseRepository):
 
     async def list_pending(self, tenant_id: TenantId) -> Sequence[object]:
         """List the pending review items for the tenant, in enqueue order."""
-        stmt = (
-            require_tenant(select(queue_table.c.item), tenant_id, queue_table)
-            .order_by(queue_table.c.enqueued_at, queue_table.c.id)
+        stmt = require_tenant(select(queue_table.c.item), tenant_id, queue_table).order_by(
+            queue_table.c.enqueued_at, queue_table.c.id
         )
         async with self._sessions() as session:
             rows = (await session.execute(stmt)).mappings().all()

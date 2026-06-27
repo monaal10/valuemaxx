@@ -73,15 +73,13 @@ class PgAllocationRepository(BaseRepository):
             "payload": rollup.model_dump(mode="json"),
         }
         async with self._sessions.begin() as session:
-            await session.execute(
-                upsert_stmt(session, rollup_table, values, _ROLLUP_CONFLICT_KEY)
-            )
+            await session.execute(upsert_stmt(session, rollup_table, values, _ROLLUP_CONFLICT_KEY))
 
     async def get_rollup(self, tenant_id: TenantId, run_id: RunId) -> AllocatedRollup | None:
         """Fetch the allocation rollup for a run (pct_unallocated + H7), or None."""
-        stmt = require_tenant(
-            select(rollup_table.c.payload), tenant_id, rollup_table
-        ).where(rollup_table.c.run_id == run_id)
+        stmt = require_tenant(select(rollup_table.c.payload), tenant_id, rollup_table).where(
+            rollup_table.c.run_id == run_id
+        )
         async with self._sessions() as session:
             row = (await session.execute(stmt)).one_or_none()
         if row is None:

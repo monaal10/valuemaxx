@@ -35,9 +35,7 @@ def test_declared_attempted_is_never_promoted() -> None:
     """A declared action_attempted is never silently promoted to confirmed."""
     mapper = SystemSignalClassMapper()
     for kind in ("function", "http", "webhook", "status_transition", "orm_save"):
-        result = mapper.map_signal(
-            match_kind=kind, declared=SignalClass.ACTION_ATTEMPTED.value
-        )
+        result = mapper.map_signal(match_kind=kind, declared=SignalClass.ACTION_ATTEMPTED.value)
         assert result == SignalClass.ACTION_ATTEMPTED.value
 
 
@@ -45,9 +43,7 @@ def test_retracted_is_not_an_emit_time_declaration() -> None:
     """A rule cannot declare outcome_retracted at emit time (retraction is a later flip)."""
     mapper = SystemSignalClassMapper()
     with pytest.raises(ValueError, match="retracted"):
-        mapper.map_signal(
-            match_kind="webhook", declared=SignalClass.OUTCOME_RETRACTED.value
-        )
+        mapper.map_signal(match_kind="webhook", declared=SignalClass.OUTCOME_RETRACTED.value)
 
 
 def test_unknown_declared_value_rejected() -> None:

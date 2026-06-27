@@ -13,17 +13,16 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from valuemaxx.attribution.inference.t5_semantic import SemanticInferenceResolver
-from valuemaxx.attribution.resolver import ResolveContext
-from valuemaxx.core import BindingTier, OutcomeEventId, RunId
-
-from tests.conftest import (
+from _attribution_helpers import (
     TENANT_A,
     InMemoryRunRepository,
     StubLlmJudge,
     make_run,
     utc,
 )
+from valuemaxx.attribution.inference.t5_semantic import SemanticInferenceResolver
+from valuemaxx.attribution.resolver import ResolveContext
+from valuemaxx.core import BindingTier, OutcomeEventId, RunId
 
 _WINDOW = timedelta(hours=24)
 _OCCURRED = utc(2026, 1, 1, 12, 0)
@@ -50,8 +49,11 @@ def _repo_with_one_run() -> InMemoryRunRepository:
     repo = InMemoryRunRepository()
     repo.upsert(
         TENANT_A,
-        make_run(run_id="run-1", started_at=utc(2026, 1, 1, 11, 0),
-                 entity_keys=frozenset({("customer_id", "c-1")})),
+        make_run(
+            run_id="run-1",
+            started_at=utc(2026, 1, 1, 11, 0),
+            entity_keys=frozenset({("customer_id", "c-1")}),
+        ),
     )
     return repo
 
@@ -66,9 +68,7 @@ def test_tier_is_likely() -> None:
 
 def test_disabled_without_judge() -> None:
     """With no injected judge, T5 is disabled and never matches."""
-    resolver = SemanticInferenceResolver(
-        run_repo=_repo_with_one_run(), judge=None, window=_WINDOW
-    )
+    resolver = SemanticInferenceResolver(run_repo=_repo_with_one_run(), judge=None, window=_WINDOW)
     out = resolver.resolve(_ctx())
     assert out.matched is False
     assert out.candidates == ()
@@ -112,8 +112,11 @@ def test_emits_only_likely_tier_for_all_candidates() -> None:
     for i in range(3):
         repo.upsert(
             TENANT_A,
-            make_run(run_id=f"run-{i}", started_at=utc(2026, 1, 1, 11, i),
-                     entity_keys=frozenset({("customer_id", "c-1")})),
+            make_run(
+                run_id=f"run-{i}",
+                started_at=utc(2026, 1, 1, 11, i),
+                entity_keys=frozenset({("customer_id", "c-1")}),
+            ),
         )
     resolver = SemanticInferenceResolver(
         run_repo=repo, judge=StubLlmJudge(0.8), window=_WINDOW, threshold=0.5

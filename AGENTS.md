@@ -139,6 +139,13 @@ Conformance rules we maintain (extend this list every time a new class of issue 
 
 When you hit a bug whose class isn't yet covered, **add a conformance rule for it here and in `tests/conformance/`** as part of the same PR. A bug fix without its guardrail is incomplete.
 
+### Test layout rule (multi-package collision avoidance — ratchet, 2026-06-27)
+
+Because every package has a `tests/` directory, test modules MUST NOT be cross-imported by a global name:
+- **Never write `from tests.conftest import ...`** (or `from tests import ...`). Under `--import-mode=importlib`, two packages' `tests.conftest` collide and break the combined repo run.
+- Shared **fixtures** go in the package's `conftest.py` and are **auto-discovered** (request by parameter name) — never imported explicitly.
+- Shared **constants/helpers** go in `tests/_helpers.py` and are imported with a **bare `import _helpers` / `from _helpers import ...`** — NOT `from tests._helpers import ...`. Under `--import-mode=importlib` with `consider_namespace_packages=true`, `tests` is a namespace package shared across every `packages/*/tests`, so any `tests.<x>` import collides repo-wide; a bare sibling import resolves because importlib puts the test file's own directory on `sys.path` at import time. There must be **no `tests/__init__.py`** (it would re-break this).
+
 ## 6a. Parallel execution (for orchestrating agents)
 
 When implementing this project, **parallelize aggressively**: most packages and most tasks within a package are independent and should be built concurrently by subagents, not serially.

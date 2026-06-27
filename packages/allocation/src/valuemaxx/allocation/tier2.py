@@ -26,9 +26,7 @@ if TYPE_CHECKING:
     from valuemaxx.allocation.config import SharedCostInput
 
 
-def allocate_proportional(
-    total: Decimal, weights: Mapping[str, Decimal]
-) -> dict[str, Decimal]:
+def allocate_proportional(total: Decimal, weights: Mapping[str, Decimal]) -> dict[str, Decimal]:
     """Split ``total`` across consumer ``weights`` so the parts sum exactly.
 
     A thin, named re-export of the shared largest-remainder allocator for the Tier-2

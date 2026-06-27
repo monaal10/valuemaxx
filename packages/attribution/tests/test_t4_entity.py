@@ -12,17 +12,16 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from valuemaxx.attribution.binding.t4_entity import EntityMatchResolver
-from valuemaxx.attribution.resolver import ResolveContext
-from valuemaxx.core import BindingTier, OutcomeEventId, RunId
-
-from tests.conftest import (
+from _attribution_helpers import (
     TENANT_A,
     TENANT_B,
     InMemoryRunRepository,
     make_run,
     utc,
 )
+from valuemaxx.attribution.binding.t4_entity import EntityMatchResolver
+from valuemaxx.attribution.resolver import ResolveContext
+from valuemaxx.core import BindingTier, OutcomeEventId, RunId
 
 _WINDOW = timedelta(hours=6)
 _OCCURRED = utc(2026, 1, 1, 12, 0)
@@ -60,8 +59,11 @@ def test_single_match_yields_one_candidate() -> None:
     repo = InMemoryRunRepository()
     repo.upsert(
         TENANT_A,
-        make_run(run_id="run-1", started_at=utc(2026, 1, 1, 11, 0),
-                 entity_keys=frozenset({("customer_id", "c-1")})),
+        make_run(
+            run_id="run-1",
+            started_at=utc(2026, 1, 1, 11, 0),
+            entity_keys=frozenset({("customer_id", "c-1")}),
+        ),
     )
     out = _resolver(repo).resolve(_ctx())
     assert out.matched is True
@@ -83,8 +85,11 @@ def test_runs_outside_window_are_excluded() -> None:
     repo = InMemoryRunRepository()
     repo.upsert(
         TENANT_A,
-        make_run(run_id="far", started_at=utc(2026, 1, 1, 1, 0),  # 11h before, > 6h window
-                 entity_keys=frozenset({("customer_id", "c-1")})),
+        make_run(
+            run_id="far",
+            started_at=utc(2026, 1, 1, 1, 0),  # 11h before, > 6h window
+            entity_keys=frozenset({("customer_id", "c-1")}),
+        ),
     )
     assert _resolver(repo).resolve(_ctx()).matched is False
 
@@ -94,13 +99,19 @@ def test_time_window_tie_break_closer_scores_higher() -> None:
     repo = InMemoryRunRepository()
     repo.upsert(
         TENANT_A,
-        make_run(run_id="closer", started_at=utc(2026, 1, 1, 11, 30),  # 30m before
-                 entity_keys=frozenset({("customer_id", "c-1")})),
+        make_run(
+            run_id="closer",
+            started_at=utc(2026, 1, 1, 11, 30),  # 30m before
+            entity_keys=frozenset({("customer_id", "c-1")}),
+        ),
     )
     repo.upsert(
         TENANT_A,
-        make_run(run_id="farther", started_at=utc(2026, 1, 1, 9, 0),  # 3h before
-                 entity_keys=frozenset({("customer_id", "c-1")})),
+        make_run(
+            run_id="farther",
+            started_at=utc(2026, 1, 1, 9, 0),  # 3h before
+            entity_keys=frozenset({("customer_id", "c-1")}),
+        ),
     )
     out = _resolver(repo).resolve(_ctx())
     assert out.ambiguous is False
@@ -116,13 +127,19 @@ def test_epsilon_tie_sets_ambiguous() -> None:
     # Both exactly equidistant from the outcome time => an epsilon tie.
     repo.upsert(
         TENANT_A,
-        make_run(run_id="a", started_at=utc(2026, 1, 1, 11, 0),  # 1h before
-                 entity_keys=frozenset({("customer_id", "c-1")})),
+        make_run(
+            run_id="a",
+            started_at=utc(2026, 1, 1, 11, 0),  # 1h before
+            entity_keys=frozenset({("customer_id", "c-1")}),
+        ),
     )
     repo.upsert(
         TENANT_A,
-        make_run(run_id="b", started_at=utc(2026, 1, 1, 13, 0),  # 1h after
-                 entity_keys=frozenset({("customer_id", "c-1")})),
+        make_run(
+            run_id="b",
+            started_at=utc(2026, 1, 1, 13, 0),  # 1h after
+            entity_keys=frozenset({("customer_id", "c-1")}),
+        ),
     )
     out = _resolver(repo).resolve(_ctx())
     assert out.ambiguous is True
@@ -135,8 +152,12 @@ def test_tenant_scoped_other_tenant_never_returned() -> None:
     repo = InMemoryRunRepository()
     repo.upsert(
         TENANT_B,
-        make_run(run_id="other-tenant", tenant_id=TENANT_B, started_at=utc(2026, 1, 1, 11, 30),
-                 entity_keys=frozenset({("customer_id", "c-1")})),
+        make_run(
+            run_id="other-tenant",
+            tenant_id=TENANT_B,
+            started_at=utc(2026, 1, 1, 11, 30),
+            entity_keys=frozenset({("customer_id", "c-1")}),
+        ),
     )
     out = _resolver(repo).resolve(_ctx(tenant_id=TENANT_A))
     assert out.matched is False
@@ -147,8 +168,11 @@ def test_only_candidate_tier_across_multiple_entity_keys() -> None:
     repo = InMemoryRunRepository()
     repo.upsert(
         TENANT_A,
-        make_run(run_id="via-order", started_at=utc(2026, 1, 1, 11, 45),
-                 entity_keys=frozenset({("order_id", "o-9")})),
+        make_run(
+            run_id="via-order",
+            started_at=utc(2026, 1, 1, 11, 45),
+            entity_keys=frozenset({("order_id", "o-9")}),
+        ),
     )
     out = _resolver(repo).resolve(
         _ctx(entity_keys=frozenset({("customer_id", "c-1"), ("order_id", "o-9")}))
@@ -162,8 +186,11 @@ def test_same_run_via_two_keys_is_deduplicated() -> None:
     repo = InMemoryRunRepository()
     repo.upsert(
         TENANT_A,
-        make_run(run_id="dup", started_at=utc(2026, 1, 1, 11, 45),
-                 entity_keys=frozenset({("customer_id", "c-1"), ("order_id", "o-9")})),
+        make_run(
+            run_id="dup",
+            started_at=utc(2026, 1, 1, 11, 45),
+            entity_keys=frozenset({("customer_id", "c-1"), ("order_id", "o-9")}),
+        ),
     )
     out = _resolver(repo).resolve(
         _ctx(entity_keys=frozenset({("customer_id", "c-1"), ("order_id", "o-9")}))

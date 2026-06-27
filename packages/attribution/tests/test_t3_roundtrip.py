@@ -11,11 +11,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from _attribution_helpers import TENANT_A
 from valuemaxx.attribution.binding.t3_roundtrip import RoundTripResolver
 from valuemaxx.attribution.resolver import ResolveContext
 from valuemaxx.core import BindingTier, OutcomeEventId, RunId
-
-from tests.conftest import TENANT_A
 
 
 def _ctx(*, echoed_run_id: RunId | None) -> ResolveContext:
