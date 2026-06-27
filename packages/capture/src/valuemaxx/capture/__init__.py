@@ -12,7 +12,12 @@ Depends only on ``valuemaxx.core`` (ABCs/Protocols + domain types) and
 
 from __future__ import annotations
 
-from valuemaxx.capture.capabilities import register
+from valuemaxx.capture.capabilities import (
+    IngestNotWiredError,
+    IngestRuntime,
+    bind_ingest_runtime,
+    register,
+)
 from valuemaxx.capture.context_patch import (
     ContextPatchHandle,
     install_threadpool_context_propagation,
@@ -52,11 +57,14 @@ __all__ = [
     "ContextPatchHandle",
     "DropCounter",
     "Emitter",
+    "IngestNotWiredError",
+    "IngestRuntime",
     "InstrumentHandle",
     "OpenAIStreamAccumulator",
     "OpenRouterSource",
     "SelfTestResult",
     "SupportedRange",
+    "bind_ingest_runtime",
     "check_invariants",
     "compute_cost_usd",
     "guard",

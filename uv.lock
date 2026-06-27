@@ -24,6 +24,7 @@ members = [
     "valuemaxx-onboarding",
     "valuemaxx-outcomes",
     "valuemaxx-reconciliation",
+    "valuemaxx-server",
     "valuemaxx-store",
     "valuemaxx-workspace",
 ]
@@ -872,6 +873,20 @@ wheels = [
 ]
 
 [[package]]
+name = "pydantic-settings"
+version = "2.14.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "python-dotenv" },
+    { name = "typing-inspection" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/5c/b5/8f48e906c3e0205276e8bd8cb7512217a87b2685304d64be27cad5b3019f/pydantic_settings-2.14.2.tar.gz", hash = "sha256:c19dd64b19097f1de80184f0cc7b0272a13ae6e170cbf240a3e27e381ed14a5f", size = 237700, upload-time = "2026-06-19T13:44:56.324Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/77/c1/6e422f34e569cf8e18df68d1939c81c099d2b61e4f7d9621c8a77560799c/pydantic_settings-2.14.2-py3-none-any.whl", hash = "sha256:a20c97b37910b6550d5ea50fbcc2d4187defe58cd57070b73863d069419c9440", size = 61715, upload-time = "2026-06-19T13:44:55.02Z" },
+]
+
+[[package]]
 name = "pygments"
 version = "2.20.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1284,6 +1299,19 @@ wheels = [
 ]
 
 [[package]]
+name = "uvicorn"
+version = "0.49.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "click" },
+    { name = "h11" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c4/1f/fa18009dea8469069cca78a4e877a008ab78f08b064bfc9ab891579077ff/uvicorn-0.49.0.tar.gz", hash = "sha256:ebf4271aa580d9de97f93192d4595176df6e91f9aae919ca73e4fc07df1e66a3", size = 91284, upload-time = "2026-06-03T22:01:30.448Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/88/fa/e1388bbcf24ef3274f45c0c1c7b501fd14971037c1b6ee23610553307497/uvicorn-0.49.0-py3-none-any.whl", hash = "sha256:ba3d14c3ee7e41c6c654c46c9eb489d33213cdd30aa1696eab1374337c13f68f", size = 71376, upload-time = "2026-06-03T22:01:29.037Z" },
+]
+
+[[package]]
 name = "valuemaxx"
 version = "0.0.0"
 source = { editable = "sdks/python" }
@@ -1318,6 +1346,7 @@ version = "0.0.0"
 source = { editable = "apps/agent_integrability" }
 dependencies = [
     { name = "pyyaml" },
+    { name = "typing-extensions" },
     { name = "valuemaxx-allocation" },
     { name = "valuemaxx-attribution" },
     { name = "valuemaxx-capabilities" },
@@ -1340,6 +1369,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "pyyaml", specifier = ">=6.0" },
+    { name = "typing-extensions", specifier = ">=4.12" },
     { name = "valuemaxx-allocation", editable = "packages/allocation" },
     { name = "valuemaxx-attribution", editable = "packages/attribution" },
     { name = "valuemaxx-capabilities", editable = "packages/capabilities" },
@@ -1488,9 +1518,13 @@ version = "0.0.0"
 source = { editable = "apps/cli" }
 dependencies = [
     { name = "typer" },
+    { name = "uvicorn" },
+    { name = "valuemaxx" },
     { name = "valuemaxx-agent-integrability" },
     { name = "valuemaxx-capabilities" },
     { name = "valuemaxx-core" },
+    { name = "valuemaxx-onboarding" },
+    { name = "valuemaxx-server" },
 ]
 
 [package.dev-dependencies]
@@ -1501,9 +1535,13 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "typer", specifier = ">=0.12" },
+    { name = "uvicorn", specifier = ">=0.29" },
+    { name = "valuemaxx", editable = "sdks/python" },
     { name = "valuemaxx-agent-integrability", editable = "apps/agent_integrability" },
     { name = "valuemaxx-capabilities", editable = "packages/capabilities" },
     { name = "valuemaxx-core", editable = "packages/core" },
+    { name = "valuemaxx-onboarding", editable = "packages/onboarding" },
+    { name = "valuemaxx-server", editable = "apps/server" },
 ]
 
 [package.metadata.requires-dev]
@@ -1703,6 +1741,57 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "hypothesis", specifier = ">=6.100" },
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "pytest-asyncio", specifier = ">=0.24" },
+]
+
+[[package]]
+name = "valuemaxx-server"
+version = "0.0.0"
+source = { editable = "apps/server" }
+dependencies = [
+    { name = "aiosqlite" },
+    { name = "anyio" },
+    { name = "fastapi" },
+    { name = "pydantic-settings" },
+    { name = "typing-extensions" },
+    { name = "uvicorn" },
+    { name = "valuemaxx-agent-integrability" },
+    { name = "valuemaxx-api" },
+    { name = "valuemaxx-capabilities" },
+    { name = "valuemaxx-capture" },
+    { name = "valuemaxx-core" },
+    { name = "valuemaxx-metrics" },
+    { name = "valuemaxx-store" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "httpx" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiosqlite", specifier = ">=0.19" },
+    { name = "anyio", specifier = ">=4" },
+    { name = "fastapi", specifier = ">=0.110" },
+    { name = "pydantic-settings", specifier = ">=2.2" },
+    { name = "typing-extensions", specifier = ">=4.12" },
+    { name = "uvicorn", specifier = ">=0.29" },
+    { name = "valuemaxx-agent-integrability", editable = "apps/agent_integrability" },
+    { name = "valuemaxx-api", editable = "apps/api" },
+    { name = "valuemaxx-capabilities", editable = "packages/capabilities" },
+    { name = "valuemaxx-capture", editable = "packages/capture" },
+    { name = "valuemaxx-core", editable = "packages/core" },
+    { name = "valuemaxx-metrics", editable = "packages/metrics" },
+    { name = "valuemaxx-store", editable = "packages/store" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "httpx", specifier = ">=0.27" },
     { name = "pytest", specifier = ">=8.0" },
     { name = "pytest-asyncio", specifier = ">=0.24" },
 ]

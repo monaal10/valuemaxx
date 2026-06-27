@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol, cast
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from valuemaxx.capabilities import CapabilitySpec, Mode, Registry, Surface, capability
 
 if TYPE_CHECKING:
@@ -78,10 +78,98 @@ def list_notes_capability() -> CapabilitySpec[ListNotesInput, ListNotesOutput]:
     )
 
 
+class EchoTagsInput(BaseModel):
+    """Request carrying a ``tuple[str, ...]`` field (a JSON array on the wire).
+
+    Uses ``strict=True`` to mirror the domain ``StrictModel`` capability inputs
+    (e.g. ``MetricDefinition``): in strict dict mode a Python ``list`` is NOT a
+    valid tuple, so a JSON array only validates under JSON-mode semantics — exactly
+    the projection bug this exercises.
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    tags: tuple[str, ...]
+
+
+class EchoTagsOutput(BaseModel):
+    """Echoes the validated tags back (proves wire JSON-array -> tuple coercion)."""
+
+    tags: tuple[str, ...]
+
+
+def _echo_tags(request: EchoTagsInput) -> EchoTagsOutput:
+    return EchoTagsOutput(tags=request.tags)
+
+
+def echo_tags_capability() -> CapabilitySpec[EchoTagsInput, EchoTagsOutput]:
+    """A request/response capability whose input has a tuple field (wire = JSON array)."""
+    return capability(
+        name="echo_tags",
+        input_model=EchoTagsInput,
+        output_model=EchoTagsOutput,
+        handler=_echo_tags,
+        description="Echo the tags (a tuple field carried as a JSON array on the wire).",
+        surfaces=Surface.API | Surface.MCP | Surface.CLI,
+        mode=Mode.REQUEST_RESPONSE,
+    )
+
+
+class WebhookEchoInput(BaseModel):
+    """The parsed body of the generic webhook-machinery test capability."""
+
+    tenant_id: str
+    event: str
+
+
+class WebhookEchoOutput(BaseModel):
+    """Echoes the verified event back (proves verify-before-parse then dispatch)."""
+
+    tenant_id: str
+    event: str
+
+
+def _webhook_echo(request: WebhookEchoInput) -> WebhookEchoOutput:
+    return WebhookEchoOutput(tenant_id=request.tenant_id, event=request.event)
+
+
+def webhook_echo_capability() -> CapabilitySpec[WebhookEchoInput, WebhookEchoOutput]:
+    """A ``webhook_inbound`` capability for the signature-machinery tests.
+
+    The projection's ``_mount_webhook`` (verify HMAC over the RAW body BEFORE parse)
+    is mode-driven, so any ``webhook_inbound`` capability exercises it. This generic
+    one stands in for a real external webhook (e.g. ``ingest_webhook_outcome``);
+    ``ingest_otlp_span`` is NOT one — it is key-authenticated request_response.
+    """
+    return capability(
+        name="webhook_echo",
+        input_model=WebhookEchoInput,
+        output_model=WebhookEchoOutput,
+        handler=_webhook_echo,
+        description="A signed inbound webhook receiver (verify-before-parse machinery test).",
+        surfaces=Surface.API,
+        mode=Mode.WEBHOOK_INBOUND,
+    )
+
+
 def registry_with_notes() -> Registry:
     """A registry containing just the tenant-scoped notes read capability."""
     registry = Registry()
     registry.register(list_notes_capability())
+    return registry
+
+
+def registry_with_webhook() -> Registry:
+    """A registry containing the generic ``webhook_inbound`` signature-machinery capability."""
+    registry = Registry()
+    registry.register(webhook_echo_capability())
+    return registry
+
+
+def registry_with_tuple_capability() -> Registry:
+    """A registry containing the tuple-field echo capability (wire coercion test)."""
+    registry = Registry()
+    registry.register(echo_tags_capability())
     return registry
 
 

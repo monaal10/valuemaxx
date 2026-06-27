@@ -29,7 +29,7 @@ from valuemaxx.metrics.capabilities import (
 )
 from valuemaxx.metrics.compiler import JoinStrategy, QueryPlan, compile_plan
 from valuemaxx.metrics.errors import MetricError, MetricGrammarError
-from valuemaxx.metrics.executor import MetricExecutor, MetricWindow
+from valuemaxx.metrics.executor import MetricExecutor, MetricWindow, handled_dimensions
 from valuemaxx.metrics.grammar import (
     Dimension,
     Measure,
@@ -60,6 +60,7 @@ __all__ = [
     "bind_runtime",
     "compile_plan",
     "denominator_outcomes",
+    "handled_dimensions",
     "is_billing_grade",
     "propagate",
     "register",

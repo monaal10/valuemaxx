@@ -17,7 +17,14 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
-from _api_helpers import get, post, registry_with_notes, route_paths
+from _api_helpers import (
+    get,
+    post,
+    registry_with_notes,
+    registry_with_tuple_capability,
+    registry_with_webhook,
+    route_paths,
+)
 from fastapi.testclient import TestClient
 from valuemaxx.agent_integrability.discovery import build_default_registry
 from valuemaxx.api.app import build_app
@@ -124,6 +131,22 @@ def test_tenant_a_cannot_read_tenant_b() -> None:
     # the authenticated tenant overrides the body — A never sees B's notes
     assert body["tenant_id"] == "tenant-a"
     assert "b-secret-note" not in body["notes"]
+
+
+# --- wire validation uses JSON-mode coercion (a JSON array -> a tuple field) ---
+
+
+def test_tuple_field_accepts_a_json_array_on_the_wire() -> None:
+    """A JSON array validates into a strict ``tuple[str, ...]`` capability field.
+
+    The body is parsed JSON; strict pydantic rejects a Python ``list`` for a tuple
+    in dict mode but accepts a JSON array in JSON mode. The projection must validate
+    with JSON-mode semantics so the wire contract matches what JSON can express.
+    """
+    client = _client(registry_with_tuple_capability())
+    resp = post(client, "/echo_tags", json={"tags": ["a", "b"]}, headers={"X-API-Key": "key-a"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["tags"] == ["a", "b"]
 
 
 # --- rollup responses carry both H7 fields ------------------------------------
@@ -276,16 +299,45 @@ def test_poll_job_is_tenant_scoped() -> None:
     assert cross.status_code == 404
 
 
+# --- the SDK OTLP ingest path is key-authenticated, NOT signature-gated -------
+
+
+def test_ingest_otlp_span_accepts_key_auth_without_a_signature() -> None:
+    """A real OTLP exporter's key-only POST (no X-Signature) is accepted, not 401'd.
+
+    The genuine SDK exporter authenticates with ONLY the ingest key and cannot
+    HMAC-sign the OTLP body, so ``ingest_otlp_span`` MUST accept a key-authenticated
+    POST with no signature header. (Regression: it was a signed webhook_inbound, so
+    every real exporter's spans were 401'd.)
+    """
+    client = _client()  # canonical registry: ingest_otlp_span is request_response
+    raw = json.dumps(
+        {"tenant_id": "ignored-overridden-by-key", "attributes": {"ai_margin.run_id": "r1"}}
+    ).encode()
+    resp = post(
+        client,
+        "/ingest_otlp_span",
+        content=raw,
+        headers={"X-API-Key": "key-a", "Content-Type": "application/json"},
+    )
+    assert resp.status_code == 200, resp.text
+
+
 # --- webhook signature verification ------------------------------------------
 
 
 def test_webhook_rejects_bad_signature() -> None:
-    """A webhook with a wrong signature is 401 and the handler is never called."""
-    client = _client()
-    raw = json.dumps({"source": "stripe", "event": "charge"}).encode()
+    """A webhook with a wrong signature is 401 and the handler is never called.
+
+    Exercises the projection's ``_mount_webhook`` machinery via a generic
+    ``webhook_inbound`` capability — NOT ``ingest_otlp_span`` (that is key-auth
+    request_response, never signature-gated, so a real OTLP exporter is accepted).
+    """
+    client = _client(registry_with_webhook())
+    raw = json.dumps({"tenant_id": "tenant-a", "event": "charge"}).encode()
     resp = post(
         client,
-        "/ingest_otlp_span",
+        "/webhook_echo",
         content=raw,
         headers={"X-API-Key": "key-a", "X-Signature": "deadbeef"},
     )
@@ -294,12 +346,12 @@ def test_webhook_rejects_bad_signature() -> None:
 
 def test_webhook_accepts_valid_signature() -> None:
     """A webhook with a valid HMAC over the raw body is accepted."""
-    client = _client()
-    raw = json.dumps({"tenant_id": "tenant-a", "attributes": {"ai_margin.run_id": "r1"}}).encode()
+    client = _client(registry_with_webhook())
+    raw = json.dumps({"tenant_id": "tenant-a", "event": "charge"}).encode()
     signature = hmac.new(_WEBHOOK_SECRET, raw, hashlib.sha256).hexdigest()
     resp = post(
         client,
-        "/ingest_otlp_span",
+        "/webhook_echo",
         content=raw,
         headers={"X-API-Key": "key-a", "X-Signature": signature},
     )
@@ -330,12 +382,12 @@ def test_request_validation_rejects_bad_input_with_422() -> None:
 
 def test_webhook_rejects_malformed_body_after_signature() -> None:
     """A correctly-signed but non-JSON webhook body yields a validation error (422)."""
-    client = _client()
+    client = _client(registry_with_webhook())
     raw = b"not-json-at-all"
     signature = hmac.new(_WEBHOOK_SECRET, raw, hashlib.sha256).hexdigest()
     resp = post(
         client,
-        "/ingest_otlp_span",
+        "/webhook_echo",
         content=raw,
         headers={"X-API-Key": "key-a", "X-Signature": signature},
     )
