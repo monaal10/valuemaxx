@@ -54,6 +54,11 @@ from valuemaxx.eval.grade import (
     grade_for_label_source,
     select_label_source,
 )
+from valuemaxx.eval.report import (
+    RecommendationInputs,
+    build_recommendation,
+    render_markdown,
+)
 from valuemaxx.eval.search import (
     CandidateScore,
     ParetoPoint,
@@ -96,11 +101,13 @@ __all__ = [
     "Phase1Approval",
     "Phase2Approval",
     "ProviderTokenizer",
+    "RecommendationInputs",
     "ReconstructibilityValidator",
     "Stratum",
     "TaskType",
     "TraceRecord",
     "build_dataset",
+    "build_recommendation",
     "confirmation_eval",
     "detect_task_type",
     "discover_clusters",
@@ -116,6 +123,7 @@ __all__ = [
     "pareto_frontier",
     "pick_winner",
     "reference_output_of",
+    "render_markdown",
     "resolve_provider_key",
     "select_label_source",
     "skeleton_hash",
