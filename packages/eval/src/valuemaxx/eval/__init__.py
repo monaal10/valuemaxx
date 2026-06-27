@@ -15,6 +15,12 @@ injected Protocols (``ProviderClient``, ``LlmJudge``, ``Embedder``, ``Clock``,
 
 from __future__ import annotations
 
+from valuemaxx.eval.discover import (
+    detect_task_type,
+    discover_clusters,
+    tool_set_fingerprint,
+)
+from valuemaxx.eval.drain import skeleton_hash, templatize
 from valuemaxx.eval.errors import (
     BudgetExceededError,
     EvalError,
@@ -50,5 +56,10 @@ __all__ = [
     "ReconstructibilityValidator",
     "Stratum",
     "TaskType",
+    "detect_task_type",
+    "discover_clusters",
     "is_reconstructible_task",
+    "skeleton_hash",
+    "templatize",
+    "tool_set_fingerprint",
 ]
