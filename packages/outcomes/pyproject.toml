@@ -9,6 +9,7 @@ dependencies = [
     "valuemaxx-capabilities",
     "wrapt>=1.16",
     "pyyaml>=6",
+    "typing-extensions>=4.4",
 ]
 
 [dependency-groups]
