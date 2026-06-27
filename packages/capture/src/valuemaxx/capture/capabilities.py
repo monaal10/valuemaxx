@@ -16,15 +16,26 @@ CaptureGranularity, etc. — still live only in ``valuemaxx.core``).
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
+from uuid import UUID
+from weakref import WeakKeyDictionary
 
 from pydantic import BaseModel
 from valuemaxx.capabilities import Mode, Surface, capability
+from valuemaxx.capture.otlp.otlp_ingest import span_to_cost_event
 from valuemaxx.capture.selftest import KNOWN_GOOD
 from valuemaxx.core.enums import CaptureGranularity
+from valuemaxx.core.errors import AtmError
+from valuemaxx.core.ids import TenantId
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from valuemaxx.capabilities import Registry
+    from valuemaxx.core.context import Clock
+    from valuemaxx.core.pricing import PriceBook
+    from valuemaxx.core.repositories import CostEventRepository
 
 
 class IngestOtlpSpanInput(BaseModel):
@@ -72,12 +83,81 @@ _COST_SOURCES: tuple[str, ...] = (
 )
 
 
-def _ingest_otlp_span(_request: IngestOtlpSpanInput) -> IngestOtlpSpanOutput:
-    # The handler is wired to storage at the app layer; the capability declares the
-    # contract. We surface the dedup key so a double delivery is visibly idempotent.
-    run_id = str(_request.attributes.get("ai_margin.run_id", ""))
-    attempt_id = str(_request.attributes.get("ai_margin.attempt_id", ""))
-    return IngestOtlpSpanOutput(run_id=run_id, attempt_id=attempt_id, accepted=True)
+class IngestNotWiredError(AtmError):
+    """An ingest persistence binding was attempted before its registry was set up (M10)."""
+
+
+@dataclass(frozen=True, slots=True)
+class IngestRuntime:
+    """The persistence dependencies an app injects to power ``ingest_otlp_span``.
+
+    Capture stays framework- and store-free: it persists through the injected
+    synchronous :class:`~valuemaxx.core.repositories.CostEventRepository` ABC (a
+    true boundary the app fulfils — e.g. a sync bridge over the async store), prices
+    via the optional :class:`~valuemaxx.core.pricing.PriceBook`, and reads the clock
+    through the injected :class:`~valuemaxx.core.context.Clock` so ingest is
+    deterministic under test.
+    """
+
+    repo: CostEventRepository
+    pricebook: PriceBook | None
+    clock: Clock
+
+
+class _IngestHolder:
+    """A late-bound slot for one registry's ingest runtime."""
+
+    __slots__ = ("runtime",)
+
+    def __init__(self) -> None:
+        self.runtime: IngestRuntime | None = None
+
+
+# One holder per registry instance, keyed by the registry object via a weak map so a
+# garbage-collected registry drops its holder (no stale binding can leak across
+# registries through object-id reuse). Mirrors the metrics/attribution pattern.
+_INGEST_HOLDERS: WeakKeyDictionary[Registry, _IngestHolder] = WeakKeyDictionary()
+
+
+def _make_ingest_handler(
+    holder: _IngestHolder,
+) -> Callable[[IngestOtlpSpanInput], IngestOtlpSpanOutput]:
+    def _ingest_otlp_span(request: IngestOtlpSpanInput) -> IngestOtlpSpanOutput:
+        # The dedup key is surfaced so a double delivery is visibly idempotent. When a
+        # runtime is bound, the span is decoded to a CostEvent and persisted (the repo
+        # upserts on (run_id, attempt_id), so a redelivery never double-counts, M7).
+        # Until the app wires a runtime, the handler acknowledges without persisting —
+        # never a crash, never a false claim that the span was stored.
+        run_id = str(request.attributes.get("ai_margin.run_id", ""))
+        attempt_id = str(request.attributes.get("ai_margin.attempt_id", ""))
+        runtime = holder.runtime
+        if runtime is not None:
+            tenant_id = TenantId(UUID(request.tenant_id))
+            event = span_to_cost_event(
+                request.attributes,
+                tenant_id=tenant_id,
+                pricebook=runtime.pricebook,
+                clock=runtime.clock,
+            )
+            runtime.repo.upsert(tenant_id, event)
+        return IngestOtlpSpanOutput(run_id=run_id, attempt_id=attempt_id, accepted=True)
+
+    return _ingest_otlp_span
+
+
+def bind_ingest_runtime(registry: Registry, runtime: IngestRuntime) -> None:
+    """Wire ``runtime`` into the ``ingest_otlp_span`` capability registered for ``registry``.
+
+    The app calls this at startup to make OTLP-in actually persist. Raises
+    :class:`IngestNotWiredError` if :func:`register` was never called for this
+    registry (there is no holder to bind into).
+    """
+    holder = _INGEST_HOLDERS.get(registry)
+    if holder is None:
+        raise IngestNotWiredError(
+            "no capture capabilities registered for this registry; call register() first"
+        )
+    holder.runtime = runtime
 
 
 def _list_cost_sources(_request: ListCostSourcesInput) -> ListCostSourcesOutput:
@@ -94,13 +174,19 @@ def _capture_healthcheck(_request: CaptureHealthcheckInput) -> CaptureHealthchec
 
 
 def register(registry: Registry) -> None:
-    """Register the three capture capabilities (M10). Called via discover_and_register."""
+    """Register the three capture capabilities (M10). Called via discover_and_register.
+
+    Creates a late-bound ingest-runtime holder for this registry; the app calls
+    :func:`bind_ingest_runtime` at startup to make ``ingest_otlp_span`` persist a
+    real :class:`~valuemaxx.core.cost.CostEvent` through the injected repository.
+    """
+    holder = _INGEST_HOLDERS.setdefault(registry, _IngestHolder())
     registry.register(
         capability(
             name="ingest_otlp_span",
             input_model=IngestOtlpSpanInput,
             output_model=IngestOtlpSpanOutput,
-            handler=_ingest_otlp_span,
+            handler=_make_ingest_handler(holder),
             description="Ingest one OTLP span as a CostEvent (universal/TS producer path).",
             surfaces=Surface.API,
             mode=Mode.WEBHOOK_INBOUND,
@@ -133,9 +219,12 @@ def register(registry: Registry) -> None:
 __all__ = [
     "CaptureHealthcheckInput",
     "CaptureHealthcheckOutput",
+    "IngestNotWiredError",
     "IngestOtlpSpanInput",
     "IngestOtlpSpanOutput",
+    "IngestRuntime",
     "ListCostSourcesInput",
     "ListCostSourcesOutput",
+    "bind_ingest_runtime",
     "register",
 ]
