@@ -7,12 +7,12 @@ from decimal import Decimal
 from uuid import uuid4
 
 import pytest
-from atm_core.cost import CostEvent
-from atm_core.enums import CaptureGranularity, Provenance
-from atm_core.ids import AttemptId, CostEventId, RunId, TenantId
-from atm_core.provenance import ProvenanceLabel
-from atm_core.tokens import TokenVector
 from pydantic import ValidationError
+from valuemaxx.core.cost import CostEvent
+from valuemaxx.core.enums import CaptureGranularity, Provenance
+from valuemaxx.core.ids import AttemptId, CostEventId, RunId, TenantId
+from valuemaxx.core.provenance import ProvenanceLabel
+from valuemaxx.core.tokens import TokenVector
 
 
 def _tokens() -> TokenVector:

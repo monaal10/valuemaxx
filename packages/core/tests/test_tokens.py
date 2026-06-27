@@ -9,10 +9,10 @@ distinct fields, never one flat cache_write; (5) from_provider rejects (3);
 from __future__ import annotations
 
 import pytest
-from atm_core.tokens import TokenVector
 from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import ValidationError
+from valuemaxx.core.tokens import TokenVector
 
 
 def test_negative_rejected() -> None:

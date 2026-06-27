@@ -8,9 +8,9 @@ claimed when it points at the additive record that justifies it.
 from __future__ import annotations
 
 import pytest
-from atm_core.enums import Provenance
-from atm_core.provenance import ProvenanceLabel
 from pydantic import ValidationError
+from valuemaxx.core.enums import Provenance
+from valuemaxx.core.provenance import ProvenanceLabel
 
 
 def test_reconciled_requires_record_id() -> None:

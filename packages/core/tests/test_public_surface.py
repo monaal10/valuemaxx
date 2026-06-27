@@ -1,15 +1,15 @@
-"""F0-CORE-INIT: the explicit public surface — everything importable from atm_core."""
+"""F0-CORE-INIT: the explicit public surface — everything importable from valuemaxx.core."""
 
 from __future__ import annotations
 
 import ast
 from pathlib import Path
 
-import atm_core
+import valuemaxx.core
 
-_INIT_PATH = Path(atm_core.__file__)
+_INIT_PATH = Path(valuemaxx.core.__file__)
 
-# Every public name the foundation (1a/1b/1c) must re-export from `atm_core`.
+# Every public name the foundation (1a/1b/1c) must re-export from `valuemaxx.core`.
 _EXPECTED_PUBLIC = {
     # enums
     "Provenance",
@@ -71,16 +71,16 @@ _EXPECTED_PUBLIC = {
 
 def test_public_surface_complete() -> None:
     """test_public_surface_complete: every foundation symbol is importable + in __all__."""
-    exported = set(atm_core.__all__)
+    exported = set(valuemaxx.core.__all__)
     missing = _EXPECTED_PUBLIC - exported
-    assert not missing, f"missing from atm_core.__all__: {sorted(missing)}"
+    assert not missing, f"missing from valuemaxx.core.__all__: {sorted(missing)}"
     for name in _EXPECTED_PUBLIC:
-        assert hasattr(atm_core, name), f"atm_core has no attribute {name!r}"
+        assert hasattr(valuemaxx.core, name), f"valuemaxx.core has no attribute {name!r}"
 
 
 def test_all_is_explicit_and_sorted_unique() -> None:
     """__all__ is an explicit list with no duplicates."""
-    names = atm_core.__all__
+    names = valuemaxx.core.__all__
     assert len(names) == len(set(names)), "duplicate names in __all__"
 
 
@@ -90,4 +90,4 @@ def test_no_wildcard_exports() -> None:
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
             for alias in node.names:
-                assert alias.name != "*", "wildcard import found in atm_core/__init__.py"
+                assert alias.name != "*", "wildcard import found in valuemaxx.core/__init__.py"

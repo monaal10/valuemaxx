@@ -1,0 +1,3 @@
+"""valuemaxx.mcp — skeleton surface app (thin registry projection; built in G4)."""
+
+__all__: list[str] = []

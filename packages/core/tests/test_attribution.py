@@ -5,9 +5,9 @@ from __future__ import annotations
 from uuid import uuid4
 
 import pytest
-from atm_core.attribution import AttributionCandidate, AttributionResult
-from atm_core.enums import BindingTier
-from atm_core.ids import OutcomeEventId, RunId, TenantId
+from valuemaxx.core.attribution import AttributionCandidate, AttributionResult
+from valuemaxx.core.enums import BindingTier
+from valuemaxx.core.ids import OutcomeEventId, RunId, TenantId
 
 
 def _tenant() -> TenantId:

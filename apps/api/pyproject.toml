@@ -1,12 +1,12 @@
 [project]
-name = "atm-api"
+name = "valuemaxx-api"
 version = "0.0.0"
 description = "AI Margin Intelligence — api surface (thin registry projection; built in G4)."
 requires-python = ">=3.11"
 license = "Apache-2.0"
 dependencies = [
-    "atm-core",
-    "atm-capabilities",
+    "valuemaxx-core",
+    "valuemaxx-capabilities",
 ]
 
 [build-system]
@@ -14,8 +14,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/atm_api"]
+only-include = ["src/valuemaxx/api"]
+sources = ["src"]
 
 [tool.uv.sources]
-atm-core = { workspace = true }
-atm-capabilities = { workspace = true }
+valuemaxx-core = { workspace = true }
+valuemaxx-capabilities = { workspace = true }

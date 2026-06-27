@@ -6,8 +6,8 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import uuid4
 
-from atm_core.ids import ReconciliationRecordId, TenantId
-from atm_core.reconciliation import ReconciliationRecord
+from valuemaxx.core.ids import ReconciliationRecordId, TenantId
+from valuemaxx.core.reconciliation import ReconciliationRecord
 
 
 def _tenant() -> TenantId:

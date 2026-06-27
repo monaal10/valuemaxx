@@ -5,9 +5,9 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
-from atm_core.allocation import AllocatedLine
-from atm_core.enums import AllocationTier, ConfidenceLabel, Provenance
 from pydantic import ValidationError
+from valuemaxx.core.allocation import AllocatedLine
+from valuemaxx.core.enums import AllocationTier, ConfidenceLabel, Provenance
 
 
 def test_direct_must_be_measured() -> None:

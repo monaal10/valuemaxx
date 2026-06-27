@@ -4,24 +4,24 @@ requires-python = ">=3.11"
 
 [manifest]
 members = [
-    "atm-agent-integrability",
-    "atm-allocation",
-    "atm-api",
-    "atm-attribution",
-    "atm-capabilities",
-    "atm-capture",
-    "atm-cli",
-    "atm-core",
-    "atm-eval",
-    "atm-margin",
-    "atm-margin-workspace",
-    "atm-mcp",
-    "atm-metrics",
-    "atm-notify",
-    "atm-onboarding",
-    "atm-outcomes",
-    "atm-reconciliation",
-    "atm-store",
+    "valuemaxx",
+    "valuemaxx-agent-integrability",
+    "valuemaxx-allocation",
+    "valuemaxx-api",
+    "valuemaxx-attribution",
+    "valuemaxx-capabilities",
+    "valuemaxx-capture",
+    "valuemaxx-cli",
+    "valuemaxx-core",
+    "valuemaxx-eval",
+    "valuemaxx-mcp",
+    "valuemaxx-metrics",
+    "valuemaxx-notify",
+    "valuemaxx-onboarding",
+    "valuemaxx-outcomes",
+    "valuemaxx-reconciliation",
+    "valuemaxx-store",
+    "valuemaxx-workspace",
 ]
 
 [[package]]
@@ -31,280 +31,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/ee/67/531ea369ba64dcff5ec9c3402f9f51bf748cec26dde048a2f973a4eea7f5/annotated_types-0.7.0.tar.gz", hash = "sha256:aff07c09a53a08bc8cfccb9c85b05f1aa9a2a6f23728d790723543408344ce89", size = 16081, upload-time = "2024-05-20T21:33:25.928Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/78/b6/6307fbef88d9b5ee7421e68d78a9f162e0da4900bc5f5793f6d3d0e34fb8/annotated_types-0.7.0-py3-none-any.whl", hash = "sha256:1f02e8b43a8fbbc3f3e0d4f0f4bfc8131bcb4eebe8849b8e5c773f3a1c582a53", size = 13643, upload-time = "2024-05-20T21:33:24.1Z" },
-]
-
-[[package]]
-name = "atm-agent-integrability"
-version = "0.0.0"
-source = { editable = "apps/agent_integrability" }
-dependencies = [
-    { name = "atm-capabilities" },
-    { name = "atm-core" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "atm-capabilities", editable = "packages/capabilities" },
-    { name = "atm-core", editable = "packages/core" },
-]
-
-[[package]]
-name = "atm-allocation"
-version = "0.0.0"
-source = { editable = "packages/allocation" }
-dependencies = [
-    { name = "atm-capabilities" },
-    { name = "atm-core" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "atm-capabilities", editable = "packages/capabilities" },
-    { name = "atm-core", editable = "packages/core" },
-]
-
-[[package]]
-name = "atm-api"
-version = "0.0.0"
-source = { editable = "apps/api" }
-dependencies = [
-    { name = "atm-capabilities" },
-    { name = "atm-core" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "atm-capabilities", editable = "packages/capabilities" },
-    { name = "atm-core", editable = "packages/core" },
-]
-
-[[package]]
-name = "atm-attribution"
-version = "0.0.0"
-source = { editable = "packages/attribution" }
-dependencies = [
-    { name = "atm-capabilities" },
-    { name = "atm-core" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "atm-capabilities", editable = "packages/capabilities" },
-    { name = "atm-core", editable = "packages/core" },
-]
-
-[[package]]
-name = "atm-capabilities"
-version = "0.0.0"
-source = { editable = "packages/capabilities" }
-dependencies = [
-    { name = "pydantic" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "pydantic", specifier = ">=2.7" }]
-
-[[package]]
-name = "atm-capture"
-version = "0.0.0"
-source = { editable = "packages/capture" }
-dependencies = [
-    { name = "atm-capabilities" },
-    { name = "atm-core" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "atm-capabilities", editable = "packages/capabilities" },
-    { name = "atm-core", editable = "packages/core" },
-]
-
-[[package]]
-name = "atm-cli"
-version = "0.0.0"
-source = { editable = "apps/cli" }
-dependencies = [
-    { name = "atm-capabilities" },
-    { name = "atm-core" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "atm-capabilities", editable = "packages/capabilities" },
-    { name = "atm-core", editable = "packages/core" },
-]
-
-[[package]]
-name = "atm-core"
-version = "0.0.0"
-source = { editable = "packages/core" }
-dependencies = [
-    { name = "pydantic" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "pydantic", specifier = ">=2.7" }]
-
-[[package]]
-name = "atm-eval"
-version = "0.0.0"
-source = { editable = "packages/eval" }
-dependencies = [
-    { name = "atm-capabilities" },
-    { name = "atm-core" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "atm-capabilities", editable = "packages/capabilities" },
-    { name = "atm-core", editable = "packages/core" },
-]
-
-[[package]]
-name = "atm-margin"
-version = "0.0.0"
-source = { editable = "sdks/python" }
-dependencies = [
-    { name = "atm-core" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "atm-core", editable = "packages/core" }]
-
-[[package]]
-name = "atm-margin-workspace"
-version = "0.0.0"
-source = { virtual = "." }
-
-[package.dev-dependencies]
-dev = [
-    { name = "hypothesis" },
-    { name = "import-linter" },
-    { name = "pyright" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "ruff" },
-    { name = "testcontainers" },
-]
-
-[package.metadata]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "hypothesis", specifier = ">=6.100" },
-    { name = "import-linter", specifier = ">=2.0" },
-    { name = "pyright", specifier = ">=1.1.380" },
-    { name = "pytest", specifier = ">=8.0" },
-    { name = "pytest-asyncio", specifier = ">=0.24" },
-    { name = "pytest-cov", specifier = ">=5.0" },
-    { name = "ruff", specifier = ">=0.6" },
-    { name = "testcontainers", extras = ["postgres"], specifier = ">=4,<5" },
-]
-
-[[package]]
-name = "atm-mcp"
-version = "0.0.0"
-source = { editable = "apps/mcp" }
-dependencies = [
-    { name = "atm-capabilities" },
-    { name = "atm-core" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "atm-capabilities", editable = "packages/capabilities" },
-    { name = "atm-core", editable = "packages/core" },
-]
-
-[[package]]
-name = "atm-metrics"
-version = "0.0.0"
-source = { editable = "packages/metrics" }
-dependencies = [
-    { name = "atm-capabilities" },
-    { name = "atm-core" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "atm-capabilities", editable = "packages/capabilities" },
-    { name = "atm-core", editable = "packages/core" },
-]
-
-[[package]]
-name = "atm-notify"
-version = "0.0.0"
-source = { editable = "apps/notify" }
-dependencies = [
-    { name = "atm-capabilities" },
-    { name = "atm-core" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "atm-capabilities", editable = "packages/capabilities" },
-    { name = "atm-core", editable = "packages/core" },
-]
-
-[[package]]
-name = "atm-onboarding"
-version = "0.0.0"
-source = { editable = "packages/onboarding" }
-dependencies = [
-    { name = "atm-capabilities" },
-    { name = "atm-core" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "atm-capabilities", editable = "packages/capabilities" },
-    { name = "atm-core", editable = "packages/core" },
-]
-
-[[package]]
-name = "atm-outcomes"
-version = "0.0.0"
-source = { editable = "packages/outcomes" }
-dependencies = [
-    { name = "atm-capabilities" },
-    { name = "atm-core" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "atm-capabilities", editable = "packages/capabilities" },
-    { name = "atm-core", editable = "packages/core" },
-]
-
-[[package]]
-name = "atm-reconciliation"
-version = "0.0.0"
-source = { editable = "packages/reconciliation" }
-dependencies = [
-    { name = "atm-capabilities" },
-    { name = "atm-core" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "atm-capabilities", editable = "packages/capabilities" },
-    { name = "atm-core", editable = "packages/core" },
-]
-
-[[package]]
-name = "atm-store"
-version = "0.0.0"
-source = { editable = "packages/store" }
-dependencies = [
-    { name = "atm-capabilities" },
-    { name = "atm-core" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "atm-capabilities", editable = "packages/capabilities" },
-    { name = "atm-core", editable = "packages/core" },
 ]
 
 [[package]]
@@ -1088,6 +814,280 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/53/0c/06f8b233b8fd13b9e5ee11424ef85419ba0d8ba0b3138bf360be2ff56953/urllib3-2.7.0.tar.gz", hash = "sha256:231e0ec3b63ceb14667c67be60f2f2c40a518cb38b03af60abc813da26505f4c", size = 433602, upload-time = "2026-05-07T16:13:18.596Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/7f/3e/5db95bcf282c52709639744ca2a8b149baccf648e39c8cc87553df9eae0c/urllib3-2.7.0-py3-none-any.whl", hash = "sha256:9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897", size = 131087, upload-time = "2026-05-07T16:13:17.151Z" },
+]
+
+[[package]]
+name = "valuemaxx"
+version = "0.0.0"
+source = { editable = "sdks/python" }
+dependencies = [
+    { name = "valuemaxx-core" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "valuemaxx-core", editable = "packages/core" }]
+
+[[package]]
+name = "valuemaxx-agent-integrability"
+version = "0.0.0"
+source = { editable = "apps/agent_integrability" }
+dependencies = [
+    { name = "valuemaxx-capabilities" },
+    { name = "valuemaxx-core" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "valuemaxx-capabilities", editable = "packages/capabilities" },
+    { name = "valuemaxx-core", editable = "packages/core" },
+]
+
+[[package]]
+name = "valuemaxx-allocation"
+version = "0.0.0"
+source = { editable = "packages/allocation" }
+dependencies = [
+    { name = "valuemaxx-capabilities" },
+    { name = "valuemaxx-core" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "valuemaxx-capabilities", editable = "packages/capabilities" },
+    { name = "valuemaxx-core", editable = "packages/core" },
+]
+
+[[package]]
+name = "valuemaxx-api"
+version = "0.0.0"
+source = { editable = "apps/api" }
+dependencies = [
+    { name = "valuemaxx-capabilities" },
+    { name = "valuemaxx-core" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "valuemaxx-capabilities", editable = "packages/capabilities" },
+    { name = "valuemaxx-core", editable = "packages/core" },
+]
+
+[[package]]
+name = "valuemaxx-attribution"
+version = "0.0.0"
+source = { editable = "packages/attribution" }
+dependencies = [
+    { name = "valuemaxx-capabilities" },
+    { name = "valuemaxx-core" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "valuemaxx-capabilities", editable = "packages/capabilities" },
+    { name = "valuemaxx-core", editable = "packages/core" },
+]
+
+[[package]]
+name = "valuemaxx-capabilities"
+version = "0.0.0"
+source = { editable = "packages/capabilities" }
+dependencies = [
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "pydantic", specifier = ">=2.7" }]
+
+[[package]]
+name = "valuemaxx-capture"
+version = "0.0.0"
+source = { editable = "packages/capture" }
+dependencies = [
+    { name = "valuemaxx-capabilities" },
+    { name = "valuemaxx-core" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "valuemaxx-capabilities", editable = "packages/capabilities" },
+    { name = "valuemaxx-core", editable = "packages/core" },
+]
+
+[[package]]
+name = "valuemaxx-cli"
+version = "0.0.0"
+source = { editable = "apps/cli" }
+dependencies = [
+    { name = "valuemaxx-capabilities" },
+    { name = "valuemaxx-core" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "valuemaxx-capabilities", editable = "packages/capabilities" },
+    { name = "valuemaxx-core", editable = "packages/core" },
+]
+
+[[package]]
+name = "valuemaxx-core"
+version = "0.0.0"
+source = { editable = "packages/core" }
+dependencies = [
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "pydantic", specifier = ">=2.7" }]
+
+[[package]]
+name = "valuemaxx-eval"
+version = "0.0.0"
+source = { editable = "packages/eval" }
+dependencies = [
+    { name = "valuemaxx-capabilities" },
+    { name = "valuemaxx-core" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "valuemaxx-capabilities", editable = "packages/capabilities" },
+    { name = "valuemaxx-core", editable = "packages/core" },
+]
+
+[[package]]
+name = "valuemaxx-mcp"
+version = "0.0.0"
+source = { editable = "apps/mcp" }
+dependencies = [
+    { name = "valuemaxx-capabilities" },
+    { name = "valuemaxx-core" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "valuemaxx-capabilities", editable = "packages/capabilities" },
+    { name = "valuemaxx-core", editable = "packages/core" },
+]
+
+[[package]]
+name = "valuemaxx-metrics"
+version = "0.0.0"
+source = { editable = "packages/metrics" }
+dependencies = [
+    { name = "valuemaxx-capabilities" },
+    { name = "valuemaxx-core" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "valuemaxx-capabilities", editable = "packages/capabilities" },
+    { name = "valuemaxx-core", editable = "packages/core" },
+]
+
+[[package]]
+name = "valuemaxx-notify"
+version = "0.0.0"
+source = { editable = "apps/notify" }
+dependencies = [
+    { name = "valuemaxx-capabilities" },
+    { name = "valuemaxx-core" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "valuemaxx-capabilities", editable = "packages/capabilities" },
+    { name = "valuemaxx-core", editable = "packages/core" },
+]
+
+[[package]]
+name = "valuemaxx-onboarding"
+version = "0.0.0"
+source = { editable = "packages/onboarding" }
+dependencies = [
+    { name = "valuemaxx-capabilities" },
+    { name = "valuemaxx-core" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "valuemaxx-capabilities", editable = "packages/capabilities" },
+    { name = "valuemaxx-core", editable = "packages/core" },
+]
+
+[[package]]
+name = "valuemaxx-outcomes"
+version = "0.0.0"
+source = { editable = "packages/outcomes" }
+dependencies = [
+    { name = "valuemaxx-capabilities" },
+    { name = "valuemaxx-core" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "valuemaxx-capabilities", editable = "packages/capabilities" },
+    { name = "valuemaxx-core", editable = "packages/core" },
+]
+
+[[package]]
+name = "valuemaxx-reconciliation"
+version = "0.0.0"
+source = { editable = "packages/reconciliation" }
+dependencies = [
+    { name = "valuemaxx-capabilities" },
+    { name = "valuemaxx-core" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "valuemaxx-capabilities", editable = "packages/capabilities" },
+    { name = "valuemaxx-core", editable = "packages/core" },
+]
+
+[[package]]
+name = "valuemaxx-store"
+version = "0.0.0"
+source = { editable = "packages/store" }
+dependencies = [
+    { name = "valuemaxx-capabilities" },
+    { name = "valuemaxx-core" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "valuemaxx-capabilities", editable = "packages/capabilities" },
+    { name = "valuemaxx-core", editable = "packages/core" },
+]
+
+[[package]]
+name = "valuemaxx-workspace"
+version = "0.0.0"
+source = { virtual = "." }
+
+[package.dev-dependencies]
+dev = [
+    { name = "hypothesis" },
+    { name = "import-linter" },
+    { name = "pyright" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+    { name = "testcontainers" },
+]
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "hypothesis", specifier = ">=6.100" },
+    { name = "import-linter", specifier = ">=2.0" },
+    { name = "pyright", specifier = ">=1.1.380" },
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "pytest-asyncio", specifier = ">=0.24" },
+    { name = "pytest-cov", specifier = ">=5.0" },
+    { name = "ruff", specifier = ">=0.6" },
+    { name = "testcontainers", extras = ["postgres"], specifier = ">=4,<5" },
 ]
 
 [[package]]

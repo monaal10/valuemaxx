@@ -11,15 +11,15 @@ from decimal import Decimal
 from uuid import uuid4
 
 import pytest
-from atm_core.enums import BindingTier, ConfidenceLabel, EvalGrade, Provenance, TokenClass
-from atm_core.ids import RunId, TenantId
-from atm_core.rollup import RollupConfidence, RunCostRollup, compose_label
 from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import ValidationError
+from valuemaxx.core.enums import BindingTier, ConfidenceLabel, EvalGrade, Provenance, TokenClass
+from valuemaxx.core.ids import RunId, TenantId
+from valuemaxx.core.rollup import RollupConfidence, RunCostRollup, compose_label
 
 _ALL_TIERS = list(BindingTier)
-# least-trusted -> most-trusted (mirrors atm_core.rollup._TIER_ORDER)
+# least-trusted -> most-trusted (mirrors valuemaxx.core.rollup._TIER_ORDER)
 _ORDER = (
     BindingTier.LIKELY,
     BindingTier.CANDIDATE,

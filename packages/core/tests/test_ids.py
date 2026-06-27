@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID, uuid4
 
-from atm_core import ids
+from valuemaxx.core import ids
 
 
 def test_tenant_id_is_uuid_newtype() -> None:
@@ -32,7 +32,7 @@ def test_string_ids_are_str_newtypes() -> None:
 
 
 def test_all_id_types_exported() -> None:
-    """Every id type is exported from atm_core.ids."""
+    """Every id type is exported from valuemaxx.core.ids."""
     expected = {
         "TenantId",
         "RunId",

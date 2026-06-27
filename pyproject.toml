@@ -1,5 +1,5 @@
 [project]
-name = "atm-margin-workspace"
+name = "valuemaxx-workspace"
 version = "0.0.0"
 description = "AI Margin Intelligence — cost-per-outcome with confidence, for teams that build AI agents"
 requires-python = ">=3.11"
@@ -46,4 +46,4 @@ markers = [
 ]
 
 # Coverage configuration lives in .coveragerc (the single source for the gate),
-# scoped to the core typed spine (atm_core/atm_capabilities). See AGENTS.md §5.
+# scoped to the core typed spine (valuemaxx.core/valuemaxx.capabilities). See AGENTS.md §5.

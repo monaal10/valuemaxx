@@ -7,10 +7,10 @@ from decimal import Decimal
 from uuid import uuid4
 
 import pytest
-from atm_core.enums import BindingTier, SignalClass
-from atm_core.ids import CorrelationId, OutcomeEventId, RunId, TenantId
-from atm_core.outcome import OutcomeBinding, OutcomeEvent
 from pydantic import ValidationError
+from valuemaxx.core.enums import BindingTier, SignalClass
+from valuemaxx.core.ids import CorrelationId, OutcomeEventId, RunId, TenantId
+from valuemaxx.core.outcome import OutcomeBinding, OutcomeEvent
 
 
 def _tenant() -> TenantId:

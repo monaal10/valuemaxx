@@ -11,9 +11,9 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
-from atm_core.base import StrictModel, TenantScopedModel
-from atm_core.ids import TenantId
 from pydantic import ValidationError
+from valuemaxx.core.base import StrictModel, TenantScopedModel
+from valuemaxx.core.ids import TenantId
 
 
 class _Sample(StrictModel):

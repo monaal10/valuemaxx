@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import pytest
-from atm_core import errors
+from valuemaxx.core import errors
 
 
-def test_all_errors_subclass_atm_error() -> None:
+def test_all_errors_subclass_error() -> None:
     """Every domain error subclasses AtmError so callers can catch one root."""
     for err_cls in (
         errors.TenantScopeError,
@@ -18,7 +18,7 @@ def test_all_errors_subclass_atm_error() -> None:
         assert issubclass(err_cls, errors.AtmError)
 
 
-def test_atm_error_is_an_exception() -> None:
+def test_error_is_an_exception() -> None:
     assert issubclass(errors.AtmError, Exception)
 
 

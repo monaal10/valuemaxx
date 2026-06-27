@@ -3,8 +3,8 @@
 These are fast, hermetic config-assertion tests (no subprocess). The heavy gates
 (``uv sync``/``pyright``/``ruff``/``lint-imports``) run as their own CI steps;
 running them again as pytest subprocesses would be slow and recursive. What is
-durable here is the *invariant*: the canonical ``atm_`` prefix and the coverage
-gate, which can never silently drift.
+durable here is the *invariant*: the shared ``valuemaxx`` PEP 420 namespace with
+clean bare sub-package names, and the coverage gate, which can never silently drift.
 """
 
 from __future__ import annotations
@@ -15,51 +15,78 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-# Every src top-level package directory must match this (canonical naming, §2).
-_ATM_PREFIX = re.compile(r"^atm_[a-z_]+$")
-# Foreign prefixes that must never appear (the build plan locks `atm_`).
-_FORBIDDEN_PREFIXES = ("ai_margin_", "atmx_")
+# The single shared namespace. Every package nests its module under `src/valuemaxx/`
+# as a PEP 420 namespace package (NO `__init__.py` directly under `valuemaxx/`).
+_NAMESPACE = "valuemaxx"
+# Each nested sub-package dir must match this (clean bare names, §2).
+_SUBPKG_NAME = re.compile(r"^[a-z][a-z_]*$")
+# Foreign prefixes / the pre-rename flat naming that must never reappear.
+_FORBIDDEN_PREFIXES = ("ai_margin_", "atmx_", "atm_", "valuemaxx_")
 
 
-def _src_top_dirs() -> list[Path]:
-    """Every `src/<pkg>` top-level package dir across packages/, apps/, sdks/."""
+def _namespace_roots() -> list[Path]:
+    """Every `src/valuemaxx` namespace-root dir across packages/, apps/, sdks/."""
     roots = [REPO_ROOT / "packages", REPO_ROOT / "apps", REPO_ROOT / "sdks"]
-    top_dirs: list[Path] = []
+    ns_roots: list[Path] = []
     for root in roots:
         if not root.exists():
             continue
         for src in root.glob("*/src/*"):
-            if src.is_dir():
-                top_dirs.append(src)
-    return top_dirs
+            if src.is_dir() and src.name == _NAMESPACE:
+                ns_roots.append(src)
+    return ns_roots
 
 
-def test_every_src_top_dir_uses_atm_prefix() -> None:
-    """T-TOOL: every src top-level package matches `^atm_[a-z_]+$`."""
-    top_dirs = _src_top_dirs()
-    assert top_dirs, "expected at least the core/capabilities src packages to exist"
-    bad = [d.name for d in top_dirs if not _ATM_PREFIX.match(d.name)]
-    assert not bad, f"non-atm src package dirs found: {bad}"
+def test_every_src_top_dir_is_the_valuemaxx_namespace() -> None:
+    """Every `src/` top-level dir is the shared `valuemaxx` namespace (nested layout)."""
+    roots = [REPO_ROOT / "packages", REPO_ROOT / "apps"]
+    bad: list[str] = []
+    for root in roots:
+        if not root.exists():
+            continue
+        for src in root.glob("*/src/*"):
+            if src.is_dir() and src.name != _NAMESPACE:
+                bad.append(str(src.relative_to(REPO_ROOT)))
+    assert not bad, f"src top dirs that are not the '{_NAMESPACE}' namespace: {bad}"
+
+
+def test_namespace_root_has_no_init() -> None:
+    """PEP 420: no `__init__.py` directly under any `src/valuemaxx/` (would break merge)."""
+    strays = [
+        str((ns / "__init__.py").relative_to(REPO_ROOT))
+        for ns in _namespace_roots()
+        if (ns / "__init__.py").exists()
+    ]
+    assert not strays, f"stray __init__.py at namespace root breaks the merge: {strays}"
+
+
+def test_nested_subpackages_use_clean_bare_names() -> None:
+    """Each `valuemaxx/<pkg>` is a clean bare name (no prefix) and is a real package."""
+    bad: list[str] = []
+    for ns in _namespace_roots():
+        for sub in ns.iterdir():
+            if sub.is_dir() and not _SUBPKG_NAME.match(sub.name):
+                bad.append(str(sub.relative_to(REPO_ROOT)))
+    assert not bad, f"non-bare nested sub-package names: {bad}"
 
 
 def test_no_foreign_prefix() -> None:
-    """T-TOOL `test_no_foreign_prefix`: no `ai_margin_*` / `atmx_*` modules anywhere."""
+    """No pre-rename / foreign module prefixes (`atm_`, `valuemaxx_`, ...) anywhere."""
     offenders: list[str] = []
     for root in (REPO_ROOT / "packages", REPO_ROOT / "apps", REPO_ROOT / "sdks"):
         if not root.exists():
             continue
         for path in root.rglob("*"):
-            name = path.name
-            if any(name.startswith(p) for p in _FORBIDDEN_PREFIXES):
+            if any(path.name.startswith(p) for p in _FORBIDDEN_PREFIXES):
                 offenders.append(str(path.relative_to(REPO_ROOT)))
     assert not offenders, f"forbidden module prefixes found: {offenders}"
 
 
 def test_core_and_capabilities_ship_py_typed() -> None:
-    """Every foundation package ships a `py.typed` marker (PEP 561)."""
+    """Every foundation package ships a `py.typed` marker (PEP 561), in the sub-package."""
     for pkg in ("core", "capabilities"):
-        marker = REPO_ROOT / "packages" / pkg / "src" / f"atm_{pkg}" / "py.typed"
-        assert marker.exists(), f"missing py.typed for atm_{pkg}"
+        marker = REPO_ROOT / "packages" / pkg / "src" / _NAMESPACE / pkg / "py.typed"
+        assert marker.exists(), f"missing py.typed for {_NAMESPACE}.{pkg}"
 
 
 def test_coverage_gate_is_90() -> None:
@@ -79,7 +106,7 @@ def test_coverage_scoped_to_core_spine() -> None:
     cfg = configparser.ConfigParser()
     cfg.read(REPO_ROOT / ".coveragerc")
     source = cfg.get("run", "source")
-    assert "atm_core" in source
+    assert "valuemaxx.core" in source
     omit = cfg.get("run", "omit")
     assert "apps/*" in omit
 

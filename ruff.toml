@@ -36,8 +36,8 @@ ignore = [
 [lint.flake8-type-checking]
 runtime-evaluated-base-classes = [
     "pydantic.BaseModel",
-    "atm_core.base.StrictModel",
-    "atm_core.base.TenantScopedModel",
+    "valuemaxx.core.base.StrictModel",
+    "valuemaxx.core.base.TenantScopedModel",
 ]
 
 [lint.per-file-ignores]

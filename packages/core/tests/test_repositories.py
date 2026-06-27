@@ -7,7 +7,7 @@ from abc import ABC
 from typing import TYPE_CHECKING, cast
 
 import pytest
-from atm_core import repositories as repo
+from valuemaxx.core import repositories as repo
 
 if TYPE_CHECKING:
     from collections.abc import Callable

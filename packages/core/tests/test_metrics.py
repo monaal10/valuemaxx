@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from atm_core.metrics import MetricDefinition
+from valuemaxx.core.metrics import MetricDefinition
 
 
 def test_metric_definition_round_trip() -> None:

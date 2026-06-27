@@ -6,9 +6,9 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
-from atm_core.ids import RunId, TenantId
-from atm_core.run import Run
 from pydantic import ValidationError
+from valuemaxx.core.ids import RunId, TenantId
+from valuemaxx.core.run import Run
 
 
 def _tenant() -> TenantId:

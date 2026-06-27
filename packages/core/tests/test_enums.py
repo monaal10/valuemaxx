@@ -10,7 +10,7 @@ from __future__ import annotations
 from enum import StrEnum
 
 import pytest
-from atm_core.enums import (
+from valuemaxx.core.enums import (
     AllocationTier,
     BindingTier,
     CaptureGranularity,
