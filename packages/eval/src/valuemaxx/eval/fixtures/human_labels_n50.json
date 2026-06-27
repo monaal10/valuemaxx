@@ -1,0 +1,362 @@
+[
+  {
+    "case_id": "hl-pos-00",
+    "prediction": "candidate answer 0",
+    "reference": "incumbent answer 0",
+    "human_positive": true
+  },
+  {
+    "case_id": "hl-pos-01",
+    "prediction": "candidate answer 1",
+    "reference": "incumbent answer 1",
+    "human_positive": true
+  },
+  {
+    "case_id": "hl-pos-02",
+    "prediction": "candidate answer 2",
+    "reference": "incumbent answer 2",
+    "human_positive": true
+  },
+  {
+    "case_id": "hl-pos-03",
+    "prediction": "candidate answer 3",
+    "reference": "incumbent answer 3",
+    "human_positive": true
+  },
+  {
+    "case_id": "hl-pos-04",
+    "prediction": "candidate answer 4",
+    "reference": "incumbent answer 4",
+    "human_positive": true
+  },
+  {
+    "case_id": "hl-pos-05",
+    "prediction": "candidate answer 5",
+    "reference": "incumbent answer 5",
+    "human_positive": true
+  },
+  {
+    "case_id": "hl-pos-06",
+    "prediction": "candidate answer 6",
+    "reference": "incumbent answer 6",
+    "human_positive": true
+  },
+  {
+    "case_id": "hl-pos-07",
+    "prediction": "candidate answer 7",
+    "reference": "incumbent answer 7",
+    "human_positive": true
+  },
+  {
+    "case_id": "hl-pos-08",
+    "prediction": "candidate answer 8",
+    "reference": "incumbent answer 8",
+    "human_positive": true
+  },
+  {
+    "case_id": "hl-pos-09",
+    "prediction": "candidate answer 9",
+    "reference": "incumbent answer 9",
+    "human_positive": true
+  },
+  {
+    "case_id": "hl-pos-10",
+    "prediction": "candidate answer 10",
+    "reference": "incumbent answer 10",
+    "human_positive": true
+  },
+  {
+    "case_id": "hl-pos-11",
+    "prediction": "candidate answer 11",
+    "reference": "incumbent answer 11",
+    "human_positive": true
+  },
+  {
+    "case_id": "hl-pos-12",
+    "prediction": "candidate answer 12",
+    "reference": "incumbent answer 12",
+    "human_positive": true
+  },
+  {
+    "case_id": "hl-pos-13",
+    "prediction": "candidate answer 13",
+    "reference": "incumbent answer 13",
+    "human_positive": true
+  },
+  {
+    "case_id": "hl-pos-14",
+    "prediction": "candidate answer 14",
+    "reference": "incumbent answer 14",
+    "human_positive": true
+  },
+  {
+    "case_id": "hl-pos-15",
+    "prediction": "candidate answer 15",
+    "reference": "incumbent answer 15",
+    "human_positive": true
+  },
+  {
+    "case_id": "hl-pos-16",
+    "prediction": "candidate answer 16",
+    "reference": "incumbent answer 16",
+    "human_positive": true
+  },
+  {
+    "case_id": "hl-pos-17",
+    "prediction": "candidate answer 17",
+    "reference": "incumbent answer 17",
+    "human_positive": true
+  },
+  {
+    "case_id": "hl-pos-18",
+    "prediction": "candidate answer 18",
+    "reference": "incumbent answer 18",
+    "human_positive": true
+  },
+  {
+    "case_id": "hl-pos-19",
+    "prediction": "candidate answer 19",
+    "reference": "incumbent answer 19",
+    "human_positive": true
+  },
+  {
+    "case_id": "hl-pos-20",
+    "prediction": "candidate answer 20",
+    "reference": "incumbent answer 20",
+    "human_positive": true
+  },
+  {
+    "case_id": "hl-pos-21",
+    "prediction": "candidate answer 21",
+    "reference": "incumbent answer 21",
+    "human_positive": true
+  },
+  {
+    "case_id": "hl-pos-22",
+    "prediction": "candidate answer 22",
+    "reference": "incumbent answer 22",
+    "human_positive": true
+  },
+  {
+    "case_id": "hl-pos-23",
+    "prediction": "candidate answer 23",
+    "reference": "incumbent answer 23",
+    "human_positive": true
+  },
+  {
+    "case_id": "hl-pos-24",
+    "prediction": "candidate answer 24",
+    "reference": "incumbent answer 24",
+    "human_positive": true
+  },
+  {
+    "case_id": "hl-pos-25",
+    "prediction": "candidate answer 25",
+    "reference": "incumbent answer 25",
+    "human_positive": true
+  },
+  {
+    "case_id": "hl-pos-26",
+    "prediction": "candidate answer 26",
+    "reference": "incumbent answer 26",
+    "human_positive": true
+  },
+  {
+    "case_id": "hl-pos-27",
+    "prediction": "candidate answer 27",
+    "reference": "incumbent answer 27",
+    "human_positive": true
+  },
+  {
+    "case_id": "hl-pos-28",
+    "prediction": "candidate answer 28",
+    "reference": "incumbent answer 28",
+    "human_positive": true
+  },
+  {
+    "case_id": "hl-pos-29",
+    "prediction": "candidate answer 29",
+    "reference": "incumbent answer 29",
+    "human_positive": true
+  },
+  {
+    "case_id": "hl-neg-00",
+    "prediction": "wrong answer 0",
+    "reference": "incumbent answer 0",
+    "human_positive": false
+  },
+  {
+    "case_id": "hl-neg-01",
+    "prediction": "wrong answer 1",
+    "reference": "incumbent answer 1",
+    "human_positive": false
+  },
+  {
+    "case_id": "hl-neg-02",
+    "prediction": "wrong answer 2",
+    "reference": "incumbent answer 2",
+    "human_positive": false
+  },
+  {
+    "case_id": "hl-neg-03",
+    "prediction": "wrong answer 3",
+    "reference": "incumbent answer 3",
+    "human_positive": false
+  },
+  {
+    "case_id": "hl-neg-04",
+    "prediction": "wrong answer 4",
+    "reference": "incumbent answer 4",
+    "human_positive": false
+  },
+  {
+    "case_id": "hl-neg-05",
+    "prediction": "wrong answer 5",
+    "reference": "incumbent answer 5",
+    "human_positive": false
+  },
+  {
+    "case_id": "hl-neg-06",
+    "prediction": "wrong answer 6",
+    "reference": "incumbent answer 6",
+    "human_positive": false
+  },
+  {
+    "case_id": "hl-neg-07",
+    "prediction": "wrong answer 7",
+    "reference": "incumbent answer 7",
+    "human_positive": false
+  },
+  {
+    "case_id": "hl-neg-08",
+    "prediction": "wrong answer 8",
+    "reference": "incumbent answer 8",
+    "human_positive": false
+  },
+  {
+    "case_id": "hl-neg-09",
+    "prediction": "wrong answer 9",
+    "reference": "incumbent answer 9",
+    "human_positive": false
+  },
+  {
+    "case_id": "hl-neg-10",
+    "prediction": "wrong answer 10",
+    "reference": "incumbent answer 10",
+    "human_positive": false
+  },
+  {
+    "case_id": "hl-neg-11",
+    "prediction": "wrong answer 11",
+    "reference": "incumbent answer 11",
+    "human_positive": false
+  },
+  {
+    "case_id": "hl-neg-12",
+    "prediction": "wrong answer 12",
+    "reference": "incumbent answer 12",
+    "human_positive": false
+  },
+  {
+    "case_id": "hl-neg-13",
+    "prediction": "wrong answer 13",
+    "reference": "incumbent answer 13",
+    "human_positive": false
+  },
+  {
+    "case_id": "hl-neg-14",
+    "prediction": "wrong answer 14",
+    "reference": "incumbent answer 14",
+    "human_positive": false
+  },
+  {
+    "case_id": "hl-neg-15",
+    "prediction": "wrong answer 15",
+    "reference": "incumbent answer 15",
+    "human_positive": false
+  },
+  {
+    "case_id": "hl-neg-16",
+    "prediction": "wrong answer 16",
+    "reference": "incumbent answer 16",
+    "human_positive": false
+  },
+  {
+    "case_id": "hl-neg-17",
+    "prediction": "wrong answer 17",
+    "reference": "incumbent answer 17",
+    "human_positive": false
+  },
+  {
+    "case_id": "hl-neg-18",
+    "prediction": "wrong answer 18",
+    "reference": "incumbent answer 18",
+    "human_positive": false
+  },
+  {
+    "case_id": "hl-neg-19",
+    "prediction": "wrong answer 19",
+    "reference": "incumbent answer 19",
+    "human_positive": false
+  },
+  {
+    "case_id": "hl-neg-20",
+    "prediction": "wrong answer 20",
+    "reference": "incumbent answer 20",
+    "human_positive": false
+  },
+  {
+    "case_id": "hl-neg-21",
+    "prediction": "wrong answer 21",
+    "reference": "incumbent answer 21",
+    "human_positive": false
+  },
+  {
+    "case_id": "hl-neg-22",
+    "prediction": "wrong answer 22",
+    "reference": "incumbent answer 22",
+    "human_positive": false
+  },
+  {
+    "case_id": "hl-neg-23",
+    "prediction": "wrong answer 23",
+    "reference": "incumbent answer 23",
+    "human_positive": false
+  },
+  {
+    "case_id": "hl-neg-24",
+    "prediction": "wrong answer 24",
+    "reference": "incumbent answer 24",
+    "human_positive": false
+  },
+  {
+    "case_id": "hl-neg-25",
+    "prediction": "wrong answer 25",
+    "reference": "incumbent answer 25",
+    "human_positive": false
+  },
+  {
+    "case_id": "hl-neg-26",
+    "prediction": "wrong answer 26",
+    "reference": "incumbent answer 26",
+    "human_positive": false
+  },
+  {
+    "case_id": "hl-neg-27",
+    "prediction": "wrong answer 27",
+    "reference": "incumbent answer 27",
+    "human_positive": false
+  },
+  {
+    "case_id": "hl-neg-28",
+    "prediction": "wrong answer 28",
+    "reference": "incumbent answer 28",
+    "human_positive": false
+  },
+  {
+    "case_id": "hl-neg-29",
+    "prediction": "wrong answer 29",
+    "reference": "incumbent answer 29",
+    "human_positive": false
+  }
+]

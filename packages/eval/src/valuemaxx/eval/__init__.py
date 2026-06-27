@@ -15,6 +15,15 @@ injected Protocols (``ProviderClient``, ``LlmJudge``, ``Embedder``, ``Clock``,
 
 from __future__ import annotations
 
+from valuemaxx.eval.dataset import (
+    JudgeValidationResult,
+    TraceRecord,
+    build_dataset,
+    load_committed_human_labels,
+    reference_output_of,
+    stratum_of,
+    validate_judge,
+)
 from valuemaxx.eval.discover import (
     detect_task_type,
     discover_clusters,
@@ -53,13 +62,20 @@ __all__ = [
     "HumanLabel",
     "JudgeNotValidatedError",
     "JudgeValidation",
+    "JudgeValidationResult",
     "ReconstructibilityValidator",
     "Stratum",
     "TaskType",
+    "TraceRecord",
+    "build_dataset",
     "detect_task_type",
     "discover_clusters",
     "is_reconstructible_task",
+    "load_committed_human_labels",
+    "reference_output_of",
     "skeleton_hash",
+    "stratum_of",
     "templatize",
     "tool_set_fingerprint",
+    "validate_judge",
 ]
