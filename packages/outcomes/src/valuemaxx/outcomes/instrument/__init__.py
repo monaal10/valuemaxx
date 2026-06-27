@@ -11,8 +11,20 @@ internal error is logged and dropped, never propagated into the instrumented hos
 from __future__ import annotations
 
 from valuemaxx.outcomes.instrument.emitter import EmitRequest, OutcomeEmitter
+from valuemaxx.outcomes.instrument.functions import (
+    FunctionInstallReport,
+    install_function_rules,
+)
+from valuemaxx.outcomes.instrument.injection import (
+    InjectionReport,
+    install_run_id_injection,
+)
 
 __all__ = [
     "EmitRequest",
+    "FunctionInstallReport",
+    "InjectionReport",
     "OutcomeEmitter",
+    "install_function_rules",
+    "install_run_id_injection",
 ]
