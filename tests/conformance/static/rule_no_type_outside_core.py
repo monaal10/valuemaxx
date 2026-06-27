@@ -25,6 +25,21 @@ _LOGIC_PACKAGES = (
     "store",
 )
 
+# The fixed config-AST allowlist (G1-EXIT item 7): the config-shaped / capability-I/O
+# pydantic models logic packages legitimately define are NOT domain types — they
+# parse config (outcomes.yaml/shared_costs.yaml) or shape one capability's request/
+# response. The DOMAIN types they carry still live only in valuemaxx.core; these
+# files just describe the wire/config envelope. Allowlisted by file basename so the
+# rule doesn't false-positive on them. Any pydantic model OUTSIDE both core and this
+# allowlist remains a blocker.
+_CONFIG_AST_ALLOWLIST: frozenset[str] = frozenset(
+    {
+        "capabilities.py",  # capability I/O contracts (request/response envelopes)
+        "config.py",  # SDK/package config models
+        "schemas.py",  # outcomes.yaml / shared_costs.yaml parse schemas
+    }
+)
+
 
 def _flags(subject: object) -> bool:
     assert isinstance(subject, str)
@@ -41,10 +56,16 @@ def _foundation_subject() -> object:
 
 
 def foundation_has_no_stray_domain_models() -> list[str]:
-    """Scan every logic package src; return files that illegally declare a model."""
+    """Scan every logic package src; return files that illegally declare a model.
+
+    Files on the fixed config-AST allowlist (capability-I/O / config envelopes) are
+    permitted to define pydantic models and are skipped (G1-EXIT item 7).
+    """
     offenders: list[str] = []
     for pkg in _LOGIC_PACKAGES:
         for py in package_src(pkg).rglob("*.py"):
+            if py.name in _CONFIG_AST_ALLOWLIST:
+                continue
             if defines_pydantic_model(py.read_text()):
                 offenders.append(str(py))
     return offenders
