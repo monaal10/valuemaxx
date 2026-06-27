@@ -66,6 +66,37 @@ _EXPECTED_PUBLIC = {
     "ReconciliationRepository",
     "AllocationRepository",
     "RawRecordRepository",
+    # G1: context propagation + injected Protocols
+    "active_run_id",
+    "run_in_context",
+    "Clock",
+    "UuidGen",
+    "Rng",
+    "Embedder",
+    "ProviderClient",
+    "LlmJudge",
+    # G1: eval models + repos
+    "ProviderKeyRef",
+    "CostGatePhase",
+    "CostEstimate",
+    "EvalCase",
+    "EvalDataset",
+    "ModelCandidate",
+    "EvalRecommendation",
+    "EvalDatasetRepository",
+    "EvalRecommendationRepository",
+    # G1: recon/alloc extensions
+    "ProvenanceBreakdown",
+    "DriftAlert",
+    "AllocatedRollup",
+    # G1: pricing
+    "PriceCard",
+    "PriceBook",
+    # G1: webhook + C3 protocols + review queue
+    "WebhookResult",
+    "OutcomesPredicateValidator",
+    "SignalClassMapper",
+    "ReviewQueue",
 }
 
 

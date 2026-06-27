@@ -14,8 +14,11 @@ from __future__ import annotations
 from decimal import Decimal
 
 from pydantic import model_validator
-from valuemaxx.core.base import StrictModel
+from valuemaxx.core.base import StrictModel, TenantScopedModel
 from valuemaxx.core.enums import AllocationTier, ConfidenceLabel, Provenance
+from valuemaxx.core.ids import RunId
+from valuemaxx.core.reconciliation import ProvenanceBreakdown
+from valuemaxx.core.rollup import RollupConfidence
 
 
 class AllocatedLine(StrictModel):
@@ -45,4 +48,19 @@ class AllocatedLine(StrictModel):
         return self
 
 
-__all__ = ["AllocatedLine"]
+class AllocatedRollup(TenantScopedModel):
+    """A per-run allocation rollup carrying the honesty anchor + H7 confidence (§5.4).
+
+    ``pct_unallocated`` is the honesty anchor — when shared-cost inputs are absent
+    we publish Tier-1 (measured) only and surface this prominently, never reporting
+    a partial number as complete. ``confidence`` carries both H7 fields.
+    """
+
+    run_id: RunId
+    lines: tuple[AllocatedLine, ...]
+    pct_unallocated: Decimal
+    confidence: RollupConfidence
+    provenance_breakdown: ProvenanceBreakdown
+
+
+__all__ = ["AllocatedLine", "AllocatedRollup"]

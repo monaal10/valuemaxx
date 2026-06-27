@@ -27,11 +27,12 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from datetime import datetime
 
+    from valuemaxx.core.allocation import AllocatedRollup
     from valuemaxx.core.attribution import AttributionResult
     from valuemaxx.core.cost import CostEvent
     from valuemaxx.core.ids import OutcomeEventId, RunId, TenantId
     from valuemaxx.core.outcome import OutcomeEvent
-    from valuemaxx.core.reconciliation import ReconciliationRecord
+    from valuemaxx.core.reconciliation import DriftAlert, ReconciliationRecord
     from valuemaxx.core.run import Run
 
 
@@ -120,6 +121,10 @@ class ReconciliationRepository(ABC):
     ) -> Sequence[ReconciliationRecord]:
         """List all reconciliation records for a match key."""
 
+    @abstractmethod
+    def list_drift_alerts(self, tenant_id: TenantId) -> Sequence[DriftAlert]:
+        """List the open >10% drift alerts for the tenant (§5.3)."""
+
 
 class AllocationRepository(ABC):
     """Persistence for allocated-line records keyed by run."""
@@ -136,6 +141,10 @@ class AllocationRepository(ABC):
     @abstractmethod
     def list_for_run(self, tenant_id: TenantId, run_id: RunId) -> Sequence[object]:
         """List the allocation lines for a run."""
+
+    @abstractmethod
+    def get_rollup(self, tenant_id: TenantId, run_id: RunId) -> AllocatedRollup | None:
+        """Fetch the allocation rollup for a run (carries pct_unallocated + H7), or None."""
 
 
 class RawRecordRepository(ABC):
@@ -163,6 +172,18 @@ class RawRecordRepository(ABC):
         """
 
 
+class ReviewQueue(ABC):
+    """The review queue for candidate/likely bindings (advisory, never billing-grade)."""
+
+    @abstractmethod
+    def enqueue(self, tenant_id: TenantId, item: object) -> None:
+        """Enqueue a review item (a candidate/likely binding awaiting human review)."""
+
+    @abstractmethod
+    def list_pending(self, tenant_id: TenantId) -> Sequence[object]:
+        """List the pending review items for the tenant."""
+
+
 __all__ = [
     "AllocationRepository",
     "AttributionResultRepository",
@@ -170,5 +191,6 @@ __all__ = [
     "OutcomeEventRepository",
     "RawRecordRepository",
     "ReconciliationRepository",
+    "ReviewQueue",
     "RunRepository",
 ]

@@ -11,9 +11,19 @@ and the JSON-Schema/registry projection have one authoritative list.
 
 from __future__ import annotations
 
-from valuemaxx.core.allocation import AllocatedLine
+from valuemaxx.core.allocation import AllocatedLine, AllocatedRollup
 from valuemaxx.core.attribution import AttributionCandidate, AttributionResult
 from valuemaxx.core.base import StrictModel, TenantScopedModel
+from valuemaxx.core.context import (
+    Clock,
+    Embedder,
+    LlmJudge,
+    ProviderClient,
+    Rng,
+    UuidGen,
+    active_run_id,
+    run_in_context,
+)
 from valuemaxx.core.cost import CostEvent
 from valuemaxx.core.enums import (
     AllocationTier,
@@ -35,6 +45,17 @@ from valuemaxx.core.errors import (
     ProvenanceWarning,
     TenantScopeError,
 )
+from valuemaxx.core.eval import (
+    CostEstimate,
+    CostGatePhase,
+    EvalCase,
+    EvalDataset,
+    EvalDatasetRepository,
+    EvalRecommendation,
+    EvalRecommendationRepository,
+    ModelCandidate,
+    ProviderKeyRef,
+)
 from valuemaxx.core.ids import (
     AttemptId,
     AttributionId,
@@ -47,8 +68,13 @@ from valuemaxx.core.ids import (
 )
 from valuemaxx.core.metrics import MetricDefinition
 from valuemaxx.core.outcome import OutcomeBinding, OutcomeEvent
+from valuemaxx.core.pricing import PriceBook, PriceCard
 from valuemaxx.core.provenance import ProvenanceLabel
-from valuemaxx.core.reconciliation import ReconciliationRecord
+from valuemaxx.core.reconciliation import (
+    DriftAlert,
+    ProvenanceBreakdown,
+    ReconciliationRecord,
+)
 from valuemaxx.core.repositories import (
     AllocationRepository,
     AttributionResultRepository,
@@ -56,14 +82,21 @@ from valuemaxx.core.repositories import (
     OutcomeEventRepository,
     RawRecordRepository,
     ReconciliationRepository,
+    ReviewQueue,
     RunRepository,
 )
 from valuemaxx.core.rollup import RollupConfidence, RunCostRollup, compose_label
 from valuemaxx.core.run import Run
 from valuemaxx.core.tokens import TokenVector
+from valuemaxx.core.webhook import (
+    OutcomesPredicateValidator,
+    SignalClassMapper,
+    WebhookResult,
+)
 
 __all__ = [
     "AllocatedLine",
+    "AllocatedRollup",
     "AllocationRepository",
     "AllocationTier",
     "AtmError",
@@ -76,38 +109,63 @@ __all__ = [
     "BindingTier",
     "CaptureError",
     "CaptureGranularity",
+    "Clock",
     "ConfidenceLabel",
     "CorrelationId",
+    "CostEstimate",
     "CostEvent",
     "CostEventId",
     "CostEventRepository",
+    "CostGatePhase",
+    "DriftAlert",
+    "Embedder",
+    "EvalCase",
+    "EvalDataset",
+    "EvalDatasetRepository",
     "EvalGrade",
+    "EvalRecommendation",
+    "EvalRecommendationRepository",
     "HonestyInvariantError",
     "LabelSource",
+    "LlmJudge",
     "MetricDefinition",
+    "ModelCandidate",
     "OutcomeBinding",
     "OutcomeEvent",
     "OutcomeEventId",
     "OutcomeEventRepository",
+    "OutcomesPredicateValidator",
+    "PriceBook",
+    "PriceCard",
     "Provenance",
+    "ProvenanceBreakdown",
     "ProvenanceLabel",
     "ProvenanceWarning",
+    "ProviderClient",
+    "ProviderKeyRef",
     "RawRecordRepository",
     "ReconciliationRecord",
     "ReconciliationRecordId",
     "ReconciliationRepository",
     "ReconciliationState",
+    "ReviewQueue",
+    "Rng",
     "RollupConfidence",
     "Run",
     "RunCostRollup",
     "RunId",
     "RunRepository",
     "SignalClass",
+    "SignalClassMapper",
     "StrictModel",
     "TenantId",
     "TenantScopeError",
     "TenantScopedModel",
     "TokenClass",
     "TokenVector",
+    "UuidGen",
+    "WebhookResult",
+    "active_run_id",
     "compose_label",
+    "run_in_context",
 ]
