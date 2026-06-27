@@ -71,9 +71,7 @@ def register_modules(registry: Registry, modules: list[str]) -> None:
             if cap.name in seen:
                 if cap.name in KNOWN_DUPLICATE_NAMES:
                     continue
-                raise DuplicateCapabilityError(
-                    f"capability {cap.name!r} is already registered"
-                )
+                raise DuplicateCapabilityError(f"capability {cap.name!r} is already registered")
             registry.register(cap)
             seen.add(cap.name)
 
