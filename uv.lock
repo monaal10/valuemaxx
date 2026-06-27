@@ -1278,12 +1278,14 @@ name = "valuemaxx-attribution"
 version = "0.0.0"
 source = { editable = "packages/attribution" }
 dependencies = [
+    { name = "typing-extensions" },
     { name = "valuemaxx-capabilities" },
     { name = "valuemaxx-core" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "typing-extensions", specifier = ">=4.12" },
     { name = "valuemaxx-capabilities", editable = "packages/capabilities" },
     { name = "valuemaxx-core", editable = "packages/core" },
 ]

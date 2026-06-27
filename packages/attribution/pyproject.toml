@@ -7,6 +7,10 @@ license = "Apache-2.0"
 dependencies = [
     "valuemaxx-core",
     "valuemaxx-capabilities",
+    # ``typing_extensions.override`` is recognised by the type checker at our
+    # 3.11 target (``typing.override`` is 3.12+); used to mark cascade resolver
+    # overrides so ``reportImplicitOverride`` stays satisfied.
+    "typing-extensions>=4.12",
 ]
 
 [build-system]
