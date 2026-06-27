@@ -27,13 +27,16 @@ ABC; an in-memory stub serves this package's own tests).
 
 from __future__ import annotations
 
-from valuemaxx.outcomes.capabilities import register
-from valuemaxx.outcomes.errors import (
+# Intra-package re-exports use relative imports: a populated logic-package __init__ must
+# not absolute-self-import (the dependency_direction rule treats outcomes/__init__.py as
+# the canary for "no logic->logic import"; a relative import is unambiguously in-package).
+from .capabilities import register
+from .errors import (
     OutcomeRuleError,
     OutcomeRuleSchemaError,
     PredicateValidationError,
 )
-from valuemaxx.outcomes.instrument import (
+from .instrument import (
     EmitRequest,
     FunctionInstallReport,
     InjectionReport,
@@ -41,16 +44,16 @@ from valuemaxx.outcomes.instrument import (
     install_function_rules,
     install_run_id_injection,
 )
-from valuemaxx.outcomes.loader import load_rules
-from valuemaxx.outcomes.predicate import (
+from .loader import load_rules
+from .predicate import (
     SafePredicateValidator,
     compile_expr,
     compile_predicate,
 )
-from valuemaxx.outcomes.retraction import RetractionResult, retract_outcome
-from valuemaxx.outcomes.schema import MatchSpec, OutcomeRule, RunIdInjectionSpec
-from valuemaxx.outcomes.signal import SystemSignalClassMapper
-from valuemaxx.outcomes.webhook import (
+from .retraction import RetractionResult, retract_outcome
+from .schema import MatchSpec, OutcomeRule, RunIdInjectionSpec
+from .signal import SystemSignalClassMapper
+from .webhook import (
     WebhookRequest,
     WebhookSecurity,
     WebhookSignatureError,
