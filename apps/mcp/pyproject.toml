@@ -1,12 +1,18 @@
 [project]
 name = "valuemaxx-mcp"
 version = "0.0.0"
-description = "AI Margin Intelligence — mcp surface (thin registry projection; built in G4)."
+description = "AI Margin Intelligence — MCP server (thin projection: each MCP capability -> a tool with generated inputSchema)."
 requires-python = ">=3.11"
 license = "Apache-2.0"
 dependencies = [
     "valuemaxx-core",
     "valuemaxx-capabilities",
+    "valuemaxx-agent-integrability",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
 ]
 
 [build-system]
@@ -20,3 +26,4 @@ sources = ["src"]
 [tool.uv.sources]
 valuemaxx-core = { workspace = true }
 valuemaxx-capabilities = { workspace = true }
+valuemaxx-agent-integrability = { workspace = true }
