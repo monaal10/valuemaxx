@@ -109,3 +109,13 @@ def test_drift_alert_ranks_causes() -> None:
     )
     assert alert.ranked_causes[0] == "cache_mispricing"
     assert alert.drift_pct == Decimal("14.2")
+
+
+def test_drift_alert_requires_at_least_one_cause() -> None:
+    """A DriftAlert with no ranked causes is rejected (a drift must be explainable)."""
+    with pytest.raises(ValidationError):
+        DriftAlert(
+            match_key=("anthropic", "proj-1", "claude-opus-4-8", "output", "2026-06-27"),
+            drift_pct=Decimal("14.2"),
+            ranked_causes=(),
+        )
