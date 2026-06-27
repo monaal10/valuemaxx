@@ -9,7 +9,11 @@ dependencies = [
     "valuemaxx-core",
     "valuemaxx-capabilities",
     "valuemaxx-agent-integrability",
+    "valuemaxx-onboarding",
+    "valuemaxx-server",
+    "valuemaxx",
     "typer>=0.12",
+    "uvicorn>=0.29",
 ]
 
 [project.scripts]
@@ -32,3 +36,6 @@ sources = ["src"]
 valuemaxx-core = { workspace = true }
 valuemaxx-capabilities = { workspace = true }
 valuemaxx-agent-integrability = { workspace = true }
+valuemaxx-onboarding = { workspace = true }
+valuemaxx-server = { workspace = true }
+valuemaxx = { workspace = true }

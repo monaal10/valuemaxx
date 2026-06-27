@@ -1518,9 +1518,13 @@ version = "0.0.0"
 source = { editable = "apps/cli" }
 dependencies = [
     { name = "typer" },
+    { name = "uvicorn" },
+    { name = "valuemaxx" },
     { name = "valuemaxx-agent-integrability" },
     { name = "valuemaxx-capabilities" },
     { name = "valuemaxx-core" },
+    { name = "valuemaxx-onboarding" },
+    { name = "valuemaxx-server" },
 ]
 
 [package.dev-dependencies]
@@ -1531,9 +1535,13 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "typer", specifier = ">=0.12" },
+    { name = "uvicorn", specifier = ">=0.29" },
+    { name = "valuemaxx", editable = "sdks/python" },
     { name = "valuemaxx-agent-integrability", editable = "apps/agent_integrability" },
     { name = "valuemaxx-capabilities", editable = "packages/capabilities" },
     { name = "valuemaxx-core", editable = "packages/core" },
+    { name = "valuemaxx-onboarding", editable = "packages/onboarding" },
+    { name = "valuemaxx-server", editable = "apps/server" },
 ]
 
 [package.metadata.requires-dev]
