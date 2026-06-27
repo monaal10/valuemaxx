@@ -26,6 +26,7 @@ from valuemaxx.core.ids import (
 )
 from valuemaxx.core.outcome import OutcomeBinding, OutcomeEvent
 from valuemaxx.core.provenance import ProvenanceLabel
+from valuemaxx.core.run import Run
 from valuemaxx.core.tokens import TokenVector
 from valuemaxx.server.store_bridge import StoreBridge
 
@@ -79,6 +80,17 @@ def _outcome(tenant: TenantId, *, outcome_id: str, signal: SignalClass) -> Outco
         correlation_id=None,
         source="webhook",
         raw={"amount": 100},
+    )
+
+
+def _run(tenant: TenantId, *, run_id: str, agent_name: str | None) -> Run:
+    return Run(
+        tenant_id=tenant,
+        id=RunId(run_id),
+        agent_name=agent_name,
+        started_at=_AT,
+        ended_at=None,
+        entity_keys=frozenset({("application", run_id)}),
     )
 
 
@@ -140,6 +152,27 @@ def test_outcome_event_roundtrip_through_sync_wrappers(tmp_path: Path) -> None:
         retracted = repo.get(tenant, OutcomeEventId("oe-1"))
         assert retracted is not None
         assert retracted.signal_class is SignalClass.OUTCOME_RETRACTED
+
+
+def test_run_roundtrip_through_sync_wrappers(tmp_path: Path) -> None:
+    """test_run_roundtrip_through_sync_wrappers: upsert + get + list_by_entity, tenant-scoped."""
+    tenant = _tenant()
+    with StoreBridge.open(_url(tmp_path)) as bridge:
+        repo = bridge.runs
+        repo.upsert(tenant, _run(tenant, run_id="r1", agent_name="researcher"))
+        repo.upsert(tenant, _run(tenant, run_id="r2", agent_name=None))
+
+        fetched = repo.get(tenant, RunId("r1"))
+        assert fetched is not None
+        assert fetched.agent_name == "researcher"
+
+        # a run with no agent round-trips a None agent_name (the executor buckets it).
+        agentless = repo.get(tenant, RunId("r2"))
+        assert agentless is not None
+        assert agentless.agent_name is None
+
+        by_entity = repo.list_by_entity(tenant, ("application", "r1"))
+        assert {r.id for r in by_entity} == {"r1"}
 
 
 def test_close_is_idempotent_via_explicit_call(tmp_path: Path) -> None:

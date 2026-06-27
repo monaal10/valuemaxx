@@ -14,7 +14,8 @@ projection into a running server:
    store behind synchronous repositories — then inject those repositories into the
    capability runtimes that need persistence: capture's OTLP-in (so a span lands in
    the store as a CostEvent) and the metrics executor (so ``run_metric`` reads what
-   was ingested);
+   was ingested — cost rollups by model/provider/agent and cost-per-outcome, the
+   agent dimension resolved through the run repo's ``run_id -> Run.agent_name`` join);
 4. on ASGI **shutdown**, close the bridge so the engine is disposed on its own loop.
 
 Deferring the store to startup keeps importing this module side-effect-free, so the
@@ -84,6 +85,7 @@ def _wire_runtimes(registry: Registry, bridge: StoreBridge, settings: ServerSett
         executor = MetricExecutor(
             cost_repo=bridge.cost_events,
             outcome_repo=bridge.outcome_events,
+            run_repo=bridge.runs,
         )
         bind_metrics_runtime(
             registry,

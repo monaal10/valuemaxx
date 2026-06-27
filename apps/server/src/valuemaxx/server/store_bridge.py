@@ -21,10 +21,18 @@ from typing import TYPE_CHECKING, Self
 
 from anyio.from_thread import BlockingPortal, start_blocking_portal
 from typing_extensions import override
-from valuemaxx.core.repositories import CostEventRepository, OutcomeEventRepository
+from valuemaxx.core.repositories import (
+    CostEventRepository,
+    OutcomeEventRepository,
+    RunRepository,
+)
 from valuemaxx.store.engine import create_engine, create_sessionmaker
 from valuemaxx.store.migrations_api import upgrade_to_head
-from valuemaxx.store.repositories import PgCostEventRepository, PgOutcomeEventRepository
+from valuemaxx.store.repositories import (
+    PgCostEventRepository,
+    PgOutcomeEventRepository,
+    PgRunRepository,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -36,6 +44,7 @@ if TYPE_CHECKING:
     from valuemaxx.core.cost import CostEvent
     from valuemaxx.core.ids import OutcomeEventId, RunId, TenantId
     from valuemaxx.core.outcome import OutcomeEvent
+    from valuemaxx.core.run import Run
 
 
 class StoreBridge:
@@ -61,6 +70,7 @@ class StoreBridge:
         self._sessions = sessions
         self._cost_events = PgCostEventRepository(sessions)
         self._outcome_events = PgOutcomeEventRepository(sessions)
+        self._runs = PgRunRepository(sessions)
 
     @classmethod
     def open(cls, database_url: str, *, run_migrations: bool = True) -> StoreBridge:
@@ -91,6 +101,15 @@ class StoreBridge:
     def outcome_events(self) -> SyncOutcomeEventRepository:
         """A synchronous :class:`~valuemaxx.core.repositories.OutcomeEventRepository`."""
         return SyncOutcomeEventRepository(self._portal, self._outcome_events)
+
+    @property
+    def runs(self) -> SyncRunRepository:
+        """A synchronous :class:`~valuemaxx.core.repositories.RunRepository`.
+
+        The metrics executor uses this to resolve a cost event's ``run_id`` to its
+        ``Run.agent_name`` when a metric groups cost by ``agent_name``.
+        """
+        return SyncRunRepository(self._portal, self._runs)
 
     def close(self) -> None:
         """Dispose the engine on the portal's loop, then stop the portal."""
@@ -168,4 +187,35 @@ class SyncOutcomeEventRepository(OutcomeEventRepository):
         return self._portal.call(self._repo.list_unbound, tenant_id)
 
 
-__all__ = ["StoreBridge", "SyncCostEventRepository", "SyncOutcomeEventRepository"]
+class SyncRunRepository(RunRepository):
+    """Sync facade over the async :class:`PgRunRepository`, via the portal.
+
+    Every method forwards the corresponding async repository coroutine into the
+    portal and blocks until it completes, so this satisfies the synchronous core
+    :class:`~valuemaxx.core.repositories.RunRepository` ABC the metrics executor
+    uses to resolve a run's ``agent_name`` for cost-by-agent grouping.
+    """
+
+    def __init__(self, portal: BlockingPortal, repo: PgRunRepository) -> None:
+        self._portal = portal
+        self._repo = repo
+
+    @override
+    def upsert(self, tenant_id: TenantId, run: Run) -> None:
+        self._portal.call(self._repo.upsert, tenant_id, run)
+
+    @override
+    def get(self, tenant_id: TenantId, run_id: RunId) -> Run | None:
+        return self._portal.call(self._repo.get, tenant_id, run_id)
+
+    @override
+    def list_by_entity(self, tenant_id: TenantId, entity_key: tuple[str, str]) -> Sequence[Run]:
+        return self._portal.call(self._repo.list_by_entity, tenant_id, entity_key)
+
+
+__all__ = [
+    "StoreBridge",
+    "SyncCostEventRepository",
+    "SyncOutcomeEventRepository",
+    "SyncRunRepository",
+]
