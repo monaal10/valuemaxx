@@ -21,9 +21,17 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
+from valuemaxx.core.allocation import AllocatedLine
 from valuemaxx.core.attribution import AttributionCandidate, AttributionResult
 from valuemaxx.core.cost import CostEvent
-from valuemaxx.core.enums import BindingTier, CaptureGranularity, Provenance, SignalClass
+from valuemaxx.core.enums import (
+    AllocationTier,
+    BindingTier,
+    CaptureGranularity,
+    ConfidenceLabel,
+    Provenance,
+    SignalClass,
+)
 from valuemaxx.core.ids import (
     AttemptId,
     CorrelationId,
@@ -49,12 +57,12 @@ if TYPE_CHECKING:
 # --- entity-key (de)serialisation -------------------------------------------------
 
 
-def _entity_keys_to_json(keys: frozenset[tuple[str, str]]) -> list[list[str]]:
+def entity_keys_to_json(keys: frozenset[tuple[str, str]]) -> list[list[str]]:
     """Serialise entity keys to a sorted JSON list of [type, value] pairs (deterministic)."""
     return [[k, v] for k, v in sorted(keys)]
 
 
-def _entity_keys_from_json(value: object) -> frozenset[tuple[str, str]]:
+def entity_keys_from_json(value: object) -> frozenset[tuple[str, str]]:
     """Rebuild the entity-key frozenset from its JSON list-of-pairs form."""
     items = _as_json_list(value)
     pairs: set[tuple[str, str]] = set()
@@ -81,7 +89,7 @@ def run_to_row(tenant_id: TenantId, model: Run) -> dict[str, object]:
         "agent_name": model.agent_name,
         "started_at": model.started_at,
         "ended_at": model.ended_at,
-        "entity_keys": _entity_keys_to_json(model.entity_keys),
+        "entity_keys": entity_keys_to_json(model.entity_keys),
     }
 
 
@@ -93,7 +101,7 @@ def row_to_run(row: Mapping[str, object]) -> Run:
         agent_name=_as_opt_str(row["agent_name"]),
         started_at=_as_dt(row["started_at"]),
         ended_at=_as_opt_dt(row["ended_at"]),
-        entity_keys=_entity_keys_from_json(row["entity_keys"]),
+        entity_keys=entity_keys_from_json(row["entity_keys"]),
     )
 
 
@@ -178,7 +186,7 @@ def outcome_event_to_row(tenant_id: TenantId, model: OutcomeEvent) -> dict[str, 
         "bound_run_id": b.run_id,
         "bound_tier": b.tier.value if b.tier is not None else None,
         "bound_by": b.bound_by,
-        "entity_keys": _entity_keys_to_json(model.entity_keys),
+        "entity_keys": entity_keys_to_json(model.entity_keys),
         "correlation_id": model.correlation_id,
         "source": model.source,
         "raw": dict(model.raw),
@@ -203,7 +211,7 @@ def row_to_outcome_event(row: Mapping[str, object]) -> OutcomeEvent:
             tier=BindingTier(bound_tier) if bound_tier is not None else None,
             bound_by=_as_opt_str(row["bound_by"]),
         ),
-        entity_keys=_entity_keys_from_json(row["entity_keys"]),
+        entity_keys=entity_keys_from_json(row["entity_keys"]),
         correlation_id=CorrelationId(correlation) if correlation is not None else None,
         source=_as_str(row["source"]),
         raw=raw,
@@ -257,6 +265,47 @@ def row_to_attribution_result(row: Mapping[str, object]) -> AttributionResult:
         bound_by=_as_opt_str(row["bound_by"]),
         candidates=tuple(candidates),
         review_required=_as_bool(row["review_required"]),
+    )
+
+
+# --- AllocatedLine ----------------------------------------------------------------
+
+
+def allocation_line_to_row(
+    tenant_id: TenantId, run_id: RunId, ordinal: int, line: AllocatedLine
+) -> dict[str, object]:
+    """Flatten an :class:`~valuemaxx.core.allocation.AllocatedLine` into a row dict.
+
+    The ``ordinal`` preserves line order within a run (the surrogate id is derived from
+    it), so ``list_for_run`` returns lines in their original sequence.
+    """
+    return {
+        "id": f"{run_id}#{ordinal}",
+        "tenant_id": tenant_id,
+        "run_id": run_id,
+        "ordinal": ordinal,
+        "tier": line.tier.value,
+        "label": line.label.value,
+        "amount_usd": line.amount_usd,
+        "allocation_key": line.allocation_key,
+        "confidence": line.confidence.value,
+        "sensitivity_pct": line.sensitivity_pct,
+        "rule_version": line.rule_version,
+        "quarantined": line.quarantined,
+    }
+
+
+def row_to_allocation_line(row: Mapping[str, object]) -> AllocatedLine:
+    """Rebuild an :class:`~valuemaxx.core.allocation.AllocatedLine` from a row mapping."""
+    return AllocatedLine(
+        tier=AllocationTier(_as_str(row["tier"])),
+        label=Provenance(_as_str(row["label"])),
+        amount_usd=_as_decimal(row["amount_usd"]),
+        allocation_key=_as_opt_str(row["allocation_key"]),
+        confidence=ConfidenceLabel(_as_str(row["confidence"])),
+        sensitivity_pct=_as_opt_decimal(row["sensitivity_pct"]),
+        rule_version=_as_opt_str(row["rule_version"]),
+        quarantined=_as_bool(row["quarantined"]),
     )
 
 
@@ -401,10 +450,14 @@ def _as_tenant(value: object) -> TenantId:
 
 
 __all__ = [
+    "allocation_line_to_row",
     "attribution_result_to_row",
     "cost_event_to_row",
+    "entity_keys_from_json",
+    "entity_keys_to_json",
     "outcome_event_to_row",
     "reconciliation_record_to_row",
+    "row_to_allocation_line",
     "row_to_attribution_result",
     "row_to_cost_event",
     "row_to_outcome_event",

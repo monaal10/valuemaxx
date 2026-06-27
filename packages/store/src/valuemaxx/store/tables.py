@@ -209,6 +209,18 @@ allocation_line = Table(
 )
 
 
+allocation_rollup = Table(
+    "valuemaxx_allocation_rollup",
+    metadata,
+    # one rollup per (tenant, run); the full AllocatedRollup is stored as JSON so the
+    # nested confidence (H7) + provenance_breakdown + pct_unallocated round-trip exactly.
+    Column("run_id", String(), primary_key=True),
+    _tenant_id_column(),
+    Column("payload", jsonb(), nullable=False),
+    Index("ix_valuemaxx_allocation_rollup_tenant", "tenant_id"),
+)
+
+
 raw_record = Table(
     "valuemaxx_raw_record",
     metadata,
@@ -265,6 +277,7 @@ review_queue = Table(
 
 __all__ = [
     "allocation_line",
+    "allocation_rollup",
     "attribution_result",
     "cost_event",
     "eval_dataset",
