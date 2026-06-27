@@ -1,0 +1,48 @@
+# valuemaxx — AI margin intelligence (cost-per-outcome with confidence)
+
+## capabilities
+
+- ingest_otlp_span [surfaces=API; mode=webhook_inbound]: Ingest one OTLP span as a CostEvent (universal/TS producer path).
+- list_cost_sources [surfaces=API|MCP|CLI; mode=request_response]: List the wired cost sources (authoritative spend / reconciled actuals).
+- capture_healthcheck [surfaces=API|MCP|CLI; mode=request_response]: Report capture liveness and the effective capture granularity.
+- ingest_webhook_outcome [surfaces=API; mode=webhook_inbound]: Ingest an inbound outcome webhook: verify signature + ingest key before parse, then bind run_id via T3 echo or fall back to T4 entity (labeled).
+- validate_outcome_rule [surfaces=API|MCP|CLI; mode=request_response]: Validate an outcomes.yaml document through the safe loader and AST allowlist; an eval/exec/dunder predicate is rejected, never executed.
+- list_outcome_rules [surfaces=API|MCP|CLI; mode=request_response]: Summarize the rules declared in an outcomes.yaml document.
+- bind_outcome [surfaces=API|MCP|CLI; mode=request_response]: Bind an outcome event to the agent run that produced it via the binding cascade (exact->deterministic->candidate->likely), returning the tier-labeled attribution result.
+- list_review_queue [surfaces=API|MCP|CLI; mode=request_response]: Return the pending review attribution result for the given (tenant-scoped) outcome — a candidate/likely/unbound binding awaiting human confirmation. Advisory, never billing-grade.
+- reconcile_day [surfaces=API|MCP|CLI; mode=request_response]: Reconcile one match key's per-request estimates against the authoritative billed total: prorate so the reconciled values sum exactly to the invoice, append an additive reconciliation record (never an update to the estimate), and surface any >10% drift.
+- cost_breakdown [surfaces=API|MCP|CLI; mode=request_response]: Project a mixed reconciliation-state cost window into the honest reconciled / provisional / estimate_only breakdown, never collapsing an estimate into a billed number.
+- allocated_cost_rollup [surfaces=API|MCP|CLI; mode=request_response]: Allocate one run's fully-loaded cost across the three tiers (direct/measured, shared-proportional by declared key, fixed overhead with idle GPU quarantined beside the unit cost). Returns pct_unallocated and both H7 confidence fields; never smears idle capacity into the unit cost.
+- run_metric [surfaces=API|MCP|CLI; mode=request_response]: Validate, compile, and run a user-defined metric (a typed allowlist DSL: filter -> outcome -> join -> measure), returning a result whose every cell carries the conservative confidence (minimum_tier + distribution) and excludes candidate/likely and retracted outcomes from the billing-grade denominator.
+- discover_agents [surfaces=API|MCP|CLI; mode=request_response]: Cluster captured LLM calls into agent/prompt clusters via the deterministic group-by backbone + Drain skeletons. Every cluster is unconfirmed (human-confirm is onboarding).
+- run_eval_funnel [surfaces=API|MCP|CLI; mode=async_job]: Run the full eval funnel (discover->dataset->grade->search->cost-gate->recommend) for one candidate against the incumbent. Long-running: returns a job id to poll. Never auto-switches.
+- get_recommendation [surfaces=API|MCP|CLI|NOTIFY; mode=request_response]: Return the latest eval recommendation for an incumbent model (parity, confidence grade, label source) within the tenant scope. Aggregate-only, safe for NOTIFY digests.
+- approve_gate [surfaces=API|MCP|CLI; mode=request_response]: Record a human cost-gate approval for an eval phase (smoke=phase 1, confirmation=phase 2). The estimate is the consent; phase 2 is only reachable after phase 1 is approved.
+- scan_codebase [surfaces=API|MCP|CLI; mode=request_response]: Read-only AST scan of a codebase for run boundaries and outcome sites.
+- suggest_attribution_rule [surfaces=API|MCP|CLI|NOTIFY; mode=request_response]: Draft an UNCONFIRMED attribution rule from a natural-language request.
+- dry_run_outcomes [surfaces=API|MCP|CLI|NOTIFY; mode=async_job]: Preview cost-per-outcome for a proposed outcome (carries H7 confidence).
+- propose_onboarding_diff [surfaces=API|MCP|CLI; mode=request_response]: Propose candidate outcome rules + a hunks-only reviewable diff.
+- scaffold_outcome_rule [surfaces=API|MCP|CLI; mode=request_response]: Draft an outcomes.yaml rule from a description. Returns an UNCONFIRMED candidate (binding tier candidate) a human confirms; never auto-applied.
+- validate_init [surfaces=API|MCP|CLI; mode=request_response]: Validate that an SDK init snippet calls valuemaxx.init().
+
+## instructions (read before calling any capability)
+
+valuemaxx measures cost-per-outcome WITH CONFIDENCE. The three honesty axes are
+system-owned and MUST NOT be set or guessed by an agent or user:
+
+- Binding tier (exact | deterministic | candidate | likely) is SYSTEM-OWNED. Never
+  present an inferred match as exact. candidate/likely are advisory and never
+  billing-grade.
+- signal_class (action_attempted | outcome_confirmed | outcome_retracted) is
+  SYSTEM-MAPPED from the outcome source. A successful tool call is action_attempted
+  unless the result is authoritative; never write signal_class yourself.
+- Cost provenance (measured | estimated | allocated | provider_reconciled |
+  manual_reconciled) is system-owned; an estimate is never rendered as billed.
+
+Every rollup carries minimum_tier + confidence_distribution — never collapse them
+into a bare number.
+
+To wire an attribution rule, call `suggest_attribution_rule`: it returns an
+UNCONFIRMED candidate for a human to confirm. Do not hand-write or auto-apply a rule.
+To check an outcomes.yaml, call `validate_outcome_rule`. To preview a draft, call
+`scaffold_outcome_rule` (also returns an unconfirmed draft).
