@@ -1,9 +1,11 @@
-"""no_tiktoken_for_cost — tiktoken is banned in cost paths (foundation-green).
+"""no_tiktoken_for_cost — tiktoken is banned in cost paths (green; foundation + CAPTURE).
 
 tiktoken undercounts Claude (~12%), so it must never be imported for cost. The
 ruff banned-api enforces this repo-wide; this conformance rule is the AST backstop.
 ``flags_violation`` inspects a source string; the negative fixture imports tiktoken;
-the foundation subject is a real core source.
+the foundation subject is the real capture cost-math path (``valuemaxx.capture``'s
+``pricing.py``). ``foundation_tiktoken_imports`` scans EVERY package source, so the
+capture side is covered by the same repo-wide scan.
 """
 
 from __future__ import annotations
@@ -22,7 +24,8 @@ def _negative_fixture() -> object:
 
 
 def _foundation_subject() -> object:
-    return (package_src("core") / "tokens.py").read_text()
+    # the real capture cost-math path: it must never import tiktoken for cost.
+    return (package_src("capture") / "pricing.py").read_text()
 
 
 def foundation_tiktoken_imports() -> list[str]:
@@ -40,7 +43,7 @@ RULE = Rule(
     name="no_tiktoken_for_cost",
     kind=RuleKind.STATIC,
     green_now=True,
-    owner_task="foundation",  # final owners CAPTURE, EVAL; foundation already clean
+    owner_task="CAPTURE",  # capture cost-math path is the cost owner; foundation already clean
     flags_violation=_flags,
     negative_fixture=_negative_fixture,
     foundation_subject=_foundation_subject,
