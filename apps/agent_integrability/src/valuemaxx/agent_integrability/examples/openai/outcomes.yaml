@@ -1,0 +1,13 @@
+# valuemaxx outcomes.yaml — OpenAI example.
+# One outcome: a Stripe payment succeeds (confirmed via an inbound webhook), with
+# run_id injection so the outcome binds deterministically back to the run.
+outcomes:
+  - name: payment_succeeded
+    match: { webhook: stripe, event: "payment_intent.succeeded" }
+    bind: { entity_key: "data.object.metadata.run_id" }
+    signal: outcome_confirmed
+    run_id_injection:
+      sdk_call: "stripe.PaymentIntent.create"
+      inject_into: "metadata.run_id"
+      webhook_event: "payment_intent.succeeded"
+      extract_from: "data.object.metadata.run_id"

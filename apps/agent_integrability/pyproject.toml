@@ -1,0 +1,48 @@
+[project]
+name = "valuemaxx-agent-integrability"
+version = "0.0.0"
+classifiers = ["Private :: Do Not Upload"]
+description = "AI Margin Intelligence — agent integration affordances (llms.txt, AGENTS.md, Skill, scaffold/validate tools, canonical discovery)."
+requires-python = ">=3.11"
+license = "Apache-2.0"
+dependencies = [
+    "valuemaxx-core",
+    "valuemaxx-capabilities",
+    "valuemaxx-capture",
+    "valuemaxx-outcomes",
+    "valuemaxx-attribution",
+    "valuemaxx-reconciliation",
+    "valuemaxx-allocation",
+    "valuemaxx-metrics",
+    "valuemaxx-eval",
+    "valuemaxx-onboarding",
+    "valuemaxx-store",
+    "pyyaml>=6.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "types-pyyaml>=6.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+only-include = ["src/valuemaxx/agent_integrability"]
+sources = ["src"]
+
+[tool.uv.sources]
+valuemaxx-core = { workspace = true }
+valuemaxx-capabilities = { workspace = true }
+valuemaxx-capture = { workspace = true }
+valuemaxx-outcomes = { workspace = true }
+valuemaxx-attribution = { workspace = true }
+valuemaxx-reconciliation = { workspace = true }
+valuemaxx-allocation = { workspace = true }
+valuemaxx-metrics = { workspace = true }
+valuemaxx-eval = { workspace = true }
+valuemaxx-onboarding = { workspace = true }
+valuemaxx-store = { workspace = true }

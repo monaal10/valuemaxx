@@ -10,6 +10,7 @@ select = [
     "UP",               # pyupgrade
     "B",                # bugbear
     "A",                # builtins shadowing
+    "ANN",              # flake8-annotations — forbid Any on public signatures (plan §F0-TOOLING)
     "C4",               # comprehensions
     "SIM",              # simplify
     "TID",              # tidy imports
@@ -28,8 +29,21 @@ ignore = [
 [lint.flake8-tidy-imports.banned-api]
 "tiktoken".msg = "tiktoken undercounts Claude; never use it for cost. See AGENTS.md §5b (no_tiktoken_for_cost)."
 
+# pydantic resolves field annotations at runtime, so imports used only as model
+# field types must NOT be hoisted into a TYPE_CHECKING block (that breaks
+# validation). Tell ruff that StrictModel/TenantScopedModel/BaseModel subclasses
+# are runtime-evaluated so TC001/TC003 don't fight the framework.
+[lint.flake8-type-checking]
+runtime-evaluated-base-classes = [
+    "pydantic.BaseModel",
+    "valuemaxx.core.base.StrictModel",
+    "valuemaxx.core.base.TenantScopedModel",
+]
+
 [lint.per-file-ignores]
-"tests/**" = ["S101"]  # asserts allowed in tests
+# Tests: asserts are the point; annotating every fixture return adds no safety.
+"**/tests/**" = ["S101", "ANN201", "ANN001"]
+"tests/**" = ["S101", "ANN201", "ANN001"]
 
 [format]
 quote-style = "double"

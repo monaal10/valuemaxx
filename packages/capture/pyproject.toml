@@ -1,0 +1,38 @@
+[project]
+name = "valuemaxx-capture"
+version = "0.0.0"
+classifiers = ["Private :: Do Not Upload"]
+description = "AI Margin Intelligence — capture logic package: fail-open instrumentation, token/cost math, instance-scoped transport patch, streaming terminal-value capture, OTLP wire, gateway sources."
+requires-python = ">=3.11"
+license = "Apache-2.0"
+dependencies = [
+    "valuemaxx-core",
+    "valuemaxx-capabilities",
+    # wrapt is the instance-scoped patching primitive (H1): we wrap the INJECTED
+    # client's own transport (client._client.send), never a module/class-level hook.
+    "wrapt>=1.16",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+only-include = ["src/valuemaxx/capture"]
+sources = ["src"]
+
+[tool.uv.sources]
+valuemaxx-core = { workspace = true }
+valuemaxx-capabilities = { workspace = true }
+
+[dependency-groups]
+# httpx is a TEST-ONLY dependency: the headline H1 test exercises a REAL
+# httpx.Client to prove an unrelated client in the same process is untouched.
+# capture takes no runtime dependency on httpx/openai/anthropic — it wraps
+# whatever client instance is injected.
+dev = [
+    "httpx>=0.27",
+    # typing_extensions backports @override so pyright (pinned to py311) recognises
+    # the override decorator on test-fake repository subclasses.
+    "typing-extensions>=4.12",
+]

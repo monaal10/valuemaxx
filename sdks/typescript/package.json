@@ -1,0 +1,65 @@
+{
+  "name": "valuemaxx",
+  "version": "0.0.0",
+  "description": "AI Margin Intelligence — one-line, fail-open OTel instrumentation that captures correct, per-attempt LLM cost for the OpenAI / Anthropic Node clients and the Vercel AI SDK.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . && prettier --check .",
+    "lint:fix": "eslint . --fix && prettier --write .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/core": "^2.0.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.219.0",
+    "@opentelemetry/resources": "^2.0.0",
+    "@opentelemetry/sdk-trace-base": "^2.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.0",
+    "@types/node": "^22.0.0",
+    "eslint": "^10.6.0",
+    "prettier": "^3.9.0",
+    "tsup": "^8.5.0",
+    "typescript": "^6.0.0",
+    "typescript-eslint": "^8.62.0",
+    "vitest": "^4.0.0"
+  },
+  "keywords": [
+    "opentelemetry",
+    "otel",
+    "llm",
+    "cost",
+    "finops",
+    "openai",
+    "anthropic",
+    "ai-sdk",
+    "observability"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

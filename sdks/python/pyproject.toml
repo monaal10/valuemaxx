@@ -1,0 +1,31 @@
+[project]
+name = "valuemaxx"
+version = "0.0.0"
+description = "AI Margin Intelligence — Python SDK: one-line init() that fails open, never crashing the host."
+requires-python = ">=3.11"
+license = "Apache-2.0"
+dependencies = [
+    "valuemaxx-core",
+    "valuemaxx-capture",
+    "pydantic>=2",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+only-include = ["src/valuemaxx/sdk"]
+sources = ["src"]
+
+[tool.uv.sources]
+valuemaxx-core = { workspace = true }
+valuemaxx-capture = { workspace = true }
+
+[dependency-groups]
+# httpx is TEST-ONLY: the e2e proves init() -> CostEvent over a real injected
+# httpx-shaped transport, and that an unrelated httpx.Client is untouched (H1).
+dev = [
+    "httpx>=0.27",
+    "typing-extensions>=4.12",
+]

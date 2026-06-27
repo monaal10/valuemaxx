@@ -1,33 +1,33 @@
 [importlinter]
 root_packages =
-    atm_core
-    atm_capabilities
-    atm_capture
-    atm_outcomes
-    atm_attribution
-    atm_reconciliation
-    atm_allocation
-    atm_metrics
-    atm_eval
-    atm_onboarding
-    atm_store
+    valuemaxx.core
+    valuemaxx.capabilities
+    valuemaxx.capture
+    valuemaxx.outcomes
+    valuemaxx.attribution
+    valuemaxx.reconciliation
+    valuemaxx.allocation
+    valuemaxx.metrics
+    valuemaxx.eval
+    valuemaxx.onboarding
+    valuemaxx.store
 include_external_packages = True
 
 # Contract 1: dependencies flow toward core. Logic packages never import each other;
-# they share only via atm_core ABCs/Protocols. (AGENTS.md §3, conformance: dependency_direction)
+# they share only via valuemaxx.core ABCs/Protocols. (AGENTS.md §3, conformance: dependency_direction)
 [importlinter:contract:logic-packages-are-independent]
 name = Logic packages must not import each other
 type = independence
 modules =
-    atm_capture
-    atm_outcomes
-    atm_attribution
-    atm_reconciliation
-    atm_allocation
-    atm_metrics
-    atm_eval
-    atm_onboarding
-    atm_store
+    valuemaxx.capture
+    valuemaxx.outcomes
+    valuemaxx.attribution
+    valuemaxx.reconciliation
+    valuemaxx.allocation
+    valuemaxx.metrics
+    valuemaxx.eval
+    valuemaxx.onboarding
+    valuemaxx.store
 
 # Contract 2: logic packages must not import the surface frameworks.
 # (conformance: no_logic_to_surface_import)
@@ -35,15 +35,15 @@ modules =
 name = Logic packages must not import HTTP/MCP/CLI frameworks
 type = forbidden
 source_modules =
-    atm_capture
-    atm_outcomes
-    atm_attribution
-    atm_reconciliation
-    atm_allocation
-    atm_metrics
-    atm_eval
-    atm_onboarding
-    atm_store
+    valuemaxx.capture
+    valuemaxx.outcomes
+    valuemaxx.attribution
+    valuemaxx.reconciliation
+    valuemaxx.allocation
+    valuemaxx.metrics
+    valuemaxx.eval
+    valuemaxx.onboarding
+    valuemaxx.store
 forbidden_modules =
     fastapi
     typer
@@ -51,17 +51,17 @@ forbidden_modules =
 
 # Contract 3: capabilities is a thin registry — imports no logic package.
 [importlinter:contract:capabilities-is-thin]
-name = atm_capabilities imports no logic package
+name = valuemaxx.capabilities imports no logic package
 type = forbidden
 source_modules =
-    atm_capabilities
+    valuemaxx.capabilities
 forbidden_modules =
-    atm_capture
-    atm_outcomes
-    atm_attribution
-    atm_reconciliation
-    atm_allocation
-    atm_metrics
-    atm_eval
-    atm_onboarding
-    atm_store
+    valuemaxx.capture
+    valuemaxx.outcomes
+    valuemaxx.attribution
+    valuemaxx.reconciliation
+    valuemaxx.allocation
+    valuemaxx.metrics
+    valuemaxx.eval
+    valuemaxx.onboarding
+    valuemaxx.store

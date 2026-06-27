@@ -1,0 +1,32 @@
+[project]
+name = "valuemaxx-reconciliation"
+version = "0.0.0"
+classifiers = ["Private :: Do Not Upload"]
+description = "AI Margin Intelligence — reconciliation (provider cost true-up): proration, drift, manual CSV."
+requires-python = ">=3.11"
+license = "Apache-2.0"
+dependencies = [
+    "valuemaxx-core",
+    "valuemaxx-capabilities",
+    # typing_extensions.override is recognised at our 3.11 target (typing.override is 3.12+).
+    "typing-extensions>=4.12",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "hypothesis>=6.100",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+only-include = ["src/valuemaxx/reconciliation"]
+sources = ["src"]
+
+[tool.uv.sources]
+valuemaxx-core = { workspace = true }
+valuemaxx-capabilities = { workspace = true }

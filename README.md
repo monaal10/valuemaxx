@@ -1,4 +1,6 @@
-# AI Margin Intelligence
+# valuemaxx
+
+**stop tokenmaxxing. start valuemaxxing.** — *the anti-tokenmaxxing tool*
 
 > **Know what each AI agent actually costs you — correctly — and what it earned, per outcome, with confidence.**
 > For teams that **build** AI agents, not the ones who buy them.
@@ -26,19 +28,19 @@ This tool closes both gaps, and it's honest about precision the whole way: every
 
 ```bash
 # Python
-pip install atm-margin
+pip install valuemaxx
 
 # TypeScript / JavaScript
-npm install @atm-margin/sdk
+npm install valuemaxx
 ```
 
 ```python
-import atm_margin
-atm_margin.init()                      # zero-code cost capture starts here
+import valuemaxx
+valuemaxx.init()                      # zero-code cost capture starts here
 ```
 
 ```ts
-import { init } from "@atm-margin/sdk";
+import { init } from "valuemaxx";
 init();
 ```
 

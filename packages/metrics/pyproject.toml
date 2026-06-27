@@ -1,0 +1,31 @@
+[project]
+name = "valuemaxx-metrics"
+version = "0.0.0"
+classifiers = ["Private :: Do Not Upload"]
+description = "AI Margin Intelligence — the user-defined metric engine (typed allowlist DSL, pure compiler, H7/H8 propagation)."
+requires-python = ">=3.11"
+license = "Apache-2.0"
+dependencies = [
+    "valuemaxx-core",
+    "valuemaxx-capabilities",
+]
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.100",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "typing-extensions>=4.4",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+only-include = ["src/valuemaxx/metrics"]
+sources = ["src"]
+
+[tool.uv.sources]
+valuemaxx-core = { workspace = true }
+valuemaxx-capabilities = { workspace = true }

@@ -1,0 +1,89 @@
+name: Release
+
+# One git tag -> both pip (PyPI) and npm publish at the SAME version, gated on
+# the full test suite. See RELEASING.md. Tag format: v1.2.3
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  # 1. Gate: the whole repo must be green before anything publishes.
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - run: uv python install 3.12
+      - run: uv sync --all-packages --all-extras --dev
+      - name: Verify tag matches VERSION
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          FILE="$(cat VERSION)"
+          if [ "$TAG" != "$FILE" ]; then
+            echo "::error::tag v$TAG does not match VERSION file ($FILE). Bump VERSION first."
+            exit 1
+          fi
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pyright
+      - run: uv run lint-imports
+      - run: uv run pytest --cov --cov-fail-under=90
+      - run: uv run pytest tests/conformance -v
+
+  # 2a. Publish Python -> PyPI (trusted publishing / OIDC; no stored token).
+  publish-python:
+    needs: gate
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write  # OIDC for PyPI trusted publishing
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - name: Stamp version from the tag
+        run: uv run python scripts/stamp_version.py "${GITHUB_REF_NAME}"
+      - name: Build the Python SDK
+        working-directory: sdks/python
+        run: uv build
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: sdks/python/dist/
+
+  # 2b. Publish TypeScript -> npm via OIDC TRUSTED PUBLISHING (no stored token).
+  # npm trusted publishing went GA 2025-07-31; needs npm >= 11.5.1, a GitHub-hosted
+  # runner, a public repo + public package. Provenance attestations are emitted by
+  # default — no --provenance flag, no NPM_TOKEN secret. (See RELEASING.md.)
+  publish-npm:
+    needs: gate
+    runs-on: ubuntu-latest  # GitHub-hosted required for OIDC; do not move to self-hosted
+    environment: npm
+    permissions:
+      id-token: write  # OIDC for npm trusted publishing + provenance
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+      - name: Use npm >= 11.5.1 (required for OIDC trusted publishing)
+        run: npm install -g npm@latest
+      - name: Stamp version from the tag
+        run: python3 scripts/stamp_version.py "${GITHUB_REF_NAME}"
+      - name: Install + build + test the TS SDK
+        working-directory: sdks/typescript
+        run: |
+          npm ci
+          npm run typecheck
+          npm run lint
+          npm test
+          npm run build
+      - name: Publish to npm (OIDC; provenance by default)
+        working-directory: sdks/typescript
+        run: npm publish --access public

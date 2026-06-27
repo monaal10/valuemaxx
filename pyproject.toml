@@ -1,7 +1,8 @@
 [project]
-name = "atm-margin-workspace"
+name = "valuemaxx-workspace"
 version = "0.0.0"
 description = "AI Margin Intelligence — cost-per-outcome with confidence, for teams that build AI agents"
+classifiers = ["Private :: Do Not Upload"]
 requires-python = ">=3.11"
 license = "Apache-2.0"
 readme = "README.md"
@@ -15,7 +16,12 @@ members = [
 ]
 
 [tool.uv]
-dev-dependencies = [
+# The workspace root is a virtual project — it ships no code of its own, only
+# aggregates the members below. Building it as a wheel must not be attempted.
+package = false
+
+[dependency-groups]
+dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
     "pytest-asyncio>=0.24",
@@ -29,25 +35,21 @@ dev-dependencies = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["packages", "apps", "sdks/python", "tests"]
-addopts = "--strict-markers --strict-config"
-
-[tool.coverage.run]
-branch = true
-source = ["packages"]
-omit = [
-    "*/tests/*",
-    "*/__init__.py",
-    # projection / generated code excluded from the core coverage gate (AGENTS.md §5)
-    "apps/*",
-    "*/_generated/*",
+# importlib import mode: each package ships its own `tests/` dir, so the legacy
+# prepend mode would collide many same-named `tests` packages on sys.path.
+# importlib gives every test module a unique, path-derived module name.
+addopts = "--strict-markers --strict-config --import-mode=importlib"
+consider_namespace_packages = true
+markers = [
+    "conformance: a conformance rule test (institutional memory; blocks merge)",
+    "behavioral: a runtime, sentinel-driven conformance rule (needs runtime fixtures)",
+    "static: a static AST / import-graph conformance rule (no runtime needed)",
+]
+filterwarnings = [
+    # Starlette's TestClient warns that pairing httpx with it is deprecated; this is
+    # a third-party deprecation from FastAPI's own re-export, outside our control.
+    "ignore:Using `httpx` with `starlette.testclient`",
 ]
 
-[tool.coverage.report]
-# Core logic packages must hold >=90% line+branch (AGENTS.md §5).
-fail_under = 90
-show_missing = true
-skip_covered = false
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+# Coverage configuration lives in .coveragerc (the single source for the gate),
+# scoped to the core typed spine (valuemaxx.core/valuemaxx.capabilities). See AGENTS.md §5.

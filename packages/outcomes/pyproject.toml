@@ -1,0 +1,31 @@
+[project]
+name = "valuemaxx-outcomes"
+version = "0.0.0"
+classifiers = ["Private :: Do Not Upload"]
+description = "AI Margin Intelligence — outcomes logic package (skeleton; built in G2)."
+requires-python = ">=3.11"
+license = "Apache-2.0"
+dependencies = [
+    "valuemaxx-core",
+    "valuemaxx-capabilities",
+    "wrapt>=1.16",
+    "pyyaml>=6",
+    "typing-extensions>=4.4",
+]
+
+[dependency-groups]
+dev = [
+    "types-PyYAML>=6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+only-include = ["src/valuemaxx/outcomes"]
+sources = ["src"]
+
+[tool.uv.sources]
+valuemaxx-core = { workspace = true }
+valuemaxx-capabilities = { workspace = true }
