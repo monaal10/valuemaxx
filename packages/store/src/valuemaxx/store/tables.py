@@ -49,8 +49,14 @@ metadata = MetaData()
 
 
 def _tenant_id_column() -> Column[UUID]:
-    """The required, non-nullable ``tenant_id`` column shared by every table."""
-    return Column("tenant_id", Uuid(), nullable=False)
+    """The required ``tenant_id`` — part of every table's primary key (§3.2).
+
+    Making ``tenant_id`` a primary-key column means the natural id is unique *within*
+    a tenant, never across tenants: two tenants can carry the same logical run/outcome
+    id without one clobbering the other, and the composite key makes cross-tenant
+    collision structurally impossible rather than a query-discipline concern.
+    """
+    return Column("tenant_id", Uuid(), nullable=False, primary_key=True)
 
 
 run = Table(

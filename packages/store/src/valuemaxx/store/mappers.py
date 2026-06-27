@@ -369,9 +369,17 @@ def _as_opt_decimal(value: object) -> Decimal | None:
 
 
 def _as_dt(value: object) -> datetime:
+    from datetime import UTC
     from datetime import datetime as _datetime
 
     assert isinstance(value, _datetime)
+    # We only ever *store* tz-aware UTC datetimes (the core models forbid naive ones).
+    # Postgres preserves the tz; SQLite's DBAPI returns the value tz-naive. Reattaching
+    # UTC on read is lossless for our data and keeps the SQLite unit path honest with
+    # the Postgres prod path (core rejects naive datetimes, so this can't silently drop a
+    # real non-UTC zone — none is ever written).
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
     return value
 
 

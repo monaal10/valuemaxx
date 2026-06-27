@@ -53,6 +53,18 @@ def test_every_table_has_tenant_id_not_null() -> None:
         assert table.c.tenant_id.nullable is False, f"{table.name}.tenant_id is nullable"
 
 
+def test_tenant_id_is_part_of_every_primary_key() -> None:
+    """tenant_id is a primary-key column on every table — no cross-tenant id collision.
+
+    Regression for the bug where ``id`` alone was the PK: two tenants writing the same
+    logical id clobbered each other's row (an upsert on tenant B overwrote tenant A's
+    run). The composite ``(tenant_id, id)`` key makes that structurally impossible.
+    """
+    for table in _ALL_TABLES:
+        pk_columns = {col.name for col in table.primary_key.columns}
+        assert "tenant_id" in pk_columns, f"{table.name} PK does not include tenant_id"
+
+
 def test_every_table_has_a_leading_tenant_index() -> None:
     """Every table carries an index whose first column is tenant_id (row-level scope)."""
     for table in _ALL_TABLES:
