@@ -115,10 +115,54 @@ def echo_tags_capability() -> CapabilitySpec[EchoTagsInput, EchoTagsOutput]:
     )
 
 
+class WebhookEchoInput(BaseModel):
+    """The parsed body of the generic webhook-machinery test capability."""
+
+    tenant_id: str
+    event: str
+
+
+class WebhookEchoOutput(BaseModel):
+    """Echoes the verified event back (proves verify-before-parse then dispatch)."""
+
+    tenant_id: str
+    event: str
+
+
+def _webhook_echo(request: WebhookEchoInput) -> WebhookEchoOutput:
+    return WebhookEchoOutput(tenant_id=request.tenant_id, event=request.event)
+
+
+def webhook_echo_capability() -> CapabilitySpec[WebhookEchoInput, WebhookEchoOutput]:
+    """A ``webhook_inbound`` capability for the signature-machinery tests.
+
+    The projection's ``_mount_webhook`` (verify HMAC over the RAW body BEFORE parse)
+    is mode-driven, so any ``webhook_inbound`` capability exercises it. This generic
+    one stands in for a real external webhook (e.g. ``ingest_webhook_outcome``);
+    ``ingest_otlp_span`` is NOT one — it is key-authenticated request_response.
+    """
+    return capability(
+        name="webhook_echo",
+        input_model=WebhookEchoInput,
+        output_model=WebhookEchoOutput,
+        handler=_webhook_echo,
+        description="A signed inbound webhook receiver (verify-before-parse machinery test).",
+        surfaces=Surface.API,
+        mode=Mode.WEBHOOK_INBOUND,
+    )
+
+
 def registry_with_notes() -> Registry:
     """A registry containing just the tenant-scoped notes read capability."""
     registry = Registry()
     registry.register(list_notes_capability())
+    return registry
+
+
+def registry_with_webhook() -> Registry:
+    """A registry containing the generic ``webhook_inbound`` signature-machinery capability."""
+    registry = Registry()
+    registry.register(webhook_echo_capability())
     return registry
 
 

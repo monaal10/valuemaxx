@@ -4,7 +4,8 @@ These exercise the REAL wire path against a REAL (temp SQLite) store — the ful
 backend assembly the SDK ships spans to:
 
 1. ``create_app`` boots; the lifespan runs migrations so the schema exists.
-2. A signed OTLP span POSTed to ``/ingest_otlp_span`` lands in the store as a
+2. A KEY-authenticated OTLP span POSTed to ``/ingest_otlp_span`` (X-API-Key only, no
+   signature — exactly how a real OTLP exporter ships spans) lands in the store as a
    CostEvent (the ingest handler is wired to the CostEventRepository).
 3. The persisted cost is queryable via the ``/run_metric`` query capability — the
    metric reads exactly what was ingested.
@@ -22,11 +23,9 @@ from typing import TYPE_CHECKING
 from _server_helpers import (
     KEY_A,
     KEY_B,
-    WEBHOOK_SECRET,
     ingest_span,
     route_paths,
     run_metric,
-    sign,
     span_attributes,
     total_cost_definition,
 )
@@ -47,7 +46,6 @@ def test_ingested_span_persists_and_is_queryable(client: TestClient) -> None:
     resp = ingest_span(
         client,
         api_key=KEY_A,
-        webhook_secret=WEBHOOK_SECRET,
         attributes=span_attributes(run_id="run-1", attempt_id="att-1", cost_usd="0.0250"),
     )
     assert resp.status_code == 200, resp.text
@@ -70,7 +68,7 @@ def test_double_delivery_does_not_double_count(client: TestClient) -> None:
     """test_double_delivery_does_not_double_count: a redelivered span upserts, M7."""
     attrs = span_attributes(run_id="run-dup", attempt_id="att-dup", cost_usd="0.0100")
     for _ in range(3):
-        resp = ingest_span(client, api_key=KEY_A, webhook_secret=WEBHOOK_SECRET, attributes=attrs)
+        resp = ingest_span(client, api_key=KEY_A, attributes=attrs)
         assert resp.status_code == 200, resp.text
 
     metric = run_metric(client, api_key=KEY_A, definition=total_cost_definition())
@@ -85,13 +83,11 @@ def test_tenant_isolation_holds(client: TestClient) -> None:
     ingest_span(
         client,
         api_key=KEY_A,
-        webhook_secret=WEBHOOK_SECRET,
         attributes=span_attributes(run_id="run-a", attempt_id="att-a", cost_usd="0.0700"),
     )
     ingest_span(
         client,
         api_key=KEY_B,
-        webhook_secret=WEBHOOK_SECRET,
         attributes=span_attributes(run_id="run-b", attempt_id="att-b", cost_usd="9.9900"),
     )
 
@@ -107,7 +103,6 @@ def test_metric_cell_ships_both_h7_confidence_fields(client: TestClient) -> None
     ingest_span(
         client,
         api_key=KEY_A,
-        webhook_secret=WEBHOOK_SECRET,
         attributes=span_attributes(run_id="run-h7", attempt_id="att-h7", cost_usd="0.0050"),
     )
     metric = run_metric(client, api_key=KEY_A, definition=total_cost_definition())
@@ -117,8 +112,27 @@ def test_metric_cell_ships_both_h7_confidence_fields(client: TestClient) -> None
     assert "confidence_distribution" in confidence
 
 
-def test_bad_webhook_signature_is_rejected_and_not_persisted(client: TestClient) -> None:
-    """test_bad_webhook_signature_is_rejected_and_not_persisted: 401 before the handler."""
+def test_ingest_otlp_span_needs_no_signature_only_a_key(client: TestClient) -> None:
+    """test_ingest_otlp_span_needs_no_signature_only_a_key: KEY-auth alone persists the span.
+
+    A real OTLP exporter sends only the ingest key and cannot HMAC-sign the body, so a
+    key-authenticated POST with NO ``X-Signature`` header is accepted and persisted.
+    (Regression: ``ingest_otlp_span`` was a signed webhook_inbound, so the unsigned
+    exporter path was 401'd.)
+    """
+    # no signature header at all — exactly what the SDK exporter sends.
+    attrs = span_attributes(run_id="run-keyauth", attempt_id="att-keyauth", cost_usd="1.0000")
+    resp = ingest_span(client, api_key=KEY_A, attributes=attrs)
+    assert resp.status_code == 200, resp.text
+
+    # the span persisted under tenant A and is queryable (no signing involved anywhere).
+    metric = run_metric(client, api_key=KEY_A, definition=total_cost_definition())
+    cell = metric.json()["cells"][0]
+    assert Decimal(cell["numerator_value"]) == Decimal("1.0000")
+
+
+def test_unknown_api_key_is_rejected_and_not_persisted(client: TestClient) -> None:
+    """test_unknown_api_key_is_rejected_and_not_persisted: a bad key -> 401, nothing stored."""
     import json as _json
     from typing import Protocol, cast
 
@@ -130,14 +144,13 @@ def test_bad_webhook_signature_is_rejected_and_not_persisted(client: TestClient)
     bad = cast("_Post", client).post(
         "/ingest_otlp_span",
         content=raw,
-        headers={"X-API-Key": KEY_A, "X-Signature": "deadbeef"},
+        headers={"X-API-Key": "not-a-real-key", "Content-Type": "application/json"},
     )
     assert getattr(bad, "status_code", None) == 401
 
-    # a correctly-signed but empty store still totals zero for this run scope.
+    # nothing was persisted for tenant A — the unknown key never resolved a tenant.
     good_metric = run_metric(client, api_key=KEY_A, definition=total_cost_definition())
     cells = good_metric.json()["cells"]
-    # no span was persisted, so there is no cell (an empty cost set yields no group).
     assert cells == [] or Decimal(cells[0]["numerator_value"]) == Decimal("0")
 
 
@@ -154,6 +167,6 @@ def test_missing_api_key_is_unauthorized(client: TestClient) -> None:
     resp = cast("_Post", client).post(
         "/ingest_otlp_span",
         content=raw,
-        headers={"X-Signature": sign(WEBHOOK_SECRET, raw)},
+        headers={"Content-Type": "application/json"},  # no X-API-Key -> no tenant
     )
     assert getattr(resp, "status_code", None) == 401

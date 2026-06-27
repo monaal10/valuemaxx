@@ -13,8 +13,9 @@ exactly as a real integration would inject ``anthropic``/``openai``):
    injected fake LLM client (instance-scoped, H1). Inside ``track.run`` a transport
    call produces a real :class:`~valuemaxx.core.cost.CostEvent`, drained off the host
    path into a sink that ships it to the backend over the **real OTLP wire** — a
-   signed POST to ``/ingest_otlp_span`` carrying the ``gen_ai.*`` / ``ai_margin.*``
-   semconv attributes, the exact path the universal/TS ingest decodes.
+   KEY-authenticated POST to ``/ingest_otlp_span`` (X-API-Key only, no signature —
+   exactly how a real OTLP exporter ships spans) carrying the ``gen_ai.*`` /
+   ``ai_margin.*`` semconv attributes, the exact path the universal/TS ingest decodes.
 3. **The CostEvent landed in the store** under the right tenant with the right cost,
    proven by querying it back — not by inspecting internals.
 4. **A query capability returns a rollup** with the right number AND both H7 honesty
@@ -31,8 +32,6 @@ proven to work as a user experiences it.
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -134,16 +133,16 @@ class _OtlpWireSink(CostEventRepository):
     This is the producer side of the wire contract. ``upsert`` (called by the SDK's
     bounded :class:`~valuemaxx.capture.emit.Emitter` on drain) encodes the captured
     :class:`~valuemaxx.core.cost.CostEvent` into the ``gen_ai.*`` / ``ai_margin.*``
-    semconv attributes and POSTs a signed body to the backend's ``/ingest_otlp_span``
-    webhook route — the exact path any language's OTLP exporter would take. The
-    backend re-decodes the span into a CostEvent and persists it, so the round trip
-    is the genuine wire, never an in-process shortcut.
+    semconv attributes and POSTs them to the backend's ``/ingest_otlp_span`` route
+    authenticated with ONLY the ingest key (``X-API-Key``) — the exact path any
+    language's real OTLP exporter takes, which cannot HMAC-sign the body. There is NO
+    signature anywhere. The backend re-decodes the span into a CostEvent and persists
+    it, so the round trip is the genuine wire, never an in-process shortcut.
     """
 
-    def __init__(self, client: TestClient, *, api_key: str, webhook_secret: bytes) -> None:
+    def __init__(self, client: TestClient, *, api_key: str) -> None:
         self._client = client
         self._api_key = api_key
-        self._webhook_secret = webhook_secret
         self.shipped = 0
 
     @override
@@ -151,15 +150,10 @@ class _OtlpWireSink(CostEventRepository):
         attributes = _cost_event_to_span_attributes(event)
         body = {"tenant_id": str(tenant_id), "attributes": attributes}
         raw = json.dumps(body).encode("utf-8")
-        signature = hmac.new(self._webhook_secret, raw, hashlib.sha256).hexdigest()
         resp = cast("_HttpClient", self._client).post(
             "/ingest_otlp_span",
             content=raw,
-            headers={
-                "X-API-Key": self._api_key,
-                "X-Signature": signature,
-                "Content-Type": "application/json",
-            },
+            headers={"X-API-Key": self._api_key, "Content-Type": "application/json"},
         )
         if resp.status_code != 200:  # pragma: no cover - a wire failure should fail loudly here
             raise AssertionError(
@@ -270,7 +264,7 @@ def test_install_run_see_it_work(client: TestClient, tenant: str) -> None:
 
     # (2) the REAL SDK instruments an injected fake LLM client; the sink ships captured
     #     cost over the REAL OTLP wire to the booted backend.
-    sink = _OtlpWireSink(client, api_key=INGEST_KEY, webhook_secret=WEBHOOK_SECRET)
+    sink = _OtlpWireSink(client, api_key=INGEST_KEY)
     fake_client = _FakeLlmClient()
     result = init(
         tenant_id=tenant_id,

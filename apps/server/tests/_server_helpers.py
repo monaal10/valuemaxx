@@ -1,8 +1,10 @@
 """Shared helpers for the assembly-app e2e tests (package-unique, bare-imported §5b).
 
 A typed view over the starlette TestClient (whose ``post`` references httpx private
-aliases pyright cannot resolve), plus OTLP-span fixtures and the HMAC signing the
-``ingest_otlp_span`` webhook route requires.
+aliases pyright cannot resolve), plus OTLP-span fixtures. ``ingest_otlp_span`` is
+KEY-authenticated (X-API-Key resolves the tenant), exactly like a real OTLP exporter
+ships spans — no HMAC signing. ``sign`` remains for the genuinely-signed webhook
+routes (e.g. ``ingest_webhook_outcome``).
 """
 
 from __future__ import annotations
@@ -72,21 +74,18 @@ def ingest_span(
     client: TestClient,
     *,
     api_key: str,
-    webhook_secret: bytes,
     attributes: dict[str, object],
 ) -> httpx.Response:
-    """POST a signed OTLP span to the ``ingest_otlp_span`` webhook route.
+    """POST a KEY-authenticated OTLP span to the ``ingest_otlp_span`` route.
 
-    The tenant is resolved from ``api_key`` (never the body); the signature is over
-    the exact raw bytes sent, mirroring how the SDK ships spans on the wire.
+    The tenant is resolved from ``api_key`` (never the body) and there is NO
+    signature — exactly how a real OTLP exporter ships spans (it authenticates with
+    only the ingest key and cannot HMAC-sign the body). ``ingest_otlp_span`` is
+    request_response, not a signed webhook.
     """
     body = {"tenant_id": "ignored-overridden-by-key", "attributes": attributes}
     raw = json.dumps(body).encode("utf-8")
-    headers = {
-        "X-API-Key": api_key,
-        "X-Signature": sign(webhook_secret, raw),
-        "Content-Type": "application/json",
-    }
+    headers = {"X-API-Key": api_key, "Content-Type": "application/json"}
     return cast("_HttpClient", client).post("/ingest_otlp_span", content=raw, headers=headers)
 
 
