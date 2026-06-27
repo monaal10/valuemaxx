@@ -1270,14 +1270,34 @@ name = "valuemaxx-allocation"
 version = "0.0.0"
 source = { editable = "packages/allocation" }
 dependencies = [
+    { name = "pyyaml" },
+    { name = "typing-extensions" },
     { name = "valuemaxx-capabilities" },
     { name = "valuemaxx-core" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "hypothesis" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "types-pyyaml" },
+]
+
 [package.metadata]
 requires-dist = [
+    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "typing-extensions", specifier = ">=4.12" },
     { name = "valuemaxx-capabilities", editable = "packages/capabilities" },
     { name = "valuemaxx-core", editable = "packages/core" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "hypothesis", specifier = ">=6.100" },
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "pytest-asyncio", specifier = ">=0.24" },
+    { name = "types-pyyaml", specifier = ">=6.0" },
 ]
 
 [[package]]

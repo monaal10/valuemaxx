@@ -9,7 +9,7 @@ Crucially, the in-memory ``ReconciliationRepository`` is append-only (it stores 
 flat list and never updates), matching the core ABC — the additive-reconciliation
 invariant is structural, not disciplinary.
 
-This is a plain helper module (``_helpers.py``), imported as ``import _helpers`` —
+This is a plain helper module (``_helpers.py``), imported as ``import _recon_helpers`` —
 NOT a ``tests`` package and NOT a ``conftest``, so several packages' test suites can
 run together without the ``tests.conftest`` plugin-name collision (AGENTS.md §5b).
 """
