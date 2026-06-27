@@ -34,7 +34,11 @@ dev = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["packages", "apps", "sdks/python", "tests"]
-addopts = "--strict-markers --strict-config"
+# importlib import mode: each package ships its own `tests/` dir, so the legacy
+# prepend mode would collide many same-named `tests` packages on sys.path.
+# importlib gives every test module a unique, path-derived module name.
+addopts = "--strict-markers --strict-config --import-mode=importlib"
+consider_namespace_packages = true
 markers = [
     "conformance: a conformance rule test (institutional memory; blocks merge)",
     "behavioral: a runtime, sentinel-driven conformance rule (needs runtime fixtures)",
