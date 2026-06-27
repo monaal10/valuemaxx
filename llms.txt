@@ -2,7 +2,7 @@
 
 ## capabilities
 
-- ingest_otlp_span [surfaces=API; mode=webhook_inbound]: Ingest one OTLP span as a CostEvent (universal/TS producer path).
+- ingest_otlp_span [surfaces=API; mode=request_response]: Ingest one OTLP span as a CostEvent (universal/TS producer path).
 - list_cost_sources [surfaces=API|MCP|CLI; mode=request_response]: List the wired cost sources (authoritative spend / reconciled actuals).
 - capture_healthcheck [surfaces=API|MCP|CLI; mode=request_response]: Report capture liveness and the effective capture granularity.
 - ingest_webhook_outcome [surfaces=API; mode=webhook_inbound]: Ingest an inbound outcome webhook: verify signature + ingest key before parse, then bind run_id via T3 echo or fall back to T4 entity (labeled).
