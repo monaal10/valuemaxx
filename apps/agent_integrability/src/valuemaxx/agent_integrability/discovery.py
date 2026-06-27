@@ -18,12 +18,20 @@ this short, documented allowlist.
 from __future__ import annotations
 
 import importlib
+from typing import TYPE_CHECKING, TypeVar
 
+from typing_extensions import override
 from valuemaxx.capabilities import (
-    DuplicateCapabilityError,
     MissingRegisterError,
     Registry,
 )
+
+if TYPE_CHECKING:
+    from pydantic import BaseModel
+    from valuemaxx.capabilities import CapabilitySpec
+
+_I = TypeVar("_I", bound="BaseModel")
+_O = TypeVar("_O", bound="BaseModel")
 
 # The nine logic packages, in deterministic registration order. ``outcomes``
 # precedes ``onboarding`` so the outcomes-owned ``validate_outcome_rule`` wins.
@@ -46,18 +54,42 @@ DEFAULT_CAPABILITY_MODULES: list[str] = [
 KNOWN_DUPLICATE_NAMES: frozenset[str] = frozenset({"validate_outcome_rule"})
 
 
+class _DiscoveryRegistry(Registry):
+    """A registry that tolerates ONLY the documented duplicate names during assembly.
+
+    Discovery registers each module's ``register(registry)`` **directly** onto this
+    one registry (never a per-module staging copy), so a capability handler that
+    closes over a late-bound runtime holder keyed by the registry object binds to the
+    very registry the surfaces project from — the app can then call
+    ``bind_runtime(registry, ...)`` against it. A second registration of a
+    :data:`KNOWN_DUPLICATE_NAMES` name is silently skipped (the first, per
+    :data:`DEFAULT_CAPABILITY_MODULES` order, wins); every *other* duplicate is still
+    a hard :class:`~valuemaxx.capabilities.DuplicateCapabilityError`.
+    """
+
+    @override
+    def register(self, spec: CapabilitySpec[_I, _O]) -> None:
+        """Register ``spec``, skipping a re-registration of an allowlisted duplicate name."""
+        if spec.name in self._known_present() and spec.name in KNOWN_DUPLICATE_NAMES:
+            return
+        super().register(spec)
+
+    def _known_present(self) -> frozenset[str]:
+        return frozenset(cap.name for cap in self.all())
+
+
 def register_modules(registry: Registry, modules: list[str]) -> None:
     """Register each module's capabilities into ``registry`` in order.
 
-    Imports each module and calls its ``register`` against a per-module staging
-    registry, then copies the specs across — skipping only a duplicate name on the
-    documented :data:`KNOWN_DUPLICATE_NAMES` allowlist. An un-allowlisted duplicate
-    raises :class:`~valuemaxx.capabilities.DuplicateCapabilityError`, preserving the
-    registry's no-silent-overwrite contract. Because each module registers into its
-    own staging registry first, a tolerated collision never leaves ``registry`` in
-    a half-populated state.
+    Imports each module and calls its ``register(registry)`` **directly** on
+    ``registry`` (no per-module staging copy), so a module's late-bound runtime
+    holder — keyed by the registry object — binds to the registry the surfaces
+    project from (the app wires it with ``bind_runtime(registry, runtime)``). When
+    ``registry`` is a :class:`_DiscoveryRegistry`, a re-registration of a documented
+    :data:`KNOWN_DUPLICATE_NAMES` name is skipped (the first wins); any other
+    duplicate raises :class:`~valuemaxx.capabilities.DuplicateCapabilityError`,
+    preserving the registry's no-silent-overwrite contract.
     """
-    seen: set[str] = set()
     for module_name in modules:
         module = importlib.import_module(module_name)
         register = getattr(module, "register", None)
@@ -65,15 +97,7 @@ def register_modules(registry: Registry, modules: list[str]) -> None:
             raise MissingRegisterError(
                 f"module {module_name!r} does not expose a callable register(registry)"
             )
-        staging = Registry()
-        register(staging)
-        for cap in staging.all():
-            if cap.name in seen:
-                if cap.name in KNOWN_DUPLICATE_NAMES:
-                    continue
-                raise DuplicateCapabilityError(f"capability {cap.name!r} is already registered")
-            registry.register(cap)
-            seen.add(cap.name)
+        register(registry)
 
 
 def build_default_registry() -> Registry:
@@ -88,7 +112,7 @@ def build_default_registry() -> Registry:
     """
     from valuemaxx.agent_integrability.scaffold_caps import register_scaffold_caps
 
-    registry = Registry()
+    registry = _DiscoveryRegistry()
     register_modules(registry, DEFAULT_CAPABILITY_MODULES)
     register_scaffold_caps(registry)
     return registry

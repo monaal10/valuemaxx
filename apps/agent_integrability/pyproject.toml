@@ -18,6 +18,9 @@ dependencies = [
     "valuemaxx-onboarding",
     "valuemaxx-store",
     "pyyaml>=6.0",
+    # typing_extensions backports @override (3.12+) so the discovery registry's
+    # subclass override is recognised under the py311-pinned pyright strict gate.
+    "typing-extensions>=4.12",
 ]
 
 [dependency-groups]
