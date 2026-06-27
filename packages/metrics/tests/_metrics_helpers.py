@@ -17,7 +17,9 @@ from valuemaxx.core import (
     OutcomeEvent,
     OutcomeEventId,
     OutcomeEventRepository,
+    Run,
     RunId,
+    RunRepository,
     TenantId,
 )
 
@@ -72,3 +74,29 @@ class InMemoryOutcomeEventRepository(OutcomeEventRepository):
     def list_all(self, tenant_id: TenantId) -> Sequence[OutcomeEvent]:
         """Test helper: every outcome for the tenant (not part of the ABC)."""
         return list(self._by_tenant.get(tenant_id, {}).values())
+
+
+class InMemoryRunRepository(RunRepository):
+    """An in-memory :class:`~valuemaxx.core.RunRepository` for tests.
+
+    The executor resolves a cost event's ``run_id`` to its ``Run.agent_name`` via
+    :meth:`get` when an ``agent_name`` dimension is grouped on, so this fake only
+    needs an id-keyed ``get`` (the entity index is unused on the read path).
+    """
+
+    def __init__(self) -> None:
+        self._by_tenant: dict[TenantId, dict[RunId, Run]] = {}
+
+    @override
+    def upsert(self, tenant_id: TenantId, run: Run) -> None:
+        self._by_tenant.setdefault(tenant_id, {})[run.id] = run
+
+    @override
+    def get(self, tenant_id: TenantId, run_id: RunId) -> Run | None:
+        return self._by_tenant.get(tenant_id, {}).get(run_id)
+
+    @override
+    def list_by_entity(self, tenant_id: TenantId, entity_key: tuple[str, str]) -> Sequence[Run]:
+        return [
+            r for r in self._by_tenant.get(tenant_id, {}).values() if entity_key in r.entity_keys
+        ]
