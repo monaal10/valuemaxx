@@ -4,15 +4,19 @@ from __future__ import annotations
 
 import sys
 import types
+from typing import TYPE_CHECKING
 
 import pytest
 from valuemaxx.core import RunId, active_run_id
 from valuemaxx.outcomes.instrument.injection import install_run_id_injection
 from valuemaxx.outcomes.schema import RunIdInjectionSpec
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
 
 @pytest.fixture
-def stripe_like() -> types.ModuleType:
+def stripe_like() -> Iterator[types.ModuleType]:
     """A throwaway 'stripe' module with a PaymentIntent.create that echoes its kwargs."""
     mod = types.ModuleType("stripe_like")
 
@@ -96,7 +100,7 @@ def test_host_error_is_not_swallowed(stripe_like: types.ModuleType) -> None:
     def boom(**_kwargs: object) -> None:
         raise RuntimeError("stripe down")
 
-    stripe_like.PaymentIntent.boom = staticmethod(boom)  # type: ignore[attr-defined]
+    stripe_like.PaymentIntent.boom = staticmethod(boom)
     install_run_id_injection([_spec(sdk_call="stripe_like.PaymentIntent.boom")])
     token = active_run_id.set(RunId("run-7"))
     try:

@@ -22,12 +22,12 @@ from __future__ import annotations
 
 import inspect
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING
 
 import wrapt
 from valuemaxx.core import active_run_id
 from valuemaxx.outcomes.instrument._resolve import resolve_target
+from valuemaxx.outcomes.instrument.emitter import coerce_money
 from valuemaxx.outcomes.predicate import compile_expr, compile_predicate
 from valuemaxx.outcomes.safelog import get_logger
 
@@ -143,7 +143,7 @@ def _maybe_emit(
     if predicate is not None and not predicate(namespace):
         return
 
-    value = _coerce_decimal(value_expr(namespace)) if value_expr is not None else None
+    value = coerce_money(value_expr(namespace)) if value_expr is not None else None
     entity_keys = frozenset(
         (name, str(expr(namespace))) for name, expr in bind_exprs.items()
     )
@@ -180,22 +180,6 @@ def _build_namespace(
         bound = {f"_{i}": value for i, value in enumerate(args)}
         bound.update(kwargs)
     return {"args": bound, "kwargs": dict(kwargs), "result": result}
-
-
-def _coerce_decimal(value: object) -> Decimal | None:
-    """Coerce an extracted numeric value to Decimal; None/non-numeric -> None."""
-    if value is None:
-        return None
-    if isinstance(value, Decimal):
-        return value
-    if isinstance(value, (int, str)):
-        try:
-            return Decimal(value)
-        except (InvalidOperation, ValueError):
-            return None
-    if isinstance(value, float):
-        return Decimal(str(value))
-    return None
 
 
 def _current_run_id() -> RunId | None:

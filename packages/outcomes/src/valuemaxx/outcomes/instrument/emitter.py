@@ -18,6 +18,7 @@ delivery never double-counts.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING
 
 from valuemaxx.core import (
@@ -30,9 +31,9 @@ from valuemaxx.outcomes.safelog import get_logger
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
-    from decimal import Decimal
 
     from valuemaxx.core import (
+        BindingTier,
         Clock,
         CorrelationId,
         OutcomeEventRepository,
@@ -64,6 +65,11 @@ class EmitRequest:
     source: str
     run_id: RunId | None
     raw: Mapping[str, object] = field(default_factory=lambda: {})
+    # The binding tier + label for an already-known binding (T3 echo -> deterministic,
+    # T4 fallback -> candidate). Left None for in-process matches whose tier is decided
+    # later by the attribution cascade.
+    binding_tier: BindingTier | None = None
+    bound_by: str | None = None
 
 
 class OutcomeEmitter:
@@ -109,7 +115,11 @@ class OutcomeEmitter:
             signal_class=signal,
             value=request.value,
             occurred_at=self._clock.now(),
-            binding=OutcomeBinding(run_id=request.run_id, tier=None, bound_by=None),
+            binding=OutcomeBinding(
+                run_id=request.run_id,
+                tier=request.binding_tier,
+                bound_by=request.bound_by,
+            ),
             entity_keys=request.entity_keys,
             correlation_id=request.correlation_id,
             source=request.source,
@@ -117,4 +127,27 @@ class OutcomeEmitter:
         )
 
 
-__all__ = ["EmitRequest", "OutcomeEmitter"]
+def coerce_money(value: object) -> Decimal | None:
+    """Coerce an extracted value to an exact :class:`~decimal.Decimal`, or None.
+
+    int/str go through :class:`Decimal` directly; a float is stringified first so the
+    binary-float artifact never reaches money math; anything else (None, list, dict)
+    becomes None. Never raises — a bad value yields ``None``, not an exception.
+    """
+    if value is None:
+        return None
+    if isinstance(value, Decimal):
+        return value
+    if isinstance(value, bool):  # bool is an int subclass; a flag is not a money value
+        return None
+    if isinstance(value, (int, str)):
+        try:
+            return Decimal(value)
+        except (InvalidOperation, ValueError):
+            return None
+    if isinstance(value, float):
+        return Decimal(str(value))
+    return None
+
+
+__all__ = ["EmitRequest", "OutcomeEmitter", "coerce_money"]

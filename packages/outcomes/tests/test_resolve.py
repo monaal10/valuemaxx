@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import sys
 import types
+from typing import TYPE_CHECKING
 
 import pytest
 from valuemaxx.outcomes.instrument._resolve import resolve_target
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
 
 @pytest.fixture
-def host_pkg() -> types.ModuleType:
+def host_pkg() -> Iterator[types.ModuleType]:
     mod = types.ModuleType("hostpkg_resolve")
 
     class PaymentIntent:

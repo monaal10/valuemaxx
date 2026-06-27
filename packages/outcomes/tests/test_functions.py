@@ -6,6 +6,7 @@ import sys
 import types
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
@@ -15,6 +16,9 @@ from valuemaxx.outcomes.instrument.functions import install_function_rules
 from valuemaxx.outcomes.repository import InMemoryOutcomeEventRepository
 from valuemaxx.outcomes.schema import MatchSpec, OutcomeRule
 from valuemaxx.outcomes.signal import SystemSignalClassMapper
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 _TENANT = TenantId(uuid4())
 
@@ -34,7 +38,7 @@ class _SeqUuid:
 
 
 @pytest.fixture
-def host_module() -> types.ModuleType:
+def host_module() -> Iterator[types.ModuleType]:
     """A throwaway host module with a function we can patch and a 'raiser'."""
     mod = types.ModuleType("hostapp_loans")
 

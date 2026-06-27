@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from valuemaxx.outcomes.safelog import get_logger, redact_secrets
+
+if TYPE_CHECKING:
+    import pytest
 
 
 def test_redact_known_secret_kinds() -> None:
@@ -23,7 +27,7 @@ def test_redact_passes_through_innocuous_text() -> None:
     )
 
 
-def test_logger_redacts_secrets_in_emitted_records(caplog) -> None:  # noqa: ANN001
+def test_logger_redacts_secrets_in_emitted_records(caplog: pytest.LogCaptureFixture) -> None:
     """A logger from get_logger redacts secrets before they reach a handler."""
     logger = get_logger("valuemaxx.outcomes.test")
     with caplog.at_level(logging.WARNING, logger="valuemaxx.outcomes.test"):
