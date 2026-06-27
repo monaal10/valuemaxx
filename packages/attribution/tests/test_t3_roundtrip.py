@@ -15,9 +15,12 @@ from valuemaxx.attribution.binding.t3_roundtrip import RoundTripResolver
 from valuemaxx.attribution.resolver import ResolveContext
 from valuemaxx.core import BindingTier, OutcomeEventId, RunId
 
+from tests.conftest import TENANT_A
+
 
 def _ctx(*, echoed_run_id: RunId | None) -> ResolveContext:
     return ResolveContext(
+        tenant_id=TENANT_A,
         outcome_id=OutcomeEventId("oc-1"),
         occurred_at=datetime(2026, 1, 1, tzinfo=UTC),
         entity_keys=frozenset(),

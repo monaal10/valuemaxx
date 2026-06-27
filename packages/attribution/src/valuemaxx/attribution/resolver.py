@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
     from datetime import datetime
 
-    from valuemaxx.core import OutcomeEventId, RunId
+    from valuemaxx.core import OutcomeEventId, RunId, TenantId
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,16 +36,19 @@ class ResolveContext:
     """Everything a resolver may read to bind one outcome to a run.
 
     Carries the per-tier signals (ambient run id, W3C baggage map, the echoed
-    round-trip run id) alongside the outcome's identity, time, and entity keys.
-    Each resolver reads only the signals relevant to its own tier.
+    round-trip run id) alongside the outcome's tenant scope, identity, time,
+    entity keys, and textual content. Each resolver reads only the signals
+    relevant to its own tier.
     """
 
+    tenant_id: TenantId
     outcome_id: OutcomeEventId
     occurred_at: datetime
     entity_keys: frozenset[tuple[str, str]]
     ambient_run_id: RunId | None
     baggage: Mapping[str, str]
     echoed_run_id: RunId | None
+    content: str = ""
 
 
 @dataclass(frozen=True, slots=True)

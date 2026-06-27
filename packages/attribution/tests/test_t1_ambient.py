@@ -14,9 +14,12 @@ from valuemaxx.attribution.binding.t1_ambient import AmbientContextResolver
 from valuemaxx.attribution.resolver import ResolveContext
 from valuemaxx.core import BindingTier, OutcomeEventId, RunId, active_run_id
 
+from tests.conftest import TENANT_A
+
 
 def _ctx(*, ambient_run_id: RunId | None) -> ResolveContext:
     return ResolveContext(
+        tenant_id=TENANT_A,
         outcome_id=OutcomeEventId("oc-1"),
         occurred_at=datetime(2026, 1, 1, tzinfo=UTC),
         entity_keys=frozenset(),

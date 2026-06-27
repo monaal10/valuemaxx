@@ -26,9 +26,12 @@ from valuemaxx.core import (
     RunId,
 )
 
+from tests.conftest import TENANT_A
+
 
 def _ctx() -> ResolveContext:
     return ResolveContext(
+        tenant_id=TENANT_A,
         outcome_id=OutcomeEventId("oc-1"),
         occurred_at=datetime(2026, 1, 1, tzinfo=UTC),
         entity_keys=frozenset({("customer_id", "c-1")}),
