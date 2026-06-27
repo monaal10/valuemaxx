@@ -7,6 +7,13 @@ license = "Apache-2.0"
 dependencies = [
     "valuemaxx-core",
     "valuemaxx-capabilities",
+    "pyyaml>=6",
+    "typing-extensions>=4.4",
+]
+
+[dependency-groups]
+dev = [
+    "types-PyYAML>=6",
 ]
 
 [build-system]
