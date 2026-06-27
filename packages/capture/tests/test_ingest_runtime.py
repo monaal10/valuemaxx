@@ -23,6 +23,7 @@ from valuemaxx.capabilities import Registry
 from valuemaxx.capture.capabilities import (
     IngestNotWiredError,
     IngestOtlpSpanInput,
+    IngestOtlpSpanOutput,
     IngestRuntime,
     bind_ingest_runtime,
     register,
@@ -68,6 +69,7 @@ def test_bound_runtime_persists_a_cost_event() -> None:
     handler = _ingest_handler(registry)
     out = handler(IngestOtlpSpanInput(tenant_id=str(_TENANT), attributes=_span_attrs()))
 
+    assert isinstance(out, IngestOtlpSpanOutput)
     assert out.accepted is True
     assert out.run_id == "run-x"
     assert out.attempt_id == "att-x"
@@ -108,6 +110,7 @@ def test_unwired_handler_acknowledges_without_persisting() -> None:
             attributes={"ai_margin.run_id": "run-h", "ai_margin.attempt_id": "att-h"},
         )
     )
+    assert isinstance(out, IngestOtlpSpanOutput)
     assert out.accepted is True
     assert out.run_id == "run-h"
     assert out.attempt_id == "att-h"
