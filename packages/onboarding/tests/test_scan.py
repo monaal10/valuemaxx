@@ -9,9 +9,12 @@ injected metadata back.
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from valuemaxx.onboarding.scan import ECHOING_SYSTEMS, scan_codebase
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 _APP_SOURCE = '''
 """A toy support app to scan."""

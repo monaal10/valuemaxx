@@ -67,6 +67,49 @@ def test_list_cost_sources_request_response() -> None:
     assert cap.mode is Mode.REQUEST_RESPONSE
 
 
+def _handler_for(name: str):  # noqa: ANN202 — returns a capability handler
+    return next(c for c in _registered().all() if c.name == name).handler
+
+
+def test_ingest_otlp_span_handler_surfaces_dedup_key() -> None:
+    """test_ingest_otlp_span_handler_surfaces_dedup_key: the handler echoes (run_id, attempt_id)."""
+    from valuemaxx.capture.capabilities import IngestOtlpSpanInput, IngestOtlpSpanOutput
+
+    handler = _handler_for("ingest_otlp_span")
+    out = handler(
+        IngestOtlpSpanInput(
+            tenant_id=str(_TENANT),
+            attributes={"ai_margin.run_id": "run-h", "ai_margin.attempt_id": "att-h"},
+        )
+    )
+    assert isinstance(out, IngestOtlpSpanOutput)
+    assert out.run_id == "run-h"
+    assert out.attempt_id == "att-h"
+    assert out.accepted is True
+
+
+def test_list_cost_sources_handler_lists_authoritative_sources() -> None:
+    """test_list_cost_sources_handler_lists_authoritative_sources: the wired sources are listed."""
+    from valuemaxx.capture.capabilities import ListCostSourcesInput, ListCostSourcesOutput
+
+    handler = _handler_for("list_cost_sources")
+    out = handler(ListCostSourcesInput())
+    assert isinstance(out, ListCostSourcesOutput)
+    assert "gateway:openrouter" in out.sources
+    assert "provider_costapi" in out.sources
+
+
+def test_capture_healthcheck_handler_reports_alive_and_granularity() -> None:
+    """test_capture_healthcheck_handler_reports_alive_and_granularity: alive + per_attempt."""
+    from valuemaxx.capture.capabilities import CaptureHealthcheckInput, CaptureHealthcheckOutput
+
+    handler = _handler_for("capture_healthcheck")
+    out = handler(CaptureHealthcheckInput())
+    assert isinstance(out, CaptureHealthcheckOutput)
+    assert out.alive is True
+    assert out.capture_granularity == "per_attempt"
+
+
 def _span_attrs() -> dict[str, object]:
     return {
         semconv.GEN_AI_SYSTEM: "anthropic",

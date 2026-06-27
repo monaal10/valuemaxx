@@ -80,3 +80,43 @@ def test_openrouter_per_attempt_granularity() -> None:
     source = OpenRouterSource(clock=_FixedClock())
     event = source.to_cost_event(_openrouter_response(), tenant_id=_TENANT)
     assert event.capture_granularity is CaptureGranularity.PER_ATTEMPT
+
+
+def test_openrouter_source_name() -> None:
+    """test_openrouter_source_name: the source identifies itself for list_cost_sources."""
+    assert OpenRouterSource(clock=_FixedClock()).name == "gateway:openrouter"
+
+
+def test_openrouter_refuses_when_no_usage_object() -> None:
+    """test_openrouter_refuses_when_no_usage_object: a response with no usage is refused."""
+    source = OpenRouterSource(clock=_FixedClock())
+    with pytest.raises(ProvenanceWarning, match="no usage"):
+        source.to_cost_event({"id": "gen-x"}, tenant_id=_TENANT)
+
+
+def test_openrouter_refuses_when_no_authoritative_cost() -> None:
+    """test_openrouter_refuses_when_no_authoritative_cost: missing usage.cost is refused."""
+    source = OpenRouterSource(clock=_FixedClock())
+    body = _openrouter_response()
+    usage = body["usage"]
+    assert isinstance(usage, dict)
+    del usage["cost"]  # no authoritative inline cost present
+    with pytest.raises(ProvenanceWarning, match="no authoritative"):
+        source.to_cost_event(body, tenant_id=_TENANT)
+
+
+def test_openrouter_tolerates_missing_token_and_id_fields() -> None:
+    """test_openrouter_tolerates_missing_token_and_id_fields: odd-typed fields coerce safely."""
+    source = OpenRouterSource(clock=_FixedClock())
+    # non-int tokens and non-str id/model exercise the coercion fallbacks
+    body: dict[str, object] = {
+        "id": 12345,  # not a str
+        "model": None,  # not a str
+        "user": "run-z",
+        "usage": {"prompt_tokens": "x", "completion_tokens": None, "cost": "0.5"},
+    }
+    event = source.to_cost_event(body, tenant_id=_TENANT)
+    assert event.cost_usd == Decimal("0.5")
+    assert event.tokens.input_uncached == 0  # "x" coerced to 0
+    assert event.tokens.output == 0  # None coerced to 0
+    assert event.model == ""  # None coerced to ""
