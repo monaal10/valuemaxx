@@ -1,6 +1,7 @@
 [project]
 name = "valuemaxx-api"
 version = "0.0.0"
+classifiers = ["Private :: Do Not Upload"]
 description = "AI Margin Intelligence — FastAPI projection of the capability registry (routes per mode; tenant from the API key)."
 requires-python = ">=3.11"
 license = "Apache-2.0"

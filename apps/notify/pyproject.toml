@@ -1,6 +1,7 @@
 [project]
 name = "valuemaxx-notify"
 version = "0.0.0"
+classifiers = ["Private :: Do Not Upload"]
 description = "AI Margin Intelligence — notify surface (thin registry projection; built in G4)."
 requires-python = ">=3.11"
 license = "Apache-2.0"

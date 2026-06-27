@@ -1,6 +1,7 @@
 [project]
 name = "valuemaxx-outcomes"
 version = "0.0.0"
+classifiers = ["Private :: Do Not Upload"]
 description = "AI Margin Intelligence — outcomes logic package (skeleton; built in G2)."
 requires-python = ">=3.11"
 license = "Apache-2.0"

@@ -1,6 +1,7 @@
 [project]
 name = "valuemaxx-mcp"
 version = "0.0.0"
+classifiers = ["Private :: Do Not Upload"]
 description = "AI Margin Intelligence — MCP server (thin projection: each MCP capability -> a tool with generated inputSchema)."
 requires-python = ">=3.11"
 license = "Apache-2.0"

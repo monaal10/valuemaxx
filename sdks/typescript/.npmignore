@@ -1,0 +1,12 @@
+# Source + config are not shipped; only the built dist/ + docs.
+src
+test
+tsconfig.json
+tsup.config.ts
+vitest.config.ts
+eslint.config.mjs
+.prettierrc.json
+.prettierignore
+.npmignore
+coverage
+*.tsbuildinfo

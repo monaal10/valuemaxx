@@ -1,6 +1,7 @@
 [project]
 name = "valuemaxx-capabilities"
 version = "0.0.0"
+classifiers = ["Private :: Do Not Upload"]
 description = "AI Margin Intelligence — the capability registry contract (single source of truth for operations)."
 requires-python = ">=3.11"
 license = "Apache-2.0"

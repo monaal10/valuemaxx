@@ -1,6 +1,7 @@
 [project]
 name = "valuemaxx-core"
 version = "0.0.0"
+classifiers = ["Private :: Do Not Upload"]
 description = "AI Margin Intelligence — the typed spine (domain models, enums, repository ABCs)."
 requires-python = ">=3.11"
 license = "Apache-2.0"

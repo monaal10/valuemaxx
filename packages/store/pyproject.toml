@@ -1,6 +1,7 @@
 [project]
 name = "valuemaxx-store"
 version = "0.0.0"
+classifiers = ["Private :: Do Not Upload"]
 description = "AI Margin Intelligence — the persistence layer: concrete async SQLAlchemy repositories + the migration owner."
 requires-python = ">=3.11"
 license = "Apache-2.0"

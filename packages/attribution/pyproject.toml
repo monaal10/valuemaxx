@@ -1,6 +1,7 @@
 [project]
 name = "valuemaxx-attribution"
 version = "0.0.0"
+classifiers = ["Private :: Do Not Upload"]
 description = "AI Margin Intelligence — attribution logic package (skeleton; built in G2)."
 requires-python = ">=3.11"
 license = "Apache-2.0"

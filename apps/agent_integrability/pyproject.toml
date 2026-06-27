@@ -1,6 +1,7 @@
 [project]
 name = "valuemaxx-agent-integrability"
 version = "0.0.0"
+classifiers = ["Private :: Do Not Upload"]
 description = "AI Margin Intelligence — agent integration affordances (llms.txt, AGENTS.md, Skill, scaffold/validate tools, canonical discovery)."
 requires-python = ">=3.11"
 license = "Apache-2.0"

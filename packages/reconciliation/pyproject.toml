@@ -1,6 +1,7 @@
 [project]
 name = "valuemaxx-reconciliation"
 version = "0.0.0"
+classifiers = ["Private :: Do Not Upload"]
 description = "AI Margin Intelligence — reconciliation (provider cost true-up): proration, drift, manual CSV."
 requires-python = ">=3.11"
 license = "Apache-2.0"

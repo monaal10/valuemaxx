@@ -1,6 +1,7 @@
 [project]
 name = "valuemaxx-capture"
 version = "0.0.0"
+classifiers = ["Private :: Do Not Upload"]
 description = "AI Margin Intelligence — capture logic package: fail-open instrumentation, token/cost math, instance-scoped transport patch, streaming terminal-value capture, OTLP wire, gateway sources."
 requires-python = ">=3.11"
 license = "Apache-2.0"

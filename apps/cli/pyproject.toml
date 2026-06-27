@@ -1,6 +1,7 @@
 [project]
 name = "valuemaxx-cli"
 version = "0.0.0"
+classifiers = ["Private :: Do Not Upload"]
 description = "AI Margin Intelligence — the `valuemaxx` CLI (thin registry projection + init/up/onboard)."
 requires-python = ">=3.11"
 license = "Apache-2.0"

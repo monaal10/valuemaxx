@@ -1,6 +1,7 @@
 [project]
 name = "valuemaxx-allocation"
 version = "0.0.0"
+classifiers = ["Private :: Do Not Upload"]
 description = "AI Margin Intelligence — tiered shared-COGS allocation (direct / shared-proportional / fixed overhead)."
 requires-python = ">=3.11"
 license = "Apache-2.0"

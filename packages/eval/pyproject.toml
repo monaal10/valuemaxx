@@ -1,6 +1,7 @@
 [project]
 name = "valuemaxx-eval"
 version = "0.0.0"
+classifiers = ["Private :: Do Not Upload"]
 description = "AI Margin Intelligence — eval-backed model recommendation (evidence layer, §8)."
 requires-python = ">=3.11"
 license = "Apache-2.0"
