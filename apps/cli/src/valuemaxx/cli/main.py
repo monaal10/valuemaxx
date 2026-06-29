@@ -201,6 +201,18 @@ def up(
     )
     app = create_app(settings)
     typer.echo(f"valuemaxx up: serving on http://{host}:{port} (db={settings.database_url})")
+    if settings.is_using_dev_fallback():
+        # Zero-config: no VALUEMAXX_INGEST_KEYS set, so a deterministic dev key was
+        # synthesized. Print it (loud, never silent) so the operator can authenticate;
+        # it is STABLE across restarts, so data persisted under it stays readable. Set
+        # VALUEMAXX_INGEST_KEYS to use your own key(s) and turn this off.
+        from valuemaxx.server.settings import DEV_INGEST_KEY
+
+        typer.echo(
+            f'valuemaxx up: no ingest key configured — using dev key "{DEV_INGEST_KEY}" '
+            f'(send header "X-API-Key: {DEV_INGEST_KEY}"). '
+            f"Set VALUEMAXX_INGEST_KEYS for your own keys."
+        )
     _serve(app, host=host, port=port)
 
 

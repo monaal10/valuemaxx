@@ -58,32 +58,16 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-# The base module shipped from THIS package's own src tree.
+# DEV: ship only this package's own valuemaxx.sdk, so the workspace editable install is
+# clean and `import valuemaxx.server` (etc.) resolves to the LIVE sibling editable
+# packages (valuemaxx-server -> apps/server, …) — not a frozen force-include copy that
+# would shadow them. The PUBLISHED wheel bundles every valuemaxx.* module; that bundling
+# is injected at release time by `scripts/bundle_for_release.py` (run before `uv build`
+# in the release workflow), so a brand-new user gets one self-contained `valuemaxx` wheel
+# while developers keep live-editable sources. (Mechanism: force-include leaks into uv's
+# editable install and copies static snapshots — hence release-only, never in dev.)
 only-include = ["src/valuemaxx/sdk"]
 sources = ["src"]
-
-# Bundle every other valuemaxx.* module from its sibling workspace package into this
-# single wheel, so `pip install valuemaxx` yields one self-contained distribution and
-# `[cli]` just toggles the third-party deps. Code is cheap; one wheel beats publishing
-# ~15 internal packages as separate, individually-versioned public APIs.
-[tool.hatch.build.targets.wheel.force-include]
-"../../packages/core/src/valuemaxx/core" = "valuemaxx/core"
-"../../packages/capabilities/src/valuemaxx/capabilities" = "valuemaxx/capabilities"
-"../../packages/capture/src/valuemaxx/capture" = "valuemaxx/capture"
-"../../packages/outcomes/src/valuemaxx/outcomes" = "valuemaxx/outcomes"
-"../../packages/attribution/src/valuemaxx/attribution" = "valuemaxx/attribution"
-"../../packages/reconciliation/src/valuemaxx/reconciliation" = "valuemaxx/reconciliation"
-"../../packages/allocation/src/valuemaxx/allocation" = "valuemaxx/allocation"
-"../../packages/metrics/src/valuemaxx/metrics" = "valuemaxx/metrics"
-"../../packages/eval/src/valuemaxx/eval" = "valuemaxx/eval"
-"../../packages/onboarding/src/valuemaxx/onboarding" = "valuemaxx/onboarding"
-"../../packages/store/src/valuemaxx/store" = "valuemaxx/store"
-"../../apps/agent_integrability/src/valuemaxx/agent_integrability" = "valuemaxx/agent_integrability"
-"../../apps/api/src/valuemaxx/api" = "valuemaxx/api"
-"../../apps/mcp/src/valuemaxx/mcp" = "valuemaxx/mcp"
-"../../apps/notify/src/valuemaxx/notify" = "valuemaxx/notify"
-"../../apps/server/src/valuemaxx/server" = "valuemaxx/server"
-"../../apps/cli/src/valuemaxx/cli" = "valuemaxx/cli"
 
 [tool.uv.sources]
 valuemaxx-core = { workspace = true }

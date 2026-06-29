@@ -47,7 +47,9 @@ jobs:
       - uses: astral-sh/setup-uv@v3
       - name: Stamp version from the tag
         run: uv run python scripts/stamp_version.py "${GITHUB_REF_NAME}"
-      - name: Build the Python SDK
+      - name: Inject the single-wheel bundle config (release-only; never committed)
+        run: uv run python scripts/bundle_for_release.py
+      - name: Build the Python SDK (bundles every valuemaxx.* module + the CLI)
         working-directory: sdks/python
         run: uv build
       - name: Publish to PyPI

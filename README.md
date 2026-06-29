@@ -54,20 +54,25 @@ command with `uv run` (e.g. `uv run valuemaxx up`). The commands are identical.
 
 ### 1. Boot the backend — `valuemaxx up`
 
-`valuemaxx up` builds the full backend assembly and serves it. With no configuration it opens an embedded SQLite database in the working directory (`./valuemaxx.db`), runs migrations, and prints the URL it's serving:
+`valuemaxx up` builds the full backend assembly and serves it. **Zero config:** it opens an embedded SQLite database in the working directory (`./valuemaxx.db`), runs migrations, generates a stable local **`dev` ingest key**, and prints the URL it's serving:
 
 ```bash
-# Map an ingest key to your tenant UUID (the key resolves the tenant on every request)
-export VALUEMAXX_INGEST_KEYS='{"dev-key": "6f1c3b2a-0000-4a00-8000-000000000001"}'
-export VALUEMAXX_WEBHOOK_SECRET='dev-webhook-secret'
-
 valuemaxx up
 # valuemaxx up: serving on http://127.0.0.1:8000 (db=sqlite+aiosqlite:///./valuemaxx.db)
+# valuemaxx up: no ingest key configured — using dev key "dev" (send header "X-API-Key: dev"). …
+```
+
+Use `X-API-Key: dev` on every request below — that's all the auth you need locally. The `dev` key is **stable across restarts**, so data you persist stays readable.
+
+When you're ready to use your own key(s) — or run multi-tenant — set `VALUEMAXX_INGEST_KEYS` (a JSON map of `key → tenant UUID`); that turns the `dev` fallback off:
+
+```bash
+export VALUEMAXX_INGEST_KEYS='{"my-key": "6f1c3b2a-0000-4a00-8000-000000000001"}'
 ```
 
 `--host`, `--port`, and `--db` (or `DATABASE_URL` / `VALUEMAXX_DATABASE_URL`) override the defaults. Point `--db` at a `postgresql+asyncpg://…` URL for a persistent multi-process backend. Leave this running; the rest of the steps talk to it.
 
-The tenant is **never** read from a request body — it's resolved from the ingest key (`X-API-Key`), so a caller can only ever act on its own tenant.
+**A "tenant" is one isolated account** — for a solo dev or a single-product team that's just *you* (one tenant), and you never type a tenant id: it's resolved from your ingest key, never read from the request body, so a caller can only ever act on its own tenant. You'd use multiple tenants only if you need hard data isolation between separate accounts (e.g. an agent vendor hosting several customers' cost data); your *own* customers are modeled as outcomes/entities inside one tenant, not as tenants.
 
 > **MCP, for free.** The running backend also speaks the **Model Context Protocol** at `POST /mcp` — every capability that declares the MCP surface is a tool. Point your MCP client (Claude Desktop/Code) at `http://127.0.0.1:8000/mcp` (authenticated with your ingest key in the `x-valuemaxx-ingest-key` header) and an agent can call `validate_outcome_rule`, `run_metric`, `cost_breakdown`, … directly. No separate install — it's a URL on the backend you already booted.
 
@@ -83,7 +88,7 @@ import valuemaxx.sdk as valuemaxx
 
 vmx = valuemaxx.init(
     tenant_id=UUID("6f1c3b2a-0000-4a00-8000-000000000001"),  # your tenant UUID
-    ingest_key="dev-key",
+    ingest_key="dev",
     endpoint="http://127.0.0.1:8000",
 )
 print(vmx.effective.endpoint, vmx.capture_granularity, vmx.warnings)
@@ -112,7 +117,7 @@ const openai = new OpenAI();
 
 init({
   tenantId: "6f1c3b2a-0000-4a00-8000-000000000001",
-  ingestKey: "dev-key",
+  ingestKey: "dev",
   endpoint: "http://127.0.0.1:8000",
   clients: [{ client: openai, provider: "openai" }],
 });
@@ -134,7 +139,7 @@ When you wire `init()` (step 2) the exporter does this automatically. To prove t
 
 ```bash
 curl -s http://127.0.0.1:8000/v1/traces \
-  -H "x-valuemaxx-ingest-key: dev-key" -H "Content-Type: application/json" \
+  -H "x-valuemaxx-ingest-key: dev" -H "Content-Type: application/json" \
   -d '{"resourceSpans":[{"scopeSpans":[{"spans":[{"name":"ai.generateText","attributes":[
         {"key":"gen_ai.system","value":{"stringValue":"anthropic"}},
         {"key":"gen_ai.request.model","value":{"stringValue":"claude-opus-4-8"}},
@@ -155,7 +160,7 @@ Query the persisted cost back over the HTTP API. `run_metric` is a typed, closed
 
 ```bash
 curl -s http://127.0.0.1:8000/run_metric \
-  -H "X-API-Key: dev-key" -H "Content-Type: application/json" \
+  -H "X-API-Key: dev" -H "Content-Type: application/json" \
   -d '{"name":"cost_per_outcome","numerator":"total_cost_usd",
        "denominator":"verified_outcome_count","filters":{},"group_by":[]}'
 # {"name":"cost_per_outcome","cells":[{"group_key":[],
@@ -170,7 +175,7 @@ The `numerator_value` is the summed cost of every persisted cost event in your t
 
 ```bash
 curl -s http://127.0.0.1:8000/run_metric \
-  -H "X-API-Key: dev-key" -H "Content-Type: application/json" \
+  -H "X-API-Key: dev" -H "Content-Type: application/json" \
   -d '{"name":"cost_by_model","numerator":"total_cost_usd",
        "denominator":"verified_outcome_count","filters":{},"group_by":["model"]}'
 # one cell per model: [["model","claude-opus-4-8"]] -> "0.0250000000"

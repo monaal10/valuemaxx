@@ -26,6 +26,8 @@ jobs:
           else
             echo "TS SDK not scaffolded yet — checking Python SDK only"
           fi
+      - name: Release bundle not committed (force-include breaks editable dev)
+        run: uv run python scripts/bundle_for_release.py --check
       - name: Ruff lint
         run: uv run ruff check .
       - name: Ruff format check

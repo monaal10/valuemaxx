@@ -90,7 +90,7 @@ def _wire_runtimes(registry: Registry, bridge: StoreBridge, settings: ServerSett
             default_provenance=Provenance.ESTIMATED,
         ),
     )
-    tenant = _first_tenant(settings.ingest_keys)
+    tenant = _first_tenant(settings.resolved_ingest_keys())
     if tenant is not None:
         executor = MetricExecutor(
             cost_repo=bridge.cost_events,
@@ -132,7 +132,10 @@ def create_app(settings: ServerSettings | None = None) -> FastAPI:
 
     app = build_app(
         registry,
-        api_keys=resolved.ingest_keys,
+        # resolved_ingest_keys() supplies a deterministic dev key when none is configured,
+        # so `valuemaxx up` is usable zero-config (the same map auth + the metrics runtime
+        # bind against). With real keys configured this is exactly those keys.
+        api_keys=resolved.resolved_ingest_keys(),
         webhook_secret=resolved.webhook_secret_bytes(),
         lifespan=lifespan,
     )

@@ -19,6 +19,13 @@ from __future__ import annotations
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Zero-config local dev: when no ingest key is configured, the backend synthesizes this
+# stable key -> tenant so the first run "just works". Both are FIXED (not random) so a
+# restart reuses the same tenant and data persisted under it stays readable — never
+# orphaned under a fresh random tenant. Configuring real keys turns this fallback off.
+DEV_INGEST_KEY = "dev"
+DEV_TENANT_ID = "00000000-0000-4000-8000-000000000001"
+
 
 class ServerSettings(BaseSettings):
     """Environment-driven configuration for :func:`~valuemaxx.server.app.create_app`.
@@ -58,5 +65,21 @@ class ServerSettings(BaseSettings):
         """The webhook secret as bytes (the signature verifier takes bytes)."""
         return self.webhook_secret.encode("utf-8")
 
+    def is_using_dev_fallback(self) -> bool:
+        """True iff no ingest key is configured, so the dev key->tenant is synthesized."""
+        return not self.ingest_keys
 
-__all__ = ["ServerSettings"]
+    def resolved_ingest_keys(self) -> dict[str, str]:
+        """The effective ingest-key -> tenant map the app authenticates against.
+
+        Returns the configured ``ingest_keys`` as-is, or — when none are configured — a
+        single deterministic dev key (:data:`DEV_INGEST_KEY` -> :data:`DEV_TENANT_ID`) so
+        ``valuemaxx up`` is usable zero-config. There is still NO anonymous tenant: every
+        request resolves a tenant from a key; the dev fallback just supplies a known one.
+        """
+        if self.ingest_keys:
+            return dict(self.ingest_keys)
+        return {DEV_INGEST_KEY: DEV_TENANT_ID}
+
+
+__all__ = ["DEV_INGEST_KEY", "DEV_TENANT_ID", "ServerSettings"]
