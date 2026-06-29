@@ -9,6 +9,7 @@ dependencies = [
     "valuemaxx-core",
     "valuemaxx-capabilities",
     "valuemaxx-agent-integrability",
+    "valuemaxx-mcp",
     "fastapi>=0.110",
 ]
 
@@ -30,3 +31,4 @@ sources = ["src"]
 valuemaxx-core = { workspace = true }
 valuemaxx-capabilities = { workspace = true }
 valuemaxx-agent-integrability = { workspace = true }
+valuemaxx-mcp = { workspace = true }

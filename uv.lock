@@ -1536,6 +1536,7 @@ dependencies = [
     { name = "valuemaxx-agent-integrability" },
     { name = "valuemaxx-capabilities" },
     { name = "valuemaxx-core" },
+    { name = "valuemaxx-mcp" },
 ]
 
 [package.dev-dependencies]
@@ -1550,6 +1551,7 @@ requires-dist = [
     { name = "valuemaxx-agent-integrability", editable = "apps/agent_integrability" },
     { name = "valuemaxx-capabilities", editable = "packages/capabilities" },
     { name = "valuemaxx-core", editable = "packages/core" },
+    { name = "valuemaxx-mcp", editable = "apps/mcp" },
 ]
 
 [package.metadata.requires-dev]

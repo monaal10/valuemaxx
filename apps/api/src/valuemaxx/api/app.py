@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 from fastapi import FastAPI
 from valuemaxx.api.auth import ApiKeyAuthenticator
 from valuemaxx.api.jobs import JobStore
+from valuemaxx.api.mcp_route import mount_mcp_route
 from valuemaxx.api.projection import mount_capabilities
 
 if TYPE_CHECKING:
@@ -56,6 +57,9 @@ def build_app(
         jobs=jobs,
         webhook_secret=webhook_secret,
     )
+    # The MCP transport: POST /mcp speaks JSON-RPC over the same registry + auth, so
+    # `valuemaxx up` serves an MCP URL alongside the API routes.
+    mount_mcp_route(app, registry, auth)
     return app
 
 
