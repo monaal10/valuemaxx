@@ -1420,8 +1420,36 @@ version = "0.0.0"
 source = { editable = "sdks/python" }
 dependencies = [
     { name = "pydantic" },
-    { name = "valuemaxx-capture" },
-    { name = "valuemaxx-core" },
+    { name = "wrapt" },
+]
+
+[package.optional-dependencies]
+cli = [
+    { name = "aiosqlite" },
+    { name = "alembic" },
+    { name = "anyio" },
+    { name = "asyncpg" },
+    { name = "fastapi" },
+    { name = "pydantic-settings" },
+    { name = "pyyaml" },
+    { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "tree-sitter" },
+    { name = "tree-sitter-typescript" },
+    { name = "typer" },
+    { name = "typing-extensions" },
+    { name = "uvicorn" },
+]
+server = [
+    { name = "aiosqlite" },
+    { name = "alembic" },
+    { name = "anyio" },
+    { name = "asyncpg" },
+    { name = "fastapi" },
+    { name = "pydantic-settings" },
+    { name = "pyyaml" },
+    { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "typing-extensions" },
+    { name = "uvicorn" },
 ]
 
 [package.dev-dependencies]
@@ -1432,10 +1460,33 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiosqlite", marker = "extra == 'cli'", specifier = ">=0.20" },
+    { name = "aiosqlite", marker = "extra == 'server'", specifier = ">=0.20" },
+    { name = "alembic", marker = "extra == 'cli'", specifier = ">=1.13" },
+    { name = "alembic", marker = "extra == 'server'", specifier = ">=1.13" },
+    { name = "anyio", marker = "extra == 'cli'", specifier = ">=4" },
+    { name = "anyio", marker = "extra == 'server'", specifier = ">=4" },
+    { name = "asyncpg", marker = "extra == 'cli'", specifier = ">=0.29" },
+    { name = "asyncpg", marker = "extra == 'server'", specifier = ">=0.29" },
+    { name = "fastapi", marker = "extra == 'cli'", specifier = ">=0.110" },
+    { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.110" },
     { name = "pydantic", specifier = ">=2" },
-    { name = "valuemaxx-capture", editable = "packages/capture" },
-    { name = "valuemaxx-core", editable = "packages/core" },
+    { name = "pydantic-settings", marker = "extra == 'cli'", specifier = ">=2.2" },
+    { name = "pydantic-settings", marker = "extra == 'server'", specifier = ">=2.2" },
+    { name = "pyyaml", marker = "extra == 'cli'", specifier = ">=6" },
+    { name = "pyyaml", marker = "extra == 'server'", specifier = ">=6" },
+    { name = "sqlalchemy", extras = ["asyncio"], marker = "extra == 'cli'", specifier = ">=2,<3" },
+    { name = "sqlalchemy", extras = ["asyncio"], marker = "extra == 'server'", specifier = ">=2,<3" },
+    { name = "tree-sitter", marker = "extra == 'cli'", specifier = ">=0.23" },
+    { name = "tree-sitter-typescript", marker = "extra == 'cli'", specifier = ">=0.23" },
+    { name = "typer", marker = "extra == 'cli'", specifier = ">=0.12" },
+    { name = "typing-extensions", marker = "extra == 'cli'", specifier = ">=4.12" },
+    { name = "typing-extensions", marker = "extra == 'server'", specifier = ">=4.12" },
+    { name = "uvicorn", marker = "extra == 'cli'", specifier = ">=0.29" },
+    { name = "uvicorn", marker = "extra == 'server'", specifier = ">=0.29" },
+    { name = "wrapt", specifier = ">=1.16" },
 ]
+provides-extras = ["cli", "server"]
 
 [package.metadata.requires-dev]
 dev = [
