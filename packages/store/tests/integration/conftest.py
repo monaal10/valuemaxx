@@ -5,19 +5,21 @@ has no JSONB and a different autogenerate surface), so these run against a real
 ``postgres:16`` container started once per session. Each test gets a fresh schema
 (migrated with ``alembic upgrade head``) so cross-test state never leaks.
 
-If Docker is unavailable the whole module is skipped with a clear reason — the tests
-are still implemented and run wherever Docker exists (CI), per the build plan's H2 rule.
+Point them at an existing Postgres with ``VALUEMAXX_TEST_PG_URL`` (an asyncpg URL) to
+run without Docker; otherwise they use a testcontainer where Docker exists (CI) and
+skip with a clear reason where it doesn't, per the build plan's H2 rule.
 """
 
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING
 
 import pytest
 import pytest_asyncio
+from sqlalchemy import text
 from valuemaxx.store.engine import create_engine, create_sessionmaker
 from valuemaxx.store.migrations_api import upgrade_to_head
-from valuemaxx.store.tables import metadata
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterator
@@ -56,13 +58,22 @@ _DOCKER_OK, _DOCKER_REASON = _docker_available()
 
 @pytest.fixture(scope="session")
 def postgres_url() -> Iterator[str]:
-    """A session-scoped real Postgres container; yields its asyncpg URL.
+    """A session-scoped real Postgres URL — an existing instance or a fresh container.
 
-    A module-level ``pytestmark`` in a *conftest* does not apply to the tests, so the
-    Docker gate lives here in the shared fixture: when Docker is unavailable every
-    dependent test skips (with a reason), rather than erroring. The tests are still
-    implemented and run wherever Docker exists (CI), per the build plan's H2 rule.
+    Resolution order:
+
+    1. ``VALUEMAXX_TEST_PG_URL`` (an asyncpg URL to an already-running Postgres) — lets
+       these tests run without Docker (e.g. a local ``postgres`` instance), which is also
+       how they were verified during development.
+    2. Otherwise a ``postgres:16`` testcontainer (CI), gated on a reachable Docker daemon;
+       when Docker is unavailable every dependent test SKIPS with a reason rather than
+       erroring (a module-level ``pytestmark`` in a conftest does not apply to the tests,
+       so the gate lives here in the shared fixture).
     """
+    explicit = os.environ.get("VALUEMAXX_TEST_PG_URL")
+    if explicit:
+        yield explicit
+        return
     if not _DOCKER_OK:
         pytest.skip(f"real-Postgres integration needs Docker (testcontainers); {_DOCKER_REASON}")
     # testcontainers ships no type stubs; the import is test-only and Docker-gated above.
@@ -86,7 +97,13 @@ async def pg_sessionmaker(
     try:
         yield create_sessionmaker(engine)
     finally:
-        # Drop the schema so the next test re-migrates onto a clean database.
+        # Reset to a TRULY empty database so the next test's upgrade_to_head re-runs the
+        # migration. ``metadata.drop_all`` drops the data tables but NOT alembic's
+        # ``alembic_version`` bookkeeping table — leaving it stamped at head, so the next
+        # ``upgrade_to_head`` would see "already at head" and create nothing
+        # (``relation … does not exist``). Dropping + recreating the whole ``public``
+        # schema removes every table including ``alembic_version``, guaranteeing a clean slate.
         async with engine.begin() as conn:
-            await conn.run_sync(metadata.drop_all)
+            await conn.execute(text("DROP SCHEMA public CASCADE"))
+            await conn.execute(text("CREATE SCHEMA public"))
         await engine.dispose()
