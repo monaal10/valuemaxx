@@ -157,9 +157,7 @@ def _mount_streaming(app: FastAPI, cap: AnyCapability, auth: ApiKeyAuthenticator
     app.post(f"/{cap.name}", name=cap.name)(stream)
 
 
-def mount_otlp_collector_route(
-    app: FastAPI, registry: Registry, auth: ApiKeyAuthenticator
-) -> None:
+def mount_otlp_collector_route(app: FastAPI, registry: Registry, auth: ApiKeyAuthenticator) -> None:
     """Mount ``POST /v1/traces`` — the real OTLP/HTTP collector for SDK spans.
 
     The SDK's ``@opentelemetry/exporter-trace-otlp-http`` posts a standard OTLP-JSON

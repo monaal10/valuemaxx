@@ -231,9 +231,7 @@ def default_pricebook() -> PriceBook:
     return PriceBook(cards=cards)
 
 
-def resolve_card(
-    book: PriceBook, *, provider: str, model: str, at: datetime
-) -> PriceCard | None:
+def resolve_card(book: PriceBook, *, provider: str, model: str, at: datetime) -> PriceCard | None:
     """Resolve a card for ``(provider, model)`` with exact-then-family-prefix matching.
 
     Tries an exact ``card_for`` first. Failing that, returns the card whose model is the

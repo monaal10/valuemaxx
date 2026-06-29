@@ -69,9 +69,7 @@ def _otlp_export_request(*, run_id: str) -> dict[str, object]:
         "resourceSpans": [
             {
                 "resource": {
-                    "attributes": [
-                        {"key": "service.name", "value": {"stringValue": "vibechk"}}
-                    ]
+                    "attributes": [{"key": "service.name", "value": {"stringValue": "vibechk"}}]
                 },
                 "scopeSpans": [
                     {

@@ -98,9 +98,7 @@ def test_rollup_span_without_provider_or_model_is_skipped() -> None:
             return ()
 
         @override
-        def list_in_window(
-            self, tenant_id: TenantId, start: _dt, end: _dt
-        ) -> Sequence[CostEvent]:
+        def list_in_window(self, tenant_id: TenantId, start: _dt, end: _dt) -> Sequence[CostEvent]:
             return ()
 
     registry = Registry()
