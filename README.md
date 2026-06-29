@@ -32,16 +32,16 @@ This walks you from nothing to a real cost-per-outcome number, end to end, again
 
 The backend is a real FastAPI app over **SQLite** (no Postgres needed for local dev); migrations run on startup. You boot it with `valuemaxx up`, send it cost spans on the wire, and query the numbers back over HTTP (or the SDK / CLI).
 
-> **Two installs, on purpose.** `pip install valuemaxx` gives you the **SDK** (`valuemaxx.sdk`) you import in your agent. The `valuemaxx` **CLI** (`valuemaxx up`, `valuemaxx init`, `valuemaxx onboard`, the query commands) ships in `valuemaxx-cli`. Install whichever you need; for the full local loop below you want both. (TypeScript users `npm install valuemaxx` for the SDK and run the CLI from this repo or a Python env.)
+> **One package, optional CLI.** `pip install valuemaxx` gives you the thin **SDK** (`valuemaxx.sdk`) you import in your agent. `pip install valuemaxx[cli]` adds the **`valuemaxx` command** (`up`, `init`, `onboard`, the query commands) — the full local backend — pulling in its heavier deps (FastAPI, SQLAlchemy, …) only when you ask for it. For the full local loop below you want `[cli]`. (TypeScript users `npm install valuemaxx` for the SDK.)
 
 ### 0. Install
 
 ```bash
-# The Python SDK (the import you add to your agent)
+# The Python SDK (the import you add to your agent) — thin, fail-open
 pip install valuemaxx
 
-# The CLI (the backend + operator commands: up / init / onboard / queries)
-pip install valuemaxx-cli
+# …plus the CLI + backend (the `valuemaxx` command: up / init / onboard / queries)
+pip install "valuemaxx[cli]"
 ```
 
 ```bash
@@ -68,6 +68,8 @@ valuemaxx up
 `--host`, `--port`, and `--db` (or `DATABASE_URL` / `VALUEMAXX_DATABASE_URL`) override the defaults. Point `--db` at a `postgresql+asyncpg://…` URL for a persistent multi-process backend. Leave this running; the rest of the steps talk to it.
 
 The tenant is **never** read from a request body — it's resolved from the ingest key (`X-API-Key`), so a caller can only ever act on its own tenant.
+
+> **MCP, for free.** The running backend also speaks the **Model Context Protocol** at `POST /mcp` — every capability that declares the MCP surface is a tool. Point your MCP client (Claude Desktop/Code) at `http://127.0.0.1:8000/mcp` (authenticated with your ingest key in the `x-valuemaxx-ingest-key` header) and an agent can call `validate_outcome_rule`, `run_metric`, `cost_breakdown`, … directly. No separate install — it's a URL on the backend you already booted.
 
 ### 2. Wire the SDK into your agent
 
