@@ -17,6 +17,11 @@ dependencies = [
 [dependency-groups]
 dev = [
     "testcontainers[postgres]>=4,<5",
+    # The async repositories use asyncpg, but alembic's migration runner is SYNC: it
+    # connects over a sync DBAPI URL (psycopg2 is SQLAlchemy's default postgres driver).
+    # The real-Postgres integration tests run that migration path, so they need psycopg2
+    # present (test-only). Without it CI errors with ModuleNotFoundError: psycopg2.
+    "psycopg2-binary>=2.9",
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
 ]
