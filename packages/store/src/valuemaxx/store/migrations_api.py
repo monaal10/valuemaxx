@@ -14,11 +14,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
-from alembic.runtime.environment import EnvironmentContext
-from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine
 from valuemaxx.store.tables import metadata
 
@@ -41,27 +40,16 @@ def _config(url: str) -> Config:
 
 
 def upgrade_to_head(url: str) -> None:
-    """Run every migration up to ``head`` against the given (sync) database URL."""
-    cfg = _config(url)
-    script = ScriptDirectory.from_config(cfg)
-    engine = create_engine(_sync_url(url))
-    try:
-        with engine.begin() as connection:
+    """Run every migration up to ``head`` against the given (sync) database URL.
 
-            def _do_upgrade(rev: object, _context: object) -> list[object]:
-                return script._upgrade_revs("head", rev)  # type: ignore[arg-type]  # alembic private API, stable since 1.x
-
-            with EnvironmentContext(
-                cfg,
-                script,
-                fn=_do_upgrade,
-                as_sql=False,
-                destination_rev="head",
-            ) as env:
-                env.configure(connection=connection, target_metadata=metadata)
-                env.run_migrations()
-    finally:
-        engine.dispose()
+    Uses alembic's official ``command.upgrade``, which loads ``env.py`` and runs
+    ``run_migrations_online`` — that path opens a connection, configures the context,
+    and wraps the run in ``context.begin_transaction()`` so the DDL is COMMITTED. (A
+    previous hand-rolled ``EnvironmentContext`` runner worked on SQLite, which
+    auto-commits DDL, but on Postgres the DDL transaction was never committed, so the
+    tables vanished — ``relation … does not exist`` in the integration tests.)
+    """
+    command.upgrade(_config(url), "head")
 
 
 def autogenerate_upgrade_ops(url: str) -> list[object]:
