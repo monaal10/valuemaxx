@@ -19,11 +19,6 @@
     "useUnknownInCatchVariables": true,
     "verbatimModuleSyntax": true,
 
-    // tsup's .d.ts bundler (rollup-plugin-dts) injects a `baseUrl` internally,
-    // which TS 6.0 deprecates with an error; acknowledge it so the dts build
-    // succeeds. We do not set baseUrl ourselves.
-    "ignoreDeprecations": "6.0",
-
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
