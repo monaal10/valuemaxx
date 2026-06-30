@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.scripts]
-valuemaxx = "valuemaxx.cli.main:main"
+valuemaxx = "valuemaxx.cli._entry:main"
 
 [dependency-groups]
 dev = [

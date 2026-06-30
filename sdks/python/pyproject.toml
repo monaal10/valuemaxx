@@ -51,7 +51,7 @@ server = [
 [project.scripts]
 # Present once `[cli]` is installed (the command imports valuemaxx.cli, which needs the
 # cli extra's deps). The module is always in the wheel; the deps gate whether it runs.
-valuemaxx = "valuemaxx.cli.main:main"
+valuemaxx = "valuemaxx.cli._entry:main"
 
 [build-system]
 requires = ["hatchling"]
