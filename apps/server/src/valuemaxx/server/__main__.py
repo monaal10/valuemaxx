@@ -9,12 +9,22 @@ migrations run, on ASGI startup). Equivalent to
 from __future__ import annotations
 
 import uvicorn
-from valuemaxx.server.settings import ServerSettings
+from valuemaxx.server.settings import DEV_INGEST_KEY, ServerSettings
 
 
 def main() -> None:
     """Serve the assembly app with uvicorn using the env-configured host/port."""
     settings = ServerSettings()
+    if settings.is_using_dev_fallback():
+        # Zero-config (e.g. `docker run valuemaxx-backend` with no env): surface the
+        # synthesized dev key in the startup logs so a user knows how to authenticate —
+        # the container has no other way to tell them. Mirrors the CLI `up` hint.
+        print(
+            f'valuemaxx: no ingest key configured — using dev key "{DEV_INGEST_KEY}" '
+            f'(send header "X-API-Key: {DEV_INGEST_KEY}"). '
+            f"Set VALUEMAXX_INGEST_KEYS for your own keys.",
+            flush=True,
+        )
     uvicorn.run(
         "valuemaxx.server.app:app",
         host=settings.host,

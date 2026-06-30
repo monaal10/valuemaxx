@@ -1,0 +1,20 @@
+# Keep the build context small + reproducible — the Dockerfile builds the wheel from
+# source, so none of these belong in the image build.
+.git
+.venv
+**/.venv
+**/node_modules
+**/__pycache__
+**/*.pyc
+dist
+**/dist
+sdks/typescript
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+*.db
+**/*.db
+.github
+docs
+**/tests
+**/test

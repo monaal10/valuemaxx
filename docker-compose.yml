@@ -1,0 +1,42 @@
+# The valuemaxx backend with a persistent Postgres store — `docker compose up`.
+#
+# This is the "for real" local/self-host setup: the backend in one container, Postgres in
+# another, data surviving restarts. For a throwaway single-container backend on embedded
+# SQLite, just `docker run -p 8000:8000 valuemaxx-backend` instead (no compose, no Postgres).
+#
+#   docker compose up --build       # build the image + start backend + postgres
+#   # SDK endpoint -> http://localhost:8000  (zero-config dev key: X-API-Key: dev)
+#
+# Set VALUEMAXX_INGEST_KEYS to use your own key(s) instead of the dev fallback.
+
+services:
+  backend:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      VALUEMAXX_HOST: "0.0.0.0"
+      VALUEMAXX_PORT: "8000"
+      # Persistent Postgres (async driver); migrations run on startup.
+      VALUEMAXX_DATABASE_URL: "postgresql+asyncpg://valuemaxx:valuemaxx@postgres:5432/valuemaxx"
+      # VALUEMAXX_INGEST_KEYS: '{"my-key": "6f1c3b2a-0000-4a00-8000-000000000001"}'
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: valuemaxx
+      POSTGRES_PASSWORD: valuemaxx
+      POSTGRES_DB: valuemaxx
+    volumes:
+      - valuemaxx-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U valuemaxx"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  valuemaxx-pgdata:

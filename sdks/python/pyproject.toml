@@ -26,6 +26,10 @@ cli = [
     "sqlalchemy[asyncio]>=2,<3",
     "alembic>=1.13",
     "asyncpg>=0.29",
+    # asyncpg is the async runtime driver; psycopg2 is the SYNC driver alembic's migration
+    # runner needs (Postgres-backed setups). Without it, startup migrations against Postgres
+    # fail with ModuleNotFoundError: psycopg2. (Harmless for the default SQLite path.)
+    "psycopg2-binary>=2.9",
     "aiosqlite>=0.20",
     "anyio>=4",
     "tree-sitter>=0.23",
@@ -42,6 +46,7 @@ server = [
     "sqlalchemy[asyncio]>=2,<3",
     "alembic>=1.13",
     "asyncpg>=0.29",
+    "psycopg2-binary>=2.9",  # sync driver for alembic migrations (see [cli] note)
     "aiosqlite>=0.20",
     "anyio>=4",
     "pyyaml>=6",

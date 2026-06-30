@@ -52,9 +52,20 @@ npm install valuemaxx
 Working from a clone of this repo instead? Use `uv` and prefix every `valuemaxx …`
 command with `uv run` (e.g. `uv run valuemaxx up`). The commands are identical.
 
-### 1. Boot the backend — `valuemaxx up`
+### 1. Boot the backend
 
-`valuemaxx up` builds the full backend assembly and serves it. **Zero config:** it opens an embedded SQLite database in the working directory (`./valuemaxx.db`), runs migrations, generates a stable local **`dev` ingest key**, and prints the URL it's serving:
+valuemaxx has two pieces: the **SDK** (above — the library you import, per-language) and the **backend** — *one* service that receives the cost your SDK sends, stores it, reconciles it, and answers the metric queries. The backend is the same regardless of your app's language; you run it once and point any SDK (TS or Python) at it. Pick whichever way to run it:
+
+**Docker (recommended — no Python needed; ideal for TS/JS apps):**
+
+```bash
+docker run -p 8000:8000 ghcr.io/monaal10/valuemaxx-backend   # (until published: docker build -t valuemaxx-backend . && docker run -p 8000:8000 valuemaxx-backend)
+# serving on http://0.0.0.0:8000 — using dev key "dev" (send header "X-API-Key: dev")
+```
+
+For a persistent Postgres-backed store, `docker compose up` (bundles backend + Postgres; see [`docker-compose.yml`](./docker-compose.yml)).
+
+**Or, if you have Python — `valuemaxx up`** (same backend, in-process). **Zero config:** it opens an embedded SQLite database (`./valuemaxx.db`), runs migrations, generates a stable local **`dev` ingest key**, and serves:
 
 ```bash
 valuemaxx up
