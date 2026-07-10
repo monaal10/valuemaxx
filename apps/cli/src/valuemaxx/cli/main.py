@@ -34,16 +34,17 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import typer
-import uvicorn
-from valuemaxx.agent_integrability.discovery import build_default_registry
-from valuemaxx.cli.projection import mount_capabilities
 from valuemaxx.onboarding.diff import build_reviewable_diff
 from valuemaxx.onboarding.propose import build_proposal
 from valuemaxx.onboarding.render import render_outcomes_yaml
 from valuemaxx.onboarding.scan import scan_codebase
 from valuemaxx.sdk import scaffold
-from valuemaxx.server.app import create_app
-from valuemaxx.server.settings import ServerSettings
+
+# The BACKEND deps (uvicorn / fastapi / the server assembly + the capability registry) are
+# imported LAZILY inside the ``up``/query commands that need them, NOT at module top — so
+# `valuemaxx onboard` (and `init`) run from the light base install (`pip install valuemaxx`),
+# and only ``up`` requires the heavy `[cli]` extra. Onboarding + the SDK scaffolder above are
+# light (tree-sitter/pyyaml/pydantic), so they stay eager.
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -168,6 +169,8 @@ def _serve(app: FastAPI, *, host: str, port: int) -> None:  # pragma: no cover -
     Factored out as a seam so the ``up`` command's wiring (settings -> create_app ->
     serve) is unit-testable without binding a socket; tests patch this function.
     """
+    import uvicorn  # lazy: only ``up`` needs the backend deps ([cli] extra)
+
     uvicorn.Server(uvicorn.Config(app, host=host, port=port)).run()
 
 
@@ -195,6 +198,21 @@ def up(
     store opens and migrations run on ASGI startup), prints the served URL, and serves
     it on ``host``/``port`` (default ``127.0.0.1:8000``).
     """
+    # Lazy: the backend assembly is the heavy [cli] extra. Import here so the module (and
+    # thus `valuemaxx onboard`/`init`) loads from the light base install; a missing backend
+    # dep becomes a friendly install hint, never a raw traceback.
+    try:
+        from valuemaxx.server.app import create_app
+        from valuemaxx.server.settings import ServerSettings
+    except ModuleNotFoundError as exc:
+        typer.echo(
+            f"valuemaxx up: the backend needs the '[cli]' extra (missing '{exc.name}'). "
+            f'Install it with:  pip install "valuemaxx[cli]"\n'
+            f"(or run the backend with Docker: docker run -p 8000:8000 valuemaxx-backend)",
+            err=True,
+        )
+        raise typer.Exit(code=1) from exc
+
     database_url = _resolve_database_url(db)
     settings = (
         ServerSettings(database_url=database_url) if database_url is not None else ServerSettings()
@@ -269,7 +287,15 @@ def onboard(repo: Path = _REPO_OPTION) -> None:
 
 
 def build_app() -> typer.Typer:
-    """Build the ``valuemaxx`` typer app: capability commands + init/up/onboard."""
+    """Build the ``valuemaxx`` typer app: init/up/onboard + the projected capability commands.
+
+    ``init``/``up``/``onboard`` are always registered (onboard + init run on the light base
+    install; up lazy-imports the backend). The capability-projected query commands
+    (``run-metric``/``cost-breakdown``/…) require the backend registry, which pulls the heavy
+    ``[cli]`` deps — so they are mounted only when those deps import. On the base install that
+    projection is skipped (the query commands simply aren't present), and ``valuemaxx onboard``
+    still works. ``valuemaxx up`` then prints the ``[cli]`` install hint when actually run.
+    """
     app = typer.Typer(
         name="valuemaxx",
         help="valuemaxx — AI margin intelligence: cost-per-outcome with confidence.",
@@ -279,7 +305,17 @@ def build_app() -> typer.Typer:
     app.command(name="init")(init)
     app.command(name="up")(up)
     app.command(name="onboard")(onboard)
-    mount_capabilities(app, build_default_registry())
+    try:
+        from valuemaxx.agent_integrability.discovery import build_default_registry
+        from valuemaxx.cli.projection import mount_capabilities
+
+        # build_default_registry() imports EVERY capability module (incl. valuemaxx.store ->
+        # sqlalchemy), so the heavy [cli] deps are pulled here — inside the guard — not by
+        # importing this module. On the base install that raises ModuleNotFoundError and we
+        # return the app with only init/up/onboard; `up` then prints the [cli] hint when run.
+        mount_capabilities(app, build_default_registry())
+    except ModuleNotFoundError:
+        return app  # base install: no backend registry -> only init/up/onboard are present
     return app
 
 

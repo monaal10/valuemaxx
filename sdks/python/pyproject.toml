@@ -5,21 +5,26 @@ description = "AI Margin Intelligence — Python SDK + optional CLI/backend. One
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
-# Base install = the SDK: init() + capture. pydantic/wrapt are the SDK's only runtime
-# deps. The CLI/backend code is BUNDLED in the wheel (see force-include below) but its
-# heavy third-party deps are opt-in extras, so `pip install valuemaxx` stays thin.
+# Base install = the SDK (init() + capture) AND the `valuemaxx` command with `init` +
+# `onboard`. Onboarding only needs a light scanner (tree-sitter) + yaml + typer, so it ships
+# in the base — `pip install valuemaxx` gives you `valuemaxx onboard`, symmetric with
+# `npm install valuemaxx`. The heavy BACKEND (`up`, the query commands) is the `[cli]` extra.
 dependencies = [
     "pydantic>=2",
     "wrapt>=1.16",
+    # CLI + onboarding (light): the `valuemaxx` command, the TS/JS + Python scanner, YAML render.
+    "typer>=0.12",
+    "tree-sitter>=0.23",
+    "tree-sitter-typescript>=0.23",
+    "pyyaml>=6",
+    "typing-extensions>=4.12",
 ]
 
 [project.optional-dependencies]
-# `pip install valuemaxx[cli]` adds the `valuemaxx` command (up / init / onboard /
-# queries) — the full local backend. These are the third-party deps the bundled
-# valuemaxx.{cli,server,api,store,onboarding,...} modules need; the valuemaxx code is
-# already in the wheel.
+# `pip install valuemaxx[cli]` adds the BACKEND: `valuemaxx up` + the query commands (the full
+# FastAPI assembly + store). The valuemaxx code is already bundled in the wheel; these are its
+# heavy third-party deps. (`onboard`/`init` work without this — they're in the base install.)
 cli = [
-    "typer>=0.12",
     "uvicorn>=0.29",
     "fastapi>=0.110",
     "pydantic-settings>=2.2",
@@ -32,10 +37,6 @@ cli = [
     "psycopg2-binary>=2.9",
     "aiosqlite>=0.20",
     "anyio>=4",
-    "tree-sitter>=0.23",
-    "tree-sitter-typescript>=0.23",
-    "pyyaml>=6",
-    "typing-extensions>=4.12",
 ]
 # `[server]` is the headless backend (FastAPI app + store) without the typer CLI — for
 # running `valuemaxx.server.app:app` under your own ASGI server. A subset of `[cli]`.

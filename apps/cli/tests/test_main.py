@@ -243,7 +243,13 @@ def test_up_honors_database_url_env(monkeypatch: pytest.MonkeyPatch, tmp_path: P
 
     cli_main = sys.modules["valuemaxx.cli.main"]
     monkeypatch.setattr(cli_main, "_serve", _capture)
-    monkeypatch.setattr(cli_main, "create_app", _fake_create_app)
+    # `up` now imports create_app lazily from valuemaxx.server.app (so the base install
+    # doesn't need the backend), so patch it at the source module. Use import_module (the
+    # module also exposes an `app` FastAPI instance, so `import … as` binds the wrong name).
+    import importlib
+
+    server_app = importlib.import_module("valuemaxx.server.app")
+    monkeypatch.setattr(server_app, "create_app", _fake_create_app)
     db_url = f"sqlite+aiosqlite:///{tmp_path / 'env.db'}"
     monkeypatch.setenv("DATABASE_URL", db_url)
     app = build_app()
