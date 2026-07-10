@@ -1,6 +1,6 @@
 [project]
 name = "valuemaxx"
-version = "0.0.0"
+version = "0.1.0"
 description = "AI Margin Intelligence — Python SDK + optional CLI/backend. One-line init() that fails open."
 readme = "README.md"
 requires-python = ">=3.11"

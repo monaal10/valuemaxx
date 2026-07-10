@@ -98,4 +98,15 @@ jobs:
           npm run build
       - name: Publish to npm (OIDC; provenance by default)
         working-directory: sdks/typescript
-        run: npm publish --access public
+        # Idempotent: skip if THIS version is already on the registry. The very first
+        # valuemaxx release was published manually (npm can't configure OIDC trusted
+        # publishing for a package that doesn't exist yet), so on that tag the version
+        # already exists — treat it as a no-op rather than failing the release. Genuinely
+        # new versions publish normally via OIDC (no token; provenance by default).
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          if npm view "valuemaxx@${VERSION}" version >/dev/null 2>&1; then
+            echo "valuemaxx@${VERSION} already on npm — skipping (published manually or a re-run)."
+          else
+            npm publish --access public
+          fi
