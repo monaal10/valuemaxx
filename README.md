@@ -32,25 +32,21 @@ This walks you from nothing to a real cost-per-outcome number, end to end, again
 
 The backend is a real FastAPI app over **SQLite** (no Postgres needed for local dev); migrations run on startup. You boot it with `valuemaxx up`, send it cost spans on the wire, and query the numbers back over HTTP (or the SDK / CLI).
 
-> **One package, optional CLI.** `pip install valuemaxx` gives you the thin **SDK** (`valuemaxx.sdk`) you import in your agent. `pip install valuemaxx[cli]` adds the **`valuemaxx` command** (`up`, `init`, `onboard`, the query commands) — the full local backend — pulling in its heavier deps (FastAPI, SQLAlchemy, …) only when you ask for it. For the full local loop below you want `[cli]`. (TypeScript users `npm install valuemaxx` for the SDK.)
+> **One install per language; the same commands.** `pip install valuemaxx` and `npm install valuemaxx` both give you the **SDK** (`init()` capture) **and** the `valuemaxx` command with **`onboard`** + `init` — so `valuemaxx onboard` works identically on either side (only npm vs pip differs). The **backend** (`valuemaxx up` + the query commands) is heavier: it comes with `pip install "valuemaxx[cli]"`, or — the language-neutral, recommended way — you run it as a container (`docker run …`). So a TypeScript project never has to touch Python.
 
 ### 0. Install
 
 ```bash
-# The Python SDK (the import you add to your agent) — thin, fail-open
+# Python: the SDK (init() capture) + the `valuemaxx` command (onboard / init)
 pip install valuemaxx
-
-# …plus the CLI + backend (the `valuemaxx` command: up / init / onboard / queries)
-pip install "valuemaxx[cli]"
 ```
 
 ```bash
-# TypeScript / JavaScript SDK
+# TypeScript / JavaScript: the same — SDK + the `valuemaxx` command (onboard / init)
 npm install valuemaxx
 ```
 
-Working from a clone of this repo instead? Use `uv` and prefix every `valuemaxx …`
-command with `uv run` (e.g. `uv run valuemaxx up`). The commands are identical.
+Both give you `valuemaxx onboard`. The **backend** (`valuemaxx up` + query commands) is separate — either `pip install "valuemaxx[cli]"`, or run the container (step 1). Working from a clone instead? Prefix `valuemaxx …` with `uv run` (Python) or run the built bin (TS); the commands are identical.
 
 ### 1. Boot the backend
 
@@ -236,11 +232,10 @@ outcomes:
       extract_from: data.object.metadata.run_id
 ```
 
-Have the onboarding scan write this for you, or validate a hand-written file. Both run today via the **CLI** (`pip install "valuemaxx[cli]"` — the `onboard` scanner reads TypeScript *and* Python, so a TS project uses it too; it's the same CLI that runs the backend):
+Have the onboarding scan write this for you, or validate a hand-written file. `valuemaxx onboard` comes with the base install on **both** languages (`pip install valuemaxx` / `npm install valuemaxx`) and behaves identically — it scans TypeScript *and* Python, proposes `outcomes.yaml`, and prints a reviewable diff (nothing is written; rules stay UNCONFIRMED):
 
 ```bash
-# Scan your repo -> propose outcomes.yaml + a reviewable diff (rules stay UNCONFIRMED,
-# nothing is written). Works on a TS repo (tree-sitter) as well as Python.
+# Scan your repo -> propose outcomes.yaml + a reviewable diff. Same on TS and Python.
 valuemaxx onboard --repo .
 
 # Validate / summarize a hand-written outcomes.yaml (rejects any eval/exec predicate)
