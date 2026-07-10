@@ -20,37 +20,33 @@ import math
 import re
 from typing import Final
 
+from valuemaxx.onboarding import rules
 from valuemaxx.onboarding.errors import SecretEncounteredError
 
-REDACTION_PLACEHOLDER: Final[str] = "[REDACTED]"
+# Redaction constants come from the single-source ``rules`` module (serialized to the
+# cross-language fixture the TS redactor reads), so Python + TS scrub the same shapes.
+REDACTION_PLACEHOLDER: Final[str] = rules.REDACTION_PLACEHOLDER
 
 # Prefixed key shapes. Anchored on known prefixes so ordinary identifiers (run
 # ids, outcome names, status strings) are never scrubbed by accident. The admin
 # pattern is listed first so it wins over the generic ``sk-ant`` pattern.
-_PREFIX_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
-    re.compile(r"sk-ant-admin\d{2}-[A-Za-z0-9_-]{6,}"),  # Anthropic admin key
-    re.compile(r"sk-ant-[A-Za-z0-9_-]{6,}"),  # Anthropic API key
-    re.compile(r"sk-[A-Za-z0-9_-]{16,}"),  # OpenAI-style API key
-    re.compile(r"AKIA[0-9A-Z]{16}"),  # AWS access key id
-    re.compile(r"Bearer\s+[A-Za-z0-9._\-]{16,}"),  # Authorization bearer token
+_PREFIX_PATTERNS: Final[tuple[re.Pattern[str], ...]] = tuple(
+    re.compile(p) for p in rules.REDACT_PREFIX_PATTERNS
 )
 
 # Assignment form: a secret-named identifier set to a non-trivial value, e.g.
 # ``API_KEY = "..."`` / ``password='...'`` / ``auth_token: ...``. Captures the
 # value side (group ``val``) so we redact the secret, not the whole assignment.
-_SECRET_NAME = (
-    r"(?:api[_-]?key|secret|password|passwd|token"
-    r"|auth[_-]?token|access[_-]?key|client[_-]?secret)"
-)
 _ASSIGNMENT_PATTERN: Final[re.Pattern[str]] = re.compile(
-    rf"(?i)\b{_SECRET_NAME}\b\s*[:=]\s*(?P<val>(?:\"[^\"]{{6,}}\"|'[^']{{6,}}'|[^\s'\"]{{6,}}))",
+    rf"(?i)\b(?:{rules.REDACT_SECRET_NAME_ALT})\b\s*[:=]\s*"
+    rf"(?P<val>(?:\"[^\"]{{6,}}\"|'[^']{{6,}}'|[^\s'\"]{{6,}}))",
 )
 
 # A long unbroken run of base64/credential-ish characters with no whitespace.
 # Real prose and code break into short whitespace-separated tokens, so this fires
 # only on credential-like blobs.
-_HIGH_ENTROPY_TOKEN: Final[re.Pattern[str]] = re.compile(r"[A-Za-z0-9+/=_-]{40,}")
-_HIGH_ENTROPY_BITS: Final[float] = 3.5
+_HIGH_ENTROPY_TOKEN: Final[re.Pattern[str]] = re.compile(rules.REDACT_HIGH_ENTROPY_PATTERN)
+_HIGH_ENTROPY_BITS: Final[float] = rules.REDACT_HIGH_ENTROPY_BITS
 
 
 def _shannon_entropy(token: str) -> float:

@@ -104,6 +104,29 @@ IGNORED_DIRS: Final[tuple[str, ...]] = (
 # Identifiers that look like entity ids but are excluded (not real entity keys).
 ENTITY_ID_EXCLUSIONS: Final[tuple[str, ...]] = ("uuid", "guid")
 
+# The placeholder every redacted secret is replaced with (both languages).
+REDACTION_PLACEHOLDER: Final[str] = "[REDACTED]"
+
+# Secret-shaped token patterns (as regex SOURCE strings so both Python `re` and JS RegExp
+# consume the identical patterns). Order matters: the admin key pattern is first so it wins
+# over the generic sk-ant one. Kept ASCII/portable so the two engines agree.
+REDACT_PREFIX_PATTERNS: Final[tuple[str, ...]] = (
+    r"sk-ant-admin\d{2}-[A-Za-z0-9_-]{6,}",  # Anthropic admin key
+    r"sk-ant-[A-Za-z0-9_-]{6,}",  # Anthropic API key
+    r"sk-[A-Za-z0-9_-]{16,}",  # OpenAI-style API key
+    r"AKIA[0-9A-Z]{16}",  # AWS access key id
+    r"Bearer\s+[A-Za-z0-9._\-]{16,}",  # Authorization bearer token
+)
+# The secret-named-identifier alternation used in the assignment-form pattern.
+REDACT_SECRET_NAME_ALT: Final[str] = (
+    r"api[_-]?key|secret|password|passwd|token"
+    r"|auth[_-]?token|access[_-]?key|client[_-]?secret"
+)
+# High-entropy blob detection: a long unbroken credential-ish run, scrubbed only if its
+# Shannon entropy (bits/char) meets the threshold (so real prose/code is never scrubbed).
+REDACT_HIGH_ENTROPY_PATTERN: Final[str] = r"[A-Za-z0-9+/=_-]{40,}"
+REDACT_HIGH_ENTROPY_BITS: Final[float] = 3.5
+
 
 def as_dict() -> dict[str, object]:
     """The full rule set as a JSON-serializable dict (the cross-language contract).
@@ -121,6 +144,13 @@ def as_dict() -> dict[str, object]:
         "external_systems": dict(sorted(EXTERNAL_SYSTEMS.items())),
         "ignored_dirs": sorted(IGNORED_DIRS),
         "entity_id_exclusions": sorted(ENTITY_ID_EXCLUSIONS),
+        "redaction_placeholder": REDACTION_PLACEHOLDER,
+        # Redaction patterns keep source ORDER (the admin-key pattern must precede the
+        # generic sk-ant one), so they are NOT sorted.
+        "redact_prefix_patterns": list(REDACT_PREFIX_PATTERNS),
+        "redact_secret_name_alt": REDACT_SECRET_NAME_ALT,
+        "redact_high_entropy_pattern": REDACT_HIGH_ENTROPY_PATTERN,
+        "redact_high_entropy_bits": REDACT_HIGH_ENTROPY_BITS,
     }
 
 
@@ -140,6 +170,11 @@ __all__ = [
     "IGNORED_DIRS",
     "MARK_PREFIXES",
     "ORM_WRITES",
+    "REDACTION_PLACEHOLDER",
+    "REDACT_HIGH_ENTROPY_BITS",
+    "REDACT_HIGH_ENTROPY_PATTERN",
+    "REDACT_PREFIX_PATTERNS",
+    "REDACT_SECRET_NAME_ALT",
     "TS_LLM_CALLS",
     "TS_PROVIDER_CALLS",
     "TS_SUFFIXES",
