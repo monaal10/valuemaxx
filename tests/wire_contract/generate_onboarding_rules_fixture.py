@@ -15,12 +15,21 @@ from pathlib import Path
 
 from valuemaxx.onboarding import rules
 
-FIXTURE_PATH = Path(__file__).resolve().parent / "onboarding_rules.json"
+_HERE = Path(__file__).resolve().parent
+FIXTURE_PATH = _HERE / "onboarding_rules.json"
+# The TS SDK bundles its own copy so the published npm package (which does not include
+# tests/) can read the rules at runtime. Both are generated from the same single source, so
+# CI's `git diff --exit-code` on either catches drift.
+TS_EMBEDDED_PATH = (
+    _HERE.parents[1] / "sdks" / "typescript" / "src" / "onboarding" / "onboarding_rules.json"
+)
 
 
 def main() -> None:
-    """Write the fixture from the single-source onboarding rule constants."""
+    """Write the fixture (wire-contract copy + the TS SDK's bundled copy) from the source."""
     rules.generate_onboarding_rules_fixture(FIXTURE_PATH)
+    if TS_EMBEDDED_PATH.parent.exists():
+        rules.generate_onboarding_rules_fixture(TS_EMBEDDED_PATH)
 
 
 if __name__ == "__main__":

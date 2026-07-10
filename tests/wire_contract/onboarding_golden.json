@@ -1,0 +1,53 @@
+{
+  "entity_ids": [
+    "applicationId",
+    "conversationId",
+    "customerId"
+  ],
+  "outcomes": [
+    {
+      "match_kind": "external_write",
+      "match_target": "src/agent.ts:chargeCustomer",
+      "name": "chargeCustomer",
+      "run_id_injection": {
+        "system": "stripe",
+        "target_field": "metadata.atm_run_id",
+        "write_site": "chargeCustomer"
+      },
+      "signal": "action_attempted",
+      "tier": "deterministic",
+      "when": "True"
+    },
+    {
+      "match_kind": "external_write",
+      "match_target": "src/agent.ts:notifyViaSalesforce",
+      "name": "notifyViaSalesforce",
+      "signal": "action_attempted",
+      "tier": "candidate",
+      "warnings": [
+        "unknown does not echo injected metadata; deterministic T3 binding is unavailable. Falling back to entity-id matching (candidate/T4); a human must confirm before this is trusted."
+      ],
+      "when": "True"
+    },
+    {
+      "match_kind": "external_write",
+      "match_target": "src/agent.ts:resolveTicket",
+      "name": "resolveTicket",
+      "signal": "action_attempted",
+      "tier": "candidate",
+      "warnings": [
+        "unknown does not echo injected metadata; deterministic T3 binding is unavailable. Falling back to entity-id matching (candidate/T4); a human must confirm before this is trusted."
+      ],
+      "when": "True"
+    },
+    {
+      "match_kind": "status_setter",
+      "match_target": "src/agent.ts:resolveTicket",
+      "name": "resolveTicket",
+      "signal": "outcome_confirmed",
+      "tier": "exact",
+      "when": "args.status != None"
+    }
+  ],
+  "version": 1
+}
