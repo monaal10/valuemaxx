@@ -118,29 +118,42 @@ valuemaxx init                 # detect your framework, print a reviewable diff 
 valuemaxx init --apply         # write the (reversible) init() wiring into your entrypoint
 ```
 
-**TypeScript** — the Node SDK installs *real* OpenTelemetry instrumentation and an OTLP/HTTP exporter pointed at your endpoint; `run(runId, fn)` binds the run via `AsyncLocalStorage`:
+**TypeScript** — `init()` builds a real OTLP/HTTP exporter pointed at your endpoint and returns a `tracer`. There are two ways to wire it, depending on how you call models:
+
+*Using the **Vercel AI SDK** (`generateText`/`streamText`) — the common case:* pass the returned `tracer` to `experimental_telemetry`, and every call is captured:
+
+```ts
+import { generateText } from "ai";
+import { init } from "valuemaxx";
+
+const vmx = init({
+  tenantId: "00000000-0000-4000-8000-000000000001", // the dev tenant (from the backend)
+  ingestKey: "dev",
+  endpoint: "http://localhost:8000", // the backend from step 1
+});
+
+await generateText({
+  model /* your @ai-sdk/* model */,
+  prompt: "…",
+  experimental_telemetry: { isEnabled: true, tracer: vmx.tracer },
+});
+```
+
+*Calling the **OpenAI/Anthropic/Google clients directly** instead?* pass them to `init({ clients })` and it instruments them in place — no per-call-site edit:
 
 ```ts
 import OpenAI from "openai";
 import { init, run } from "valuemaxx";
 
 const openai = new OpenAI();
-
-init({
-  tenantId: "6f1c3b2a-0000-4a00-8000-000000000001",
-  ingestKey: "dev",
-  endpoint: "http://127.0.0.1:8000",
-  clients: [{ client: openai, provider: "openai" }],
-});
+init({ tenantId: "00000000-0000-4000-8000-000000000001", ingestKey: "dev", endpoint: "http://localhost:8000", clients: [{ client: openai, provider: "openai" }] });
 
 await run("checkout-agent-42", async () => {
   await openai.chat.completions.create({ model: "gpt-4.1", messages: [/* … */] });
 });
 ```
 
-Streaming cost is accumulated to **terminal** token values across chunks before the span is emitted (no delta-summing, no cache double-counting). Full options, the Anthropic and Vercel-AI-SDK paths, and the wire contract are in [`sdks/typescript/README.md`](./sdks/typescript/README.md).
-
-> **Using the Vercel AI SDK?** `init()` returns a `tracer` — pass it to `experimental_telemetry` and every `generateText`/`streamText` call is captured: `init(...).tracer` then `generateText({ model, prompt, experimental_telemetry: { isEnabled: true, tracer } })`. The SDK exports those spans to the backend's OTLP collector for you (next section).
+Streaming cost is accumulated to **terminal** token values across chunks before the span is emitted (no delta-summing, no cache double-counting). Full options + the wire contract are in [`sdks/typescript/README.md`](./sdks/typescript/README.md).
 
 ### 3. Send a cost span to the backend
 
@@ -223,10 +236,11 @@ outcomes:
       extract_from: data.object.metadata.run_id
 ```
 
-Have the onboarding agent write this for you by scanning your codebase, or validate a hand-written file. Both run today:
+Have the onboarding scan write this for you, or validate a hand-written file. Both run today via the **CLI** (`pip install "valuemaxx[cli]"` — the `onboard` scanner reads TypeScript *and* Python, so a TS project uses it too; it's the same CLI that runs the backend):
 
 ```bash
-# Scan your repo -> propose outcomes.yaml + a reviewable diff (rules stay UNCONFIRMED)
+# Scan your repo -> propose outcomes.yaml + a reviewable diff (rules stay UNCONFIRMED,
+# nothing is written). Works on a TS repo (tree-sitter) as well as Python.
 valuemaxx onboard --repo .
 
 # Validate / summarize a hand-written outcomes.yaml (rejects any eval/exec predicate)
@@ -244,7 +258,17 @@ The signal class is **system-owned**: a bare function/HTTP write is only `action
 
 Once your agent runs with confirmed outcomes bound to their runs (in-process via `track.run`, or out-of-process via the round-tripped `run_id`), the same `run_metric` query returns a real ratio: the `value` field becomes `total_cost ÷ verified_outcome_count`, and every cell still carries its `minimum_tier`. Group by `outcome_name` or `agent_name` to see margin per outcome or per agent.
 
-That's the whole loop: **install → `valuemaxx up` → wire the SDK → run your agent (send cost) → query cost → declare an outcome → cost-per-outcome.**
+### 7. Right-size your models (later, once you have real data)
+
+With cost bound to outcomes over some real traffic, the eval layer replays **cheaper candidate models you supply** against your captured workload and tells you whether one holds the same outcome — with the evidence, and **never switching automatically**. Because eval runs spend your provider tokens, it estimates the per-candidate cost and gates on an explicit approval first:
+
+```bash
+valuemaxx run-eval-funnel      # replay your candidates on the captured workload (cost-gated)
+valuemaxx approve-gate         # record the "yes, spend ~$X on this eval" approval
+valuemaxx get-recommendation   # the cheaper-model-holds-your-outcome report
+```
+
+That's the whole loop: **install → run the backend → wire the SDK → run your agent (send cost) → query cost → declare outcomes → cost-per-outcome → right-size the model.**
 
 ---
 
