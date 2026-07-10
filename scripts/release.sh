@@ -76,11 +76,17 @@ CURRENT="$(cat VERSION 2>/dev/null || echo '?')"
 echo "  current VERSION : ${CURRENT}"
 echo "  releasing       : ${VERSION}  (tag ${TAG} on ${RELEASE_BRANCH})"
 
+# The files a release touches: the version manifests + the lockfile (uv re-stamps the
+# `valuemaxx` version into uv.lock when it resolves during the gate below, so it must be
+# part of the release commit, and reverted on abort).
+RELEASE_FILES=(VERSION sdks/python/pyproject.toml sdks/typescript/package.json uv.lock)
+
 # --- bump + stamp -----------------------------------------------------------------------
 step "Bumping VERSION and stamping both SDK manifests"
 printf '%s\n' "$VERSION" > VERSION
 uv run python scripts/stamp_version.py "$VERSION"
 uv run python scripts/stamp_version.py --check   # belt-and-suspenders: manifests match
+uv lock --quiet                                   # re-stamp the version into uv.lock now
 
 # --- local gate (do not tag a release that would fail CI) -------------------------------
 step "Running the local gate (same checks the release workflow gates on)"
@@ -93,18 +99,18 @@ uv run pytest -q
 
 # --- confirm ----------------------------------------------------------------------------
 step "Ready to commit + tag ${TAG}"
-git --no-pager diff --stat VERSION sdks/python/pyproject.toml sdks/typescript/package.json
+git --no-pager diff --stat "${RELEASE_FILES[@]}"
 printf '\nThis will commit the bump and create tag %s. Pushing the tag PUBLISHES ' "$TAG"
 printf 'valuemaxx %s to PyPI + npm (permanent).\nProceed? [y/N] ' "$VERSION"
 read -r reply
 case "$reply" in
   y|Y|yes|YES) ;;
-  *) step "Aborted — reverting the version bump"; git checkout -- VERSION sdks/python/pyproject.toml sdks/typescript/package.json; exit 1 ;;
+  *) step "Aborted — reverting the version bump"; git checkout -- "${RELEASE_FILES[@]}"; exit 1 ;;
 esac
 
 # --- commit + tag -----------------------------------------------------------------------
 step "Committing + tagging"
-git add VERSION sdks/python/pyproject.toml sdks/typescript/package.json
+git add "${RELEASE_FILES[@]}"
 git commit -m "release: valuemaxx ${VERSION}"
 git tag -a "${TAG}" -m "valuemaxx ${VERSION}"
 
