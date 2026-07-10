@@ -49,9 +49,17 @@ jobs:
         run: uv run python scripts/stamp_version.py "${GITHUB_REF_NAME}"
       - name: Inject the single-wheel bundle config (release-only; never committed)
         run: uv run python scripts/bundle_for_release.py
-      - name: Build the Python SDK (bundles every valuemaxx.* module + the CLI)
+      # Build the WHEEL ONLY (not an sdist): the wheel force-includes every valuemaxx.*
+      # module from its sibling package dirs, and an sdist cannot carry files outside the
+      # package tree — `uv build` (sdist+wheel) rebuilds the wheel FROM the sdist and fails
+      # with "Forced include not found". `-o dist` pins the output into sdks/python/dist so
+      # the publish step finds it (in a uv workspace, a bare `uv build` writes to the
+      # workspace-root dist/, not here).
+      - name: Build the Python SDK wheel (bundles every valuemaxx.* module + the CLI)
         working-directory: sdks/python
-        run: uv build
+        run: uv build --wheel --package valuemaxx -o dist
+      - name: Validate the wheel (PyPI metadata check)
+        run: uvx twine check sdks/python/dist/*.whl
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
@@ -72,7 +80,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          # Node 22 LTS: npm >= 11.5.1 (OIDC trusted publishing) needs Node >= 20.17;
+          # 22 is the safe, current LTS floor for `npm install -g npm@latest`.
+          node-version: "22"
           registry-url: "https://registry.npmjs.org"
       - name: Use npm >= 11.5.1 (required for OIDC trusted publishing)
         run: npm install -g npm@latest
