@@ -24,34 +24,24 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Final
 
+from valuemaxx.onboarding import rules
 from valuemaxx.onboarding.capabilities import ScanSite
 from valuemaxx.onboarding.redact import redact
 from valuemaxx.onboarding.scan import ECHOING_SYSTEMS
 
+_ENTITY_ID_EXCLUSIONS: Final[frozenset[str]] = frozenset(rules.ENTITY_ID_EXCLUSIONS)
+
 if TYPE_CHECKING:
     from tree_sitter import Node
 
-# Vercel AI SDK call names that mark an LLM run boundary.
-_TS_LLM_CALLS: Final[frozenset[str]] = frozenset(
-    {"generateText", "streamText", "generateObject", "streamObject", "embed"}
-)
-# Provider-setup calls that also mark a run boundary (model construction).
-_TS_PROVIDER_CALLS: Final[frozenset[str]] = frozenset(
-    {"createOpenAI", "createAnthropic", "createGoogleGenerativeAI", "createGateway"}
-)
-# Method names that mark a database write.
-_TS_ORM_WRITES: Final[frozenset[str]] = frozenset(
-    {"save", "update", "insert", "create", "upsert", "delete"}
-)
-# Function/method-name stems that signal an outcome transition.
-_TS_MARK_PREFIXES: Final[tuple[str, ...]] = (
-    "mark",
-    "resolve",
-    "close",
-    "complete",
-    "finalize",
-)
-TS_SUFFIXES: Final[tuple[str, ...]] = (".ts", ".tsx", ".js", ".mjs", ".cjs", ".jsx")
+# All detection rules come from the single-source :mod:`~valuemaxx.onboarding.rules`
+# module (serialized to the cross-language fixture the TS scanner reads), so the two
+# scanners cannot drift.
+_TS_LLM_CALLS: Final[frozenset[str]] = frozenset(rules.TS_LLM_CALLS)
+_TS_PROVIDER_CALLS: Final[frozenset[str]] = frozenset(rules.TS_PROVIDER_CALLS)
+_TS_ORM_WRITES: Final[frozenset[str]] = frozenset(rules.ORM_WRITES)
+_TS_MARK_PREFIXES: Final[tuple[str, ...]] = rules.MARK_PREFIXES
+TS_SUFFIXES: Final[tuple[str, ...]] = rules.TS_SUFFIXES
 
 
 def is_ts_source(suffix: str) -> bool:
@@ -113,7 +103,7 @@ def _entity_ids_in_file(root: Node, source: bytes) -> list[str]:
             name = _text(n, source)
             low = name.lower()
             looks_like_id = (low.endswith("id") and len(name) > 2) or low.endswith("_id")
-            if looks_like_id and name not in ids and name not in {"uuid", "guid"}:
+            if looks_like_id and name not in ids and name not in _ENTITY_ID_EXCLUSIONS:
                 ids.append(name)
         stack.extend(n.children)
     return ids

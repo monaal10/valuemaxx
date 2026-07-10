@@ -1,0 +1,80 @@
+{
+  "echoing_systems": [
+    "hubspot",
+    "stripe",
+    "zendesk"
+  ],
+  "entity_id_exclusions": [
+    "guid",
+    "uuid"
+  ],
+  "external_systems": {
+    "calendar": "calendar",
+    "hubspot": "hubspot",
+    "salesforce": "salesforce",
+    "sendgrid": "sendgrid",
+    "stripe": "stripe",
+    "twilio": "twilio",
+    "zendesk": "zendesk"
+  },
+  "ignored_dirs": [
+    ".claude",
+    ".codex",
+    ".cursor",
+    ".git",
+    ".mypy_cache",
+    ".next",
+    ".nuxt",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".stellar",
+    ".tmp",
+    ".venv",
+    ".worktrees",
+    ".wrangler",
+    "__pycache__",
+    "build",
+    "coverage",
+    "dist",
+    "node_modules",
+    "target",
+    "vendor",
+    "venv"
+  ],
+  "mark_prefixes": [
+    "close",
+    "complete",
+    "finalize",
+    "mark",
+    "resolve"
+  ],
+  "orm_writes": [
+    "create",
+    "delete",
+    "insert",
+    "save",
+    "update",
+    "upsert"
+  ],
+  "ts_llm_calls": [
+    "embed",
+    "generateObject",
+    "generateText",
+    "streamObject",
+    "streamText"
+  ],
+  "ts_provider_calls": [
+    "createAnthropic",
+    "createGateway",
+    "createGoogleGenerativeAI",
+    "createOpenAI"
+  ],
+  "ts_suffixes": [
+    ".cjs",
+    ".js",
+    ".jsx",
+    ".mjs",
+    ".ts",
+    ".tsx"
+  ]
+}

@@ -39,16 +39,17 @@ jobs:
       - name: Import-linter contracts
         run: uv run lint-imports
 
-      # H3: regenerate the OTLP semconv fixture and fail on drift BEFORE the TS job.
-      # (Stub now; wired once atm_capture/otlp/semconv.py exists at G2-CAPTURE.)
+      # H3: regenerate the cross-language fixtures from their Python single-source and fail
+      # on drift BEFORE the TS job (the TS SDK consumes these fixtures). The generators live
+      # under tests/wire_contract/.
       - name: OTLP semconv parity (regen + diff)
         run: |
-          if [ -f scripts/generate_semconv_fixture.py ]; then
-            uv run python scripts/generate_semconv_fixture.py
-            git diff --exit-code tests/wire_contract/semconv_keys.json
-          else
-            echo "semconv fixture generator not present yet (pre-G2-CAPTURE) — skipping"
-          fi
+          uv run python tests/wire_contract/generate_semconv_fixture.py
+          git diff --exit-code tests/wire_contract/semconv_keys.json
+      - name: Onboarding rules parity (regen + diff)
+        run: |
+          uv run python tests/wire_contract/generate_onboarding_rules_fixture.py
+          git diff --exit-code tests/wire_contract/onboarding_rules.json
 
       - name: llms.txt freshness (matches the registry)
         run: |

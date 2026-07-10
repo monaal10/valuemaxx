@@ -24,29 +24,28 @@ from __future__ import annotations
 import ast
 from typing import TYPE_CHECKING, Final
 
+from valuemaxx.onboarding import rules
 from valuemaxx.onboarding.capabilities import ScanResult, ScanSite, SiteKind
 from valuemaxx.onboarding.redact import redact
 
 if TYPE_CHECKING:
     from pathlib import Path
 
+# Cross-language detection rules come from the single-source ``rules`` module (the same
+# module the TS scanner's fixture is generated from), so echoing/external systems and the
+# ignored-dir list can't drift between the two scanners.
 # Systems that echo injected metadata back on the later webhook → support T3
 # deterministic binding (design §6 / §7). Salesforce et al. do not.
-ECHOING_SYSTEMS: Final[frozenset[str]] = frozenset({"stripe", "hubspot", "zendesk"})
+ECHOING_SYSTEMS: Final[frozenset[str]] = frozenset(rules.ECHOING_SYSTEMS)
 
-# Outbound systems whose calls are outcome-bearing external writes. The value is
-# the canonical system name recorded on the site.
-_EXTERNAL_SYSTEMS: Final[dict[str, str]] = {
-    "stripe": "stripe",
-    "hubspot": "hubspot",
-    "zendesk": "zendesk",
-    "salesforce": "salesforce",
-    "sendgrid": "sendgrid",
-    "twilio": "twilio",
-    "calendar": "calendar",
-}
+# Outbound systems whose calls are outcome-bearing external writes (receiver -> canonical
+# system name recorded on the site).
+_EXTERNAL_SYSTEMS: Final[dict[str, str]] = dict(rules.EXTERNAL_SYSTEMS)
 
-# Attribute calls that mark a database write.
+# Attribute calls that mark a database write. NOTE: this is the PYTHON-ORM set
+# (SQLAlchemy-style commit/flush/add) — deliberately distinct from the TS ORM verbs in
+# ``rules.ORM_WRITES`` (save/update/insert/…), because the two ecosystems differ. Not a
+# cross-language rule, so it stays local.
 _ORM_WRITE_METHODS: Final[frozenset[str]] = frozenset({"save", "commit", "flush", "add"})
 
 # Function-name stems that signal an outcome transition.
@@ -234,32 +233,7 @@ def _is_mark_function(func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
 # Directories never worth scanning — dependencies, VCS, build output, caches.
 # Walking these is slow, noisy (false outcome sites inside vendored code), and a
 # privacy hazard (third-party source). A real repo MUST skip them.
-_IGNORED_DIRS: Final[frozenset[str]] = frozenset(
-    {
-        "node_modules",
-        ".git",
-        ".worktrees",
-        ".claude",
-        ".codex",
-        ".cursor",
-        ".stellar",
-        "dist",
-        "build",
-        ".next",
-        ".nuxt",
-        ".venv",
-        "venv",
-        "__pycache__",
-        "coverage",
-        ".wrangler",
-        ".pytest_cache",
-        ".mypy_cache",
-        ".ruff_cache",
-        ".tmp",
-        "vendor",
-        "target",
-    }
-)
+_IGNORED_DIRS: Final[frozenset[str]] = frozenset(rules.IGNORED_DIRS)
 
 
 def _iter_source_files(root: Path, suffixes: tuple[str, ...]) -> list[Path]:
