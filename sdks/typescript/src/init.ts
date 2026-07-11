@@ -28,6 +28,7 @@ import {
   type SpanProcessor,
 } from "@opentelemetry/sdk-trace-base";
 
+import { type BaggageTarget, installRunIdBaggage } from "./baggage.js";
 import { type EffectiveConfig, type InitConfig, resolveConfig } from "./config.js";
 import {
   type InstrumentDeps,
@@ -35,6 +36,7 @@ import {
   instrumentMethod,
   type Provider,
 } from "./instrumentation.js";
+import { type InjectionTarget, installRunIdInjection } from "./injection.js";
 import { type CaptureGranularity, versionSelftest } from "./selftest.js";
 
 /** The non-secret config echo surfaced on the {@link InitResult}. */
@@ -83,6 +85,17 @@ export interface InitOptions extends InitConfig {
   readonly exporter?: SpanExporter;
   /** Inject the id generator (tests pass a deterministic counter). */
   readonly newId?: () => string;
+  /**
+   * T3 — declared echoing SDK calls to auto-wrap so the run_id round-trips through the
+   * external object (e.g. `{ owner: stripe.paymentIntents, method: "create",
+   * injectInto: "metadata.atm_run_id" }`). An unresolved target becomes a warning.
+   */
+  readonly runIdInjectionTargets?: readonly InjectionTarget[];
+  /**
+   * T2 — declared outbound HTTP calls to auto-wrap so the run_id rides W3C baggage across a
+   * live service hop (e.g. `{ owner: httpClient, method: "request" }`).
+   */
+  readonly baggageTargets?: readonly BaggageTarget[];
 }
 
 /** One instrumentable method: the dotted owner path + the method name on it. */
@@ -206,6 +219,29 @@ export function init(options: InitOptions): InitResult {
               `(${String(err)})`,
           );
         }
+      }
+    }
+
+    // T3 — auto-wrap the declared echoing SDK calls so the run_id round-trips.
+    const injectionTargets = options.runIdInjectionTargets ?? [];
+    if (injectionTargets.length > 0) {
+      const report = installRunIdInjection(injectionTargets);
+      for (const target of report.unresolved) {
+        warnings.push(
+          `valuemaxx: run_id injection target not wrappable at init ` +
+            `(run_id will NOT round-trip): ${target}`,
+        );
+      }
+    }
+    // T2 — auto-wrap outbound HTTP so the run_id rides W3C baggage across a live hop.
+    const baggageTargets = options.baggageTargets ?? [];
+    if (baggageTargets.length > 0) {
+      const report = installRunIdBaggage(baggageTargets);
+      for (const target of report.unresolved) {
+        warnings.push(
+          `valuemaxx: baggage target not wrappable at init ` +
+            `(run_id will NOT ride baggage): ${target}`,
+        );
       }
     }
   } catch (err: unknown) {

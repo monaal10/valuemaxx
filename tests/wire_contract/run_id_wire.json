@@ -1,0 +1,4 @@
+{
+  "baggage_run_id_key": "valuemaxx.run_id",
+  "injected_run_id_field": "metadata.atm_run_id"
+}

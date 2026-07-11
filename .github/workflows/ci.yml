@@ -49,7 +49,22 @@ jobs:
       - name: Onboarding rules parity (regen + diff)
         run: |
           uv run python tests/wire_contract/generate_onboarding_rules_fixture.py
-          git diff --exit-code tests/wire_contract/onboarding_rules.json
+          git diff --exit-code tests/wire_contract/onboarding_rules.json \
+            sdks/typescript/src/onboarding/onboarding_rules.json
+      # The run_id carry contract (T2 baggage key + T3 injected field) the SDKs stamp.
+      # Regenerate from valuemaxx.core.wire and diff BOTH the fixture and the TS SDK copy —
+      # a drift between the Python source and the TS producer fails the build.
+      - name: Run-id wire parity (regen + diff)
+        run: |
+          uv run python tests/wire_contract/generate_run_id_wire_fixture.py
+          git diff --exit-code tests/wire_contract/run_id_wire.json sdks/typescript/src/run_id_wire.json
+      # The T2 baggage-encoding golden: the exact `baggage` header string the Python producer
+      # emits for the shared vectors. The TS `baggage-parity` test asserts the TS producer
+      # emits the identical string, so a drift in EITHER producer's encoding is caught.
+      - name: Baggage parity golden (regen + diff)
+        run: |
+          uv run python tests/wire_contract/generate_baggage_parity_golden.py
+          git diff --exit-code tests/wire_contract/baggage_parity_golden.json
       # The golden proposed outcomes.yaml (parsed) from the Python pipeline on the shared
       # fixture repo. The TS `onboard` golden parity test asserts the TS pipeline matches it,
       # so a drift in EITHER pipeline is caught (Python here, TS in the vitest suite).

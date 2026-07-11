@@ -20,6 +20,11 @@ export type { ClientTarget, EffectiveConfigEcho, InitOptions, InitResult } from 
 
 export { run, activeRunId, track } from "./run.js";
 
+export { installRunIdInjection } from "./injection.js";
+export type { InjectionTarget, InjectionReport } from "./injection.js";
+export { installRunIdBaggage } from "./baggage.js";
+export type { BaggageTarget } from "./baggage.js";
+
 export { InitConfigError, SecretString, resolveConfig } from "./config.js";
 export type { EffectiveConfig, InitConfig } from "./config.js";
 

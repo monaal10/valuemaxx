@@ -21,7 +21,7 @@ This tool closes both gaps, and it's honest about precision the whole way: every
 
 1. **`init()` — one line.** A thin SDK (Python *and* TypeScript) captures every LLM call's *correct* cost, off the hot path, and never throws into your app.
 2. **Declare your outcomes once.** A config (`outcomes.yaml`) — which the onboarding agent writes for you by reading your codebase — says what a "resolution" / "deal" / "funded loan" *is* in your system. No per-call tracking code.
-3. **Cost binds to outcome automatically.** In-process outcomes bind via execution context; delayed/external outcomes bind via a round-tripped correlation id (we stamp it on your outbound call; the webhook echoes it back). Everything is confidence-labeled.
+3. **Cost binds to outcome automatically — the SDK does the plumbing.** `init()` installs three carry channels for the active run id, so binding needs no per-call tracking code: **in-process** via execution context (`exact`); **across a live service hop** via W3C baggage the SDK stamps on outbound HTTP (`exact`); and **delayed/out-of-process** via a round-tripped correlation id the SDK stamps on your outbound call (e.g. Stripe metadata) that the webhook echoes back (`deterministic`). Where no id can be carried, it falls back to a *labeled* entity/time match — never a silent mis-bind. Everything is confidence-labeled.
 4. **See your margin, and where to cut it.** Cost-per-outcome and gross-margin rollups; and an eval layer that replays cheaper models against your real workload and recommends switches — with the evidence, never automatically.
 
 ---
@@ -106,6 +106,23 @@ with valuemaxx.track.run(run_id="checkout-agent-42"):
 ```
 
 `init()` **never throws into your app** (fail-open, H9): a bad literal config raises at the call site, but every instrumentation step thereafter is caught, logged, and surfaced as a warning. `tenant_id` is a real `UUID`. Cost capture instruments the *injected provider client's* transport instance-scoped (so an unrelated `httpx.Client` in your process is never touched); see [`sdks/python`](./sdks/python) for the client/sink wiring the SDK uses to land a captured call as a cost event.
+
+Beyond `track.run` (which carries the run id **in-process**), `init()` also installs the two deterministic *carry* channels so cost binds to outcomes that land elsewhere — you wire nothing per call:
+
+```python
+vmx = valuemaxx.init(
+    tenant_id=UUID("6f1c3b2a-0000-4a00-8000-000000000001"),
+    ingest_key="dev",
+    endpoint="http://127.0.0.1:8000",
+    # T2 — stamp the run id on W3C baggage for outbound HTTP (a live service→service hop):
+    baggage_targets=["httpx.Client.request", "httpx.AsyncClient.request"],
+    # T3 — stamp the run id into an echoing SDK call (round-trips via its later webhook).
+    # These specs come straight from `valuemaxx onboard`'s outcomes.yaml — you don't hand-write them:
+    run_id_injection_specs=onboarded_injection_specs,
+)
+```
+
+Both fail open and are **reported, never silent**: a target that isn't importable at `init()` is named in `vmx.warnings` (so a wrong import order can't quietly disable the round-trip), and with no active run the call passes through untouched. The TypeScript `init()` takes the symmetric `baggageTargets` / `runIdInjectionTargets` options and stamps the **byte-identical** baggage header (pinned by a cross-language parity test).
 
 Prefer to have it scaffolded for you? From your repo root:
 
@@ -219,7 +236,7 @@ outcomes:
     signal: outcome_confirmed
 
   # A delayed, out-of-process outcome: Stripe confirms the charge via webhook.
-  # We stamp run_id on the outbound call and read it back off the webhook echo.
+  # `init()` auto-stamps run_id on the outbound call (T3); the webhook echo reads it back.
   - name: payment_succeeded
     match:
       webhook: stripe
@@ -227,10 +244,12 @@ outcomes:
     signal: outcome_confirmed
     run_id_injection:
       sdk_call: stripe.PaymentIntent.create
-      inject_into: metadata.run_id
+      inject_into: metadata.atm_run_id
       webhook_event: payment_intent.succeeded
-      extract_from: data.object.metadata.run_id
+      extract_from: data.object.metadata.atm_run_id
 ```
+
+The `run_id_injection` block is **executed, not just documented**: pass these specs to `init(run_id_injection_specs=…)` (step 2) and the SDK wraps `stripe.PaymentIntent.create` so every call inside a `track.run` carries the run id in `metadata.atm_run_id` — copy-on-write, so your own kwargs are never mutated. When Stripe's webhook echoes it back, the outcome binds `deterministic` (billing-grade). If the external system *doesn't* echo metadata (e.g. Salesforce), onboarding omits the block and the outcome falls back to a **labeled** entity-match — never silently mis-bound.
 
 Have the onboarding scan write this for you, or validate a hand-written file. `valuemaxx onboard` comes with the base install on **both** languages (`pip install valuemaxx` / `npm install valuemaxx`) and behaves identically — it scans TypeScript *and* Python, proposes `outcomes.yaml`, and prints a reviewable diff (nothing is written; rules stay UNCONFIRMED):
 
@@ -285,7 +304,7 @@ Runs on a container + Postgres (`postgresql+asyncpg://…`), or embedded SQLite 
 
 ## Integrate with an AI coding agent (Claude Code / Cursor)
 
-This project is built to be wired up **by** a coding agent. `valuemaxx onboard` runs the onboarding pipeline (scan → propose → render → reviewable diff): it scans your codebase, finds where your agent runs and where outcomes are recorded, proposes the `outcomes.yaml` (and the run-id injection for delayed outcomes), and prints a reviewable diff. The candidate rules stay **unconfirmed** until you approve the diff. See [`docs/onboarding/`](./docs/onboarding/) for the onboarding prompts and the skill.
+This project is built to be wired up **by** a coding agent. `valuemaxx onboard` runs the onboarding pipeline (scan → propose → render → reviewable diff): it scans your codebase, finds where your agent runs and where outcomes are recorded, proposes the `outcomes.yaml`, and prints a reviewable diff. For each *echoing* external write (Stripe, HubSpot…) it also proposes a `run_id_injection` block — the exact spec you hand to `init(run_id_injection_specs=…)` so the SDK auto-stamps the run id on that outbound call and the later webhook binds it `deterministic` (a non-echoing system like Salesforce is instead flagged as a labeled fallback). The scanner and the proposed output are **identical across TypeScript and Python** (one shared rules contract + a golden cross-language parity test). The candidate rules stay **unconfirmed** until you approve the diff. See [`docs/onboarding/`](./docs/onboarding/) for the onboarding prompts and the skill.
 
 ## Contributing
 

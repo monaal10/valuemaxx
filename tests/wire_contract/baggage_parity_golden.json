@@ -1,0 +1,8 @@
+{
+  "empty_baggage": "valuemaxx.run_id=run-2",
+  "existing_member": "team=payments,valuemaxx.run_id=run-3",
+  "multiple_members": "team=payments,region=us,valuemaxx.run_id=run-4",
+  "no_headers": "valuemaxx.run_id=run-1",
+  "stale_run_id_replaced": "team=x,valuemaxx.run_id=run-5",
+  "unrelated_headers_only": "valuemaxx.run_id=run-6"
+}

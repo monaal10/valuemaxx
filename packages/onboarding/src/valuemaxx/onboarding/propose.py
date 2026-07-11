@@ -23,6 +23,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from valuemaxx.core import BindingTier, SignalClass
+from valuemaxx.core.wire import INJECTED_RUN_ID_FIELD
 from valuemaxx.onboarding.capabilities import (
     MatchKind,
     OutcomeRuleCandidate,
@@ -48,8 +49,10 @@ _SITE_TO_MATCH: dict[str, MatchKind] = {
 # Site kinds that bind synchronously in-process (exact).
 _IN_PROCESS_KINDS = frozenset({"status_setter", "mark_function", "orm_write"})
 
-# The run-id metadata field injected into an echoing system's outbound object.
-_INJECTED_FIELD = "metadata.atm_run_id"
+# The run-id metadata field injected into an echoing system's outbound object. Sourced
+# from the cross-language wire contract so onboard's proposal and the runtime T3 injector
+# (both SDKs) default to the identical path — they cannot drift.
+_INJECTED_FIELD = INJECTED_RUN_ID_FIELD
 
 
 def _signal_for(site: ScanSite, mapper: SignalClassMapper) -> SignalClass:

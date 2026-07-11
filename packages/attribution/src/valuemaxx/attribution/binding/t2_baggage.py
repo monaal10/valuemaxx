@@ -12,9 +12,10 @@ from __future__ import annotations
 from typing_extensions import override
 from valuemaxx.attribution.resolver import ResolveContext, ResolveOutcome, Resolver, no_match
 from valuemaxx.core import BindingTier, RunId
+from valuemaxx.core.wire import BAGGAGE_RUN_ID_KEY
 
-BAGGAGE_RUN_ID_KEY = "valuemaxx.run_id"
-"""The W3C-baggage key the SDK stamps the active run id under across service hops."""
+# BAGGAGE_RUN_ID_KEY is re-exported from the cross-language wire contract
+# (:mod:`valuemaxx.core.wire`) so the T2 producer and this consumer read one constant.
 
 
 class BaggageResolver(Resolver):

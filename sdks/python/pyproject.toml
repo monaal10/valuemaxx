@@ -78,6 +78,9 @@ sources = ["src"]
 [tool.uv.sources]
 valuemaxx-core = { workspace = true }
 valuemaxx-capture = { workspace = true }
+# init() installs the T2 baggage producer + T3 run_id injection from outcomes; bundled
+# into the release wheel, resolved via the workspace in dev.
+valuemaxx-outcomes = { workspace = true }
 
 [dependency-groups]
 # httpx is TEST-ONLY: the e2e proves init() -> CostEvent over a real injected

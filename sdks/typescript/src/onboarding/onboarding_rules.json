@@ -1,6 +1,13 @@
 {
-  "echoing_systems": ["hubspot", "stripe", "zendesk"],
-  "entity_id_exclusions": ["guid", "uuid"],
+  "echoing_systems": [
+    "hubspot",
+    "stripe",
+    "zendesk"
+  ],
+  "entity_id_exclusions": [
+    "guid",
+    "uuid"
+  ],
   "external_systems": {
     "calendar": "calendar",
     "hubspot": "hubspot",
@@ -34,8 +41,21 @@
     "vendor",
     "venv"
   ],
-  "mark_prefixes": ["close", "complete", "finalize", "mark", "resolve"],
-  "orm_writes": ["create", "delete", "insert", "save", "update", "upsert"],
+  "mark_prefixes": [
+    "close",
+    "complete",
+    "finalize",
+    "mark",
+    "resolve"
+  ],
+  "orm_writes": [
+    "create",
+    "delete",
+    "insert",
+    "save",
+    "update",
+    "upsert"
+  ],
   "redact_high_entropy_bits": 3.5,
   "redact_high_entropy_pattern": "[A-Za-z0-9+/=_-]{40,}",
   "redact_prefix_patterns": [
@@ -47,12 +67,25 @@
   ],
   "redact_secret_name_alt": "api[_-]?key|secret|password|passwd|token|auth[_-]?token|access[_-]?key|client[_-]?secret",
   "redaction_placeholder": "[REDACTED]",
-  "ts_llm_calls": ["embed", "generateObject", "generateText", "streamObject", "streamText"],
+  "ts_llm_calls": [
+    "embed",
+    "generateObject",
+    "generateText",
+    "streamObject",
+    "streamText"
+  ],
   "ts_provider_calls": [
     "createAnthropic",
     "createGateway",
     "createGoogleGenerativeAI",
     "createOpenAI"
   ],
-  "ts_suffixes": [".cjs", ".js", ".jsx", ".mjs", ".ts", ".tsx"]
+  "ts_suffixes": [
+    ".cjs",
+    ".js",
+    ".jsx",
+    ".mjs",
+    ".ts",
+    ".tsx"
+  ]
 }

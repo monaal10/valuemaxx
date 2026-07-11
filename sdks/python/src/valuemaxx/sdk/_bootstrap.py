@@ -23,16 +23,20 @@ from uuid import uuid4
 from pydantic import SecretStr
 from valuemaxx.capture import Emitter, version_selftest
 from valuemaxx.capture.patch import instrument_client
+from valuemaxx.outcomes.instrument.baggage import install_run_id_baggage
+from valuemaxx.outcomes.instrument.injection import install_run_id_injection
 from valuemaxx.sdk.config import EffectiveConfig, InitConfig
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable, Mapping, Sequence
 
     from valuemaxx.capture import AttemptObservation, InstrumentHandle
     from valuemaxx.core.context import Clock, UuidGen
     from valuemaxx.core.ids import TenantId
     from valuemaxx.core.pricing import PriceBook
     from valuemaxx.core.repositories import CostEventRepository
+    from valuemaxx.outcomes.instrument.injection import InjectionReport
+    from valuemaxx.outcomes.schema import RunIdInjectionSpec
 
 _LOGGER = logging.getLogger("valuemaxx.sdk.init")
 
@@ -62,6 +66,14 @@ class _CountingUuid:
         return uuid4().hex
 
 
+def _unresolved_warnings(report: InjectionReport, *, channel: str) -> list[str]:
+    """Turn each unresolved carry target into a named startup warning (H10, never silent)."""
+    return [
+        f"valuemaxx: {channel} not importable at init (run_id will NOT round-trip): {target}"
+        for target in report.unresolved
+    ]
+
+
 def init(
     *,
     tenant_id: TenantId,
@@ -77,6 +89,8 @@ def init(
     pricebook: PriceBook | None = None,
     clock: Clock | None = None,
     uuid_gen: UuidGen | None = None,
+    run_id_injection_specs: Sequence[RunIdInjectionSpec] | None = None,
+    baggage_targets: Sequence[str] | None = None,
 ) -> InitResult:
     """Instrument cost capture in one call. Never raises into the host (fail-open, H9).
 
@@ -129,6 +143,15 @@ def init(
                 granularity=CaptureGranularity(granularity),
             )
             patched = True
+
+        # T3 — auto-wrap the onboarded echoing SDK calls so the run_id round-trips (§6.1).
+        if run_id_injection_specs:
+            report = install_run_id_injection(run_id_injection_specs)
+            warnings.extend(_unresolved_warnings(report, channel="run_id injection sdk_call"))
+        # T2 — auto-wrap outbound HTTP so the run_id rides W3C baggage across a live hop.
+        if baggage_targets:
+            report = install_run_id_baggage(baggage_targets)
+            warnings.extend(_unresolved_warnings(report, channel="baggage target"))
     except Exception as exc:
         warnings.append(f"valuemaxx init suppressed an internal error (fail-open): {exc}")
         _LOGGER.warning("valuemaxx init suppressed an internal error (fail-open)", exc_info=True)

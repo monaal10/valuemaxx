@@ -1416,10 +1416,15 @@ wheels = [
 
 [[package]]
 name = "valuemaxx"
-version = "0.0.0"
+version = "0.1.0"
 source = { editable = "sdks/python" }
 dependencies = [
     { name = "pydantic" },
+    { name = "pyyaml" },
+    { name = "tree-sitter" },
+    { name = "tree-sitter-typescript" },
+    { name = "typer" },
+    { name = "typing-extensions" },
     { name = "wrapt" },
 ]
 
@@ -1432,12 +1437,7 @@ cli = [
     { name = "fastapi" },
     { name = "psycopg2-binary" },
     { name = "pydantic-settings" },
-    { name = "pyyaml" },
     { name = "sqlalchemy", extra = ["asyncio"] },
-    { name = "tree-sitter" },
-    { name = "tree-sitter-typescript" },
-    { name = "typer" },
-    { name = "typing-extensions" },
     { name = "uvicorn" },
 ]
 server = [
@@ -1477,14 +1477,14 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2" },
     { name = "pydantic-settings", marker = "extra == 'cli'", specifier = ">=2.2" },
     { name = "pydantic-settings", marker = "extra == 'server'", specifier = ">=2.2" },
-    { name = "pyyaml", marker = "extra == 'cli'", specifier = ">=6" },
+    { name = "pyyaml", specifier = ">=6" },
     { name = "pyyaml", marker = "extra == 'server'", specifier = ">=6" },
     { name = "sqlalchemy", extras = ["asyncio"], marker = "extra == 'cli'", specifier = ">=2,<3" },
     { name = "sqlalchemy", extras = ["asyncio"], marker = "extra == 'server'", specifier = ">=2,<3" },
-    { name = "tree-sitter", marker = "extra == 'cli'", specifier = ">=0.23" },
-    { name = "tree-sitter-typescript", marker = "extra == 'cli'", specifier = ">=0.23" },
-    { name = "typer", marker = "extra == 'cli'", specifier = ">=0.12" },
-    { name = "typing-extensions", marker = "extra == 'cli'", specifier = ">=4.12" },
+    { name = "tree-sitter", specifier = ">=0.23" },
+    { name = "tree-sitter-typescript", specifier = ">=0.23" },
+    { name = "typer", specifier = ">=0.12" },
+    { name = "typing-extensions", specifier = ">=4.12" },
     { name = "typing-extensions", marker = "extra == 'server'", specifier = ">=4.12" },
     { name = "uvicorn", marker = "extra == 'cli'", specifier = ">=0.29" },
     { name = "uvicorn", marker = "extra == 'server'", specifier = ">=0.29" },

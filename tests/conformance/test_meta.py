@@ -25,8 +25,8 @@ _IDS = [r.name for r in _RULES]
 def test_rules_were_discovered() -> None:
     """Collection is non-empty — the harness is wired, not silently empty."""
     assert _RULES, "no conformance rules discovered"
-    # the full §3 rule list (25 static + 4 behavioral = 29 rules)
-    assert len(_RULES) == 29, f"expected 29 rules, found {len(_RULES)}: {_IDS}"
+    # the full §3 rule list (26 static + 4 behavioral = 30 rules)
+    assert len(_RULES) == 30, f"expected 30 rules, found {len(_RULES)}: {_IDS}"
 
 
 @pytest.mark.conformance
@@ -94,6 +94,7 @@ def test_full_rule_list_present() -> None:
         "additive_reconciliation",
         "migration_no_autogen_drift",
         "wire_semconv_parity",
+        "run_id_wire_parity",
         "granularity_labeled",
         "streaming_no_delta_sum",
         "resolver_emits_only_its_own_tier",

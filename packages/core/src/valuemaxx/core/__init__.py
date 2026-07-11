@@ -93,8 +93,11 @@ from valuemaxx.core.webhook import (
     SignalClassMapper,
     WebhookResult,
 )
+from valuemaxx.core.wire import BAGGAGE_RUN_ID_KEY, INJECTED_RUN_ID_FIELD
 
 __all__ = [
+    "BAGGAGE_RUN_ID_KEY",
+    "INJECTED_RUN_ID_FIELD",
     "AllocatedLine",
     "AllocatedRollup",
     "AllocationRepository",

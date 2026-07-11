@@ -2,3 +2,11 @@ dist
 node_modules
 coverage
 package-lock.json
+
+# Generated cross-language contracts: single-sourced from Python (valuemaxx.core.wire,
+# valuemaxx.onboarding.rules) and regenerated + git-diff-guarded in CI. Prettier must NOT
+# reformat them — the Python generator owns their byte format, and the CI parity step
+# (git diff --exit-code) is the sole check. Leaving them to prettier makes the two tools
+# fight over array formatting (json.dumps expands; prettier compacts).
+src/run_id_wire.json
+src/onboarding/onboarding_rules.json
