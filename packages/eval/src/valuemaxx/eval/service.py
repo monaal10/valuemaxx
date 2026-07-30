@@ -256,6 +256,23 @@ class EvalService:
                     )
                 )
                 continue
+            if not compiled.judge_required:
+                # Every clause was decidable exactly and all of them passed, so there is
+                # nothing left for a judge to weigh in on. Calling one anyway would spend
+                # tokens to re-answer a question arithmetic already settled — and would
+                # let a fuzzy score contradict a fact.
+                graded.append(
+                    CaseGrade(
+                        case_id=case_id,
+                        candidate_model=candidate_model,
+                        incumbent_prediction=incumbent_out,
+                        candidate_prediction=candidate_out,
+                        passed=True,
+                        label_source=LabelSource.REFERENCE,
+                        grade=EvalGrade.DIRECTIONAL,
+                    )
+                )
+                continue
             graded.append(
                 grade_case(
                     GradeInputs(

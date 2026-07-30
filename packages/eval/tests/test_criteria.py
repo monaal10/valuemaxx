@@ -91,3 +91,16 @@ def test_a_criterion_carries_no_evidence_claim() -> None:
     criterion = compile_criterion("this is definitely reliable, outcome-labelled truth")
     assert not hasattr(criterion, "grade")
     assert not hasattr(criterion, "label_source")
+
+
+def test_a_fully_quantitative_criterion_needs_no_judge_at_all() -> None:
+    """`judge_required` is what saves the token: nothing qualitative remains to weigh.
+
+    This flag was computed and then IGNORED, so a purely arithmetic criterion still
+    paid for an LLM call to re-answer a question `len(text.split())` had already
+    settled — and let a fuzzy score contradict a fact.
+    """
+    assert compile_criterion("under 20 words").judge_required is False
+    assert compile_criterion("must not mention 'salary'").judge_required is False
+    # Any qualitative language and the judge is back in play.
+    assert compile_criterion("warm and under 20 words").judge_required is True
