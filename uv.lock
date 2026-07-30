@@ -1723,6 +1723,8 @@ name = "valuemaxx-eval"
 version = "0.0.0"
 source = { editable = "packages/eval" }
 dependencies = [
+    { name = "pyyaml" },
+    { name = "types-pyyaml" },
     { name = "typing-extensions" },
     { name = "valuemaxx-capabilities" },
     { name = "valuemaxx-core" },
@@ -1736,6 +1738,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "pyyaml", specifier = ">=6" },
+    { name = "types-pyyaml", specifier = ">=6" },
     { name = "typing-extensions", specifier = ">=4.12" },
     { name = "valuemaxx-capabilities", editable = "packages/capabilities" },
     { name = "valuemaxx-core", editable = "packages/core" },

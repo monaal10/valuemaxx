@@ -25,7 +25,11 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel
 from valuemaxx.capabilities import Mode, Surface, capability
 from valuemaxx.core import AtmError
-from valuemaxx.eval.promptfoo import import_promptfoo_tests
+from valuemaxx.eval.promptfoo import (
+    ImportedSuite,
+    import_promptfoo_config,
+    import_promptfoo_tests,
+)
 
 if TYPE_CHECKING:
     from valuemaxx.capabilities import Registry
@@ -88,7 +92,11 @@ class ImportPromptfooInput(BaseModel):
     """
 
     tenant_id: str
-    jsonl: str
+    """JSONL test rows (the shape that carries assertions)."""
+    jsonl: str = ""
+    """A promptfoo YAML config; only its INLINE assertions can be read, since a
+    `tests: file://…` reference points at a file the backend must not open."""
+    yaml_config: str = ""
 
 
 class ImportedCriterion(BaseModel):
@@ -209,7 +217,16 @@ def register(registry: Registry) -> None:
         # Pure parse — no runtime needed, nothing persisted, no provider call. The
         # result is a PROPOSAL a human reads before running an eval with it, which is
         # why the unsupported list is part of the output rather than a log line.
-        suite = import_promptfoo_tests(request.jsonl.splitlines())
+        from_jsonl = import_promptfoo_tests(request.jsonl.splitlines())
+        from_yaml = (
+            import_promptfoo_config(request.yaml_config)
+            if request.yaml_config
+            else ImportedSuite(criteria=(), unsupported=())
+        )
+        suite = ImportedSuite(
+            criteria=(*from_yaml.criteria, *from_jsonl.criteria),
+            unsupported=(*from_yaml.unsupported, *from_jsonl.unsupported),
+        )
         return ImportPromptfooOutput(
             criteria=tuple(
                 ImportedCriterion(text=c.text, judge_required=c.judge_required)

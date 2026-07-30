@@ -34,7 +34,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import typer
-from valuemaxx.eval.promptfoo import import_promptfoo_tests
+from valuemaxx.eval.promptfoo import (
+    ImportedSuite,
+    import_promptfoo_config,
+    import_promptfoo_tests,
+)
 from valuemaxx.onboarding.diff import build_reviewable_diff
 from valuemaxx.onboarding.propose import build_proposal
 from valuemaxx.onboarding.render import render_outcomes_yaml
@@ -49,6 +53,7 @@ from valuemaxx.sdk import scaffold
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
+    from valuemaxx.eval.criteria import EvalCriterion
     from valuemaxx.onboarding.capabilities import ReviewableDiff
 
 # Frameworks the init scaffolder can detect, by a marker file in the target repo.
@@ -305,23 +310,42 @@ def import_evals(suite: Path = _SUITE_ARGUMENT) -> None:
     The file is never uploaded by this command and no assertion code is executed; this
     is a parser, not a runner.
     """
-    paths = sorted(suite.rglob("*.jsonl")) if suite.is_dir() else [suite]
+    if suite.is_dir():
+        paths = sorted({*suite.rglob("*.jsonl"), *suite.rglob("*.yaml"), *suite.rglob("*.yml")})
+    else:
+        paths = [suite]
+
     lines: list[str] = []
+    criteria: list[EvalCriterion] = []
+    unsupported: list[str] = []
     for path in paths:
         try:
-            lines.extend(path.read_text(encoding="utf-8").splitlines())
+            text = path.read_text(encoding="utf-8")
         except OSError as exc:
             typer.echo(f"import-evals: could not read {path}: {exc}")
+            continue
+        if path.suffix in {".yaml", ".yml"}:
+            # A YAML config carries inline assertions; a `tests: file://…` reference is
+            # REPORTED by the parser rather than silently importing nothing.
+            config = import_promptfoo_config(text)
+            criteria.extend(config.criteria)
+            unsupported.extend(config.unsupported)
+        else:
+            lines.extend(text.splitlines())
 
-    if not lines:
-        typer.echo(f"import-evals: no promptfoo test rows found under {suite}.")
+    if not lines and not criteria and not unsupported:
+        typer.echo(f"import-evals: no promptfoo tests or configs found under {suite}.")
         return
 
-    imported = import_promptfoo_tests(lines)
+    from_jsonl = import_promptfoo_tests(lines)
+    imported = ImportedSuite(
+        criteria=(*criteria, *from_jsonl.criteria),
+        unsupported=(*unsupported, *from_jsonl.unsupported),
+    )
     judged = [c for c in imported.criteria if c.judge_required]
     exact = [c for c in imported.criteria if not c.judge_required]
 
-    typer.echo(f"import-evals: read {len(lines)} row(s) from {len(paths)} file(s).\n")
+    typer.echo(f"import-evals: read {len(paths)} file(s).\n")
     typer.echo(f"{len(imported.criteria)} criteria imported:")
     typer.echo(f"  {len(judged)} judge-scored (an LLM grades these against your rubric)")
     typer.echo(f"  {len(exact)} exact checks (decided without an LLM — no tokens spent)")

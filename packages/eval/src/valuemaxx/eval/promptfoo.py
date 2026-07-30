@@ -29,6 +29,7 @@ import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
+import yaml
 from valuemaxx.eval.criteria import DeterministicCheck, EvalCriterion
 
 if TYPE_CHECKING:
@@ -170,4 +171,78 @@ def import_promptfoo_tests(lines: Sequence[str]) -> ImportedSuite:
     return ImportedSuite(criteria=tuple(criteria), unsupported=tuple(unsupported))
 
 
-__all__ = ["ImportedSuite", "import_promptfoo_tests"]
+def _assertions_of(case: object) -> list[dict[str, object]]:
+    """The assertion mappings on one inline test case (ignoring anything else)."""
+    if not isinstance(case, dict):
+        return []
+    raw = cast("dict[str, object]", case).get("assert")
+    if not isinstance(raw, list):
+        return []
+    out: list[dict[str, object]] = []
+    for item in cast("list[object]", raw):
+        if isinstance(item, dict):
+            out.append(cast("dict[str, object]", item))
+    return out
+
+
+def import_promptfoo_config(text: str) -> ImportedSuite:
+    """Parse a promptfoo YAML config and import its INLINE assertions.
+
+    promptfoo's own schema types ``tests`` as a union: a string path, a ``{path}``
+    object, or a list mixing those with inline test-case mappings. Only the inline
+    mappings carry assertions we can read here — a ``file://`` reference points at a
+    JSONL file this function cannot open, because the backend must never read the
+    caller's filesystem. Those references are REPORTED, so a config that imports zero
+    criteria says why instead of looking like a suite with no rules.
+
+    ``defaultTest.assert`` applies to every case in promptfoo, so its assertions are
+    imported once — they are requirements of the suite as a whole, and importing them
+    per-case would multiply identical criteria for no added signal.
+
+    Parsed with ``yaml.safe_load`` only, never ``yaml.load``: a config is untrusted
+    input, and full-loader tag construction executes arbitrary Python.
+    """
+    try:
+        document: object = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        return ImportedSuite(criteria=(), unsupported=(f"unparseable YAML: {exc}",))
+
+    if not isinstance(document, dict):
+        return ImportedSuite(criteria=(), unsupported=("config is not a mapping",))
+    config = cast("dict[str, object]", document)
+
+    criteria: list[EvalCriterion] = []
+    unsupported: list[str] = []
+
+    def absorb(assertions: list[dict[str, object]]) -> None:
+        for assertion in assertions:
+            criterion, reason = _convert(assertion)
+            if criterion is not None:
+                criteria.append(criterion)
+            elif reason is not None:
+                unsupported.append(reason)
+
+    # `defaultTest` assertions apply to every case; import them once.
+    absorb(_assertions_of(config.get("defaultTest")))
+
+    tests = config.get("tests")
+    if isinstance(tests, str):
+        # A bare path — the whole suite lives in a file we cannot open from here.
+        unsupported.append("tests: file reference (import the JSONL directly)")
+    elif isinstance(tests, list):
+        for entry in cast("list[object]", tests):
+            if isinstance(entry, str):
+                unsupported.append("tests: file reference (import the JSONL directly)")
+                continue
+            if not isinstance(entry, dict):
+                continue
+            case = cast("dict[str, object]", entry)
+            if "path" in case:
+                unsupported.append("tests: file reference (import the JSONL directly)")
+                continue
+            absorb(_assertions_of(case))
+
+    return ImportedSuite(criteria=tuple(criteria), unsupported=tuple(unsupported))
+
+
+__all__ = ["ImportedSuite", "import_promptfoo_config", "import_promptfoo_tests"]

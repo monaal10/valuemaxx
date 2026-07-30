@@ -157,3 +157,99 @@ def test_the_capability_takes_content_never_a_path() -> None:
 
     assert "jsonl" in ImportPromptfooInput.model_fields
     assert "path" not in ImportPromptfooInput.model_fields
+
+
+# --- YAML configs with inline tests ---------------------------------------------------
+
+
+def test_inline_assertions_are_imported() -> None:
+    from valuemaxx.eval.promptfoo import import_promptfoo_config
+
+    suite = import_promptfoo_config(
+        """
+tests:
+  - description: stays on topic
+    assert:
+      - type: llm-rubric
+        value: the answer must stay on topic
+      - type: contains
+        value: remote
+"""
+    )
+    assert len(suite.criteria) == 2
+    assert any(c.judge_required for c in suite.criteria)
+    assert any(not c.judge_required for c in suite.criteria)
+
+
+def test_default_test_assertions_are_imported_once_not_per_case() -> None:
+    """`defaultTest` applies to every case, so it is a requirement of the SUITE.
+
+    Importing it per-case would multiply identical criteria — more judge calls, more
+    money, no extra signal, and a misleading "12 criteria" when the user wrote one.
+    """
+    from valuemaxx.eval.promptfoo import import_promptfoo_config
+
+    suite = import_promptfoo_config(
+        """
+defaultTest:
+  assert:
+    - type: not-contains
+      value: lorem
+tests:
+  - description: a
+  - description: b
+  - description: c
+"""
+    )
+    assert len(suite.criteria) == 1
+    assert suite.criteria[0].text == "must not mention 'lorem'"
+
+
+def test_a_file_reference_is_reported_rather_than_silently_importing_nothing() -> None:
+    """The backend cannot open the caller's files, and must not pretend the suite is empty.
+
+    This is vibechk's real shape: every config points `tests` at a JSONL path. Zero
+    criteria with no explanation would read as "this suite has no rules".
+    """
+    from valuemaxx.eval.promptfoo import import_promptfoo_config
+
+    suite = import_promptfoo_config('tests: "file://./cases.jsonl"')
+    assert suite.is_empty
+    assert suite.unsupported == ("tests: file reference (import the JSONL directly)",)
+
+
+def test_a_list_mixing_paths_and_inline_cases_imports_what_it_can() -> None:
+    """promptfoo's schema allows both in one list; a path must not discard the inline rules."""
+    from valuemaxx.eval.promptfoo import import_promptfoo_config
+
+    suite = import_promptfoo_config(
+        """
+tests:
+  - "file://./more.jsonl"
+  - assert:
+      - type: llm-rubric
+        value: stays on topic
+"""
+    )
+    assert len(suite.criteria) == 1
+    assert "file reference" in suite.unsupported[0]
+
+
+def test_malformed_yaml_is_reported_not_raised() -> None:
+    from valuemaxx.eval.promptfoo import import_promptfoo_config
+
+    suite = import_promptfoo_config("tests: [unclosed")
+    assert suite.is_empty
+    assert suite.unsupported
+    assert "unparseable YAML" in suite.unsupported[0]
+
+
+def test_config_parsing_never_uses_the_unsafe_yaml_loader() -> None:
+    """`yaml.load` constructs arbitrary Python from tags; a config is untrusted input."""
+    from pathlib import Path
+
+    import valuemaxx.eval.promptfoo as module
+
+    source = Path(str(module.__file__)).read_text(encoding="utf-8")
+    assert "yaml.safe_load" in source
+    assert "yaml.load(" not in source

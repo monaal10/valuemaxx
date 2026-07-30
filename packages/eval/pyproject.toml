@@ -11,6 +11,9 @@ dependencies = [
     # ``typing_extensions.override`` is recognised by the type checker at our 3.11
     # target (``typing.override`` is 3.12+); used on injected-Protocol fake methods.
     "typing-extensions>=4.12",
+    # Parsing a promptfoo YAML config (safe_load only — a config is untrusted input).
+    "PyYAML>=6",
+    "types-PyYAML>=6",
 ]
 
 # NOTE: the build plan named scipy/numpy as deps, but every statistic this package
