@@ -35,8 +35,19 @@ Every rollup carries `minimum_tier` + `confidence_distribution` — never collap
    calls, webhook handlers). Use the `scan_codebase` capability.
 2. **Propose** outcomes with `propose_onboarding_diff` (or draft a single rule with
    `scaffold_outcome_rule`). Every proposal is an **UNCONFIRMED candidate**.
-3. **Wire** the SDK init — add `valuemaxx.init()` at the app entrypoint. Validate the
-   snippet with `validate_init`.
+3. **Wire** the SDK init at the app entrypoint, then validate the snippet with
+   `validate_init`. `init()` is **not** zero-argument — it takes `tenant_id`,
+   `ingest_key`, and `endpoint` (there is no default hosted endpoint; the user runs the
+   backend). Pick the capture path from the host's dependency manifest:
+   - raw `openai` / `@anthropic-ai/sdk` client instances → pass them via `clients`;
+   - **Vercel AI SDK (`ai`/`@ai-sdk/*`) with no raw provider clients → `clients` does
+     not apply.** Use the tracer `init()` returns and pass
+     `experimental_telemetry: {isEnabled: true, tracer}` to `generateText`/`streamText`
+     — ideally threaded once through the host's own LLM wrapper module;
+   - LangChain/LlamaIndex/custom HTTP → tracer path, or OTLP direct.
+
+   Runtime: Node ≥ 20 with `node:async_hooks` + `node:crypto` (on Cloudflare
+   Workers/workerd that means `nodejs_compat` must be enabled).
 4. **Validate** the `outcomes.yaml` with `validate_outcome_rule` (the safe-predicate
    allowlist — no `eval`, no dunder access).
 5. **Suggest** an attribution rule with `suggest_attribution_rule` — it returns an
