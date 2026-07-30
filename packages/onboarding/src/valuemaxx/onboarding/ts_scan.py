@@ -86,7 +86,7 @@ def _enclosing_symbol(node: Node, source: bytes) -> str:
                 if name is not None:
                     return _text(name, source)
         cur = cur.parent
-    return "<module>"
+    return rules.MODULE_SYMBOL
 
 
 def _line_of(node: Node) -> int:
@@ -173,7 +173,7 @@ def scan_ts_source(text: str, *, file: str) -> tuple[list[ScanSite], list[ScanSi
                         system=_system_for_call(n, source),
                     )
                 )
-            elif name is not None and any(name.lower().startswith(p) for p in _TS_MARK_PREFIXES):
+            elif name is not None and rules.is_outcome_transition_name(name, _TS_MARK_PREFIXES):
                 outcome_sites.append(_site(kind="mark_function", file=file, node=n, source=source))
             else:
                 system = _system_for_call(n, source)

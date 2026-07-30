@@ -114,10 +114,24 @@ export function buildProposal(
   },
   rules: OnboardingRules,
 ): Proposal {
+  // A site whose enclosing symbol is the module fallback has no function to bind a rule to —
+  // the SDK instruments a NAMED function at init(). Proposing it yields a rule named
+  // "<module>" targeting "<module>" that can never bind; on a real repo these were 57% of all
+  // rules. Drop them rather than ask a human to review noise. Mirrors Python `build_proposal`.
+  const bindable = scan.outcomeSites.filter((s) => s.symbol !== rules.module_symbol);
+  const dropped = scan.outcomeSites.length - bindable.length;
+  const extraWarnings =
+    dropped > 0
+      ? [
+          `${dropped} outcome site(s) were skipped: they sit at module scope, not inside a ` +
+            `named function, so no rule could bind to them.`,
+        ]
+      : [];
+
   return {
-    rules: scan.outcomeSites.map((s) => ruleForSite(s, rules)),
+    rules: bindable.map((s) => ruleForSite(s, rules)),
     entityIds: scan.entityIds.map((e) => redact(e, rules)),
     sharedCostsPresent: false,
-    warnings: scan.warnings.map((w) => redact(w, rules)),
+    warnings: [...scan.warnings.map((w) => redact(w, rules)), ...extraWarnings],
   };
 }

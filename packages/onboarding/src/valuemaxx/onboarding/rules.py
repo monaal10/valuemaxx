@@ -49,13 +49,28 @@ ORM_WRITES: Final[tuple[str, ...]] = (
     "delete",
 )
 # Function/method-name stems that signal an outcome transition.
+#
+# These are matched as a *verb followed by an object* (``markCompleted``, ``mark_completed``)
+# — never as a bare verb, and never as a longer lowercase word that merely starts with one.
+# See ``MARK_REQUIRES_OBJECT_SUFFIX``: without that rule, ``close()`` on a DB lease,
+# ``resolve()`` on a Promise, and the noun ``marker``/``markdown`` all register as CONFIRMED
+# business outcomes. On a real repo that was ~1,045 matches, of which ~880 were noise.
+#
+# ``resolve`` is deliberately ABSENT for TS/JS: there it overwhelmingly means "look up"
+# (``resolveGatewayUrl``, ``resolveModelRuntimeConfig``) or Promise settlement, not "resolve a
+# ticket". The Python-AST scanner keeps its own ``resolve`` stem (see ``scan.py``), where the
+# SQLAlchemy/Django idiom does carry the outcome meaning.
 MARK_PREFIXES: Final[tuple[str, ...]] = (
     "mark",
-    "resolve",
     "close",
     "complete",
     "finalize",
 )
+# An outcome-transition name must continue past the stem with an uppercase letter or an
+# underscore (``markCompleted`` / ``mark_completed``). A bare stem (``close()``) or a
+# lowercase continuation (``marker``, ``closed``, ``markdown``) is NOT an outcome.
+MARK_REQUIRES_OBJECT_SUFFIX: Final[bool] = True
+
 # TS/JS source file extensions the scanner parses.
 TS_SUFFIXES: Final[tuple[str, ...]] = (".ts", ".tsx", ".js", ".mjs", ".cjs", ".jsx")
 
@@ -101,6 +116,38 @@ IGNORED_DIRS: Final[tuple[str, ...]] = (
     "target",
 )
 
+# Directories whose contents are tests/fixtures, never production outcome sites.
+# A test file's `markCompleted()` is a fake, and proposing a rule against it would bind
+# real production cost to an assertion. Scanned repos are typically 50-65% test code, so
+# this is also the single largest noise reduction in the scan.
+IGNORED_TEST_DIRS: Final[tuple[str, ...]] = (
+    "tests",
+    "test",
+    "__tests__",
+    "e2e",
+    "fixtures",
+    "__fixtures__",
+    "__mocks__",
+    "testdata",
+)
+
+# Filename infixes that mark a test/fixture/mock module (checked against the file STEM, so
+# `client.test.ts` and `agent.spec.tsx` match while `latest.ts` does not).
+IGNORED_FILE_INFIXES: Final[tuple[str, ...]] = (
+    ".test",
+    ".spec",
+    "_test",
+    "_spec",
+    ".fixture",
+    ".mock",
+    ".stories",
+)
+
+# The symbol recorded when a site is not inside any named function (module scope). Such a
+# site is NOT proposable: the SDK instruments a named function at init(), so a rule targeting
+# module scope can never bind. `propose` drops these.
+MODULE_SYMBOL: Final[str] = "<module>"
+
 # Identifiers that look like entity ids but are excluded (not real entity keys).
 ENTITY_ID_EXCLUSIONS: Final[tuple[str, ...]] = ("uuid", "guid")
 
@@ -124,8 +171,60 @@ REDACT_SECRET_NAME_ALT: Final[str] = (
 )
 # High-entropy blob detection: a long unbroken credential-ish run, scrubbed only if its
 # Shannon entropy (bits/char) meets the threshold (so real prose/code is never scrubbed).
-REDACT_HIGH_ENTROPY_PATTERN: Final[str] = r"[A-Za-z0-9+/=_-]{40,}"
+#
+# `/` is deliberately EXCLUDED from the character class. With it, a long file path is one
+# unbroken 40+ char run — `src/workflows/complete-submission/steps/capture-and-store/index`
+# scores 4.16 bits and was scrubbed to `[REDACTED]`, destroying the `match_target` of every
+# rule in a deeply-nested repo (1,554 rules on one real scan). Entropy alone cannot separate
+# these: English prose and kebab-case paths both sit near 4.0-4.5 bits, ABOVE the threshold.
+# Excluding the path separator is what makes a path decompose into short segments that never
+# reach the 40-char minimum, while real secrets (`sk-ant-…`, `ghp_…`, base64 blobs) still
+# match as one run. AWS keys and JWTs are covered by REDACT_PREFIX_PATTERNS regardless.
+REDACT_HIGH_ENTROPY_PATTERN: Final[str] = r"[A-Za-z0-9+=_-]{40,}"
 REDACT_HIGH_ENTROPY_BITS: Final[float] = 3.5
+
+
+def is_outcome_transition_name(name: str, prefixes: tuple[str, ...] = MARK_PREFIXES) -> bool:
+    """Return True iff ``name`` reads as a *verb + object* outcome transition.
+
+    ``markCompleted`` / ``mark_completed`` -> True. A bare stem (``close``) or a lowercase
+    continuation (``marker``, ``closed``, ``markdown``, ``completes``) -> False: those are a
+    DB-lease close, a Promise settle, or a noun that merely starts with the stem, and
+    labeling them CONFIRMED outcomes is exactly the honesty violation the tiers exist to
+    prevent. Mirrored in TS by ``isOutcomeTransitionName`` in ``scan.ts``.
+    """
+    low = name.lower()
+    for prefix in prefixes:
+        if not low.startswith(prefix):
+            continue
+        rest = name[len(prefix) :]
+        if not rest:
+            return False  # bare verb: close(), resolve()
+        if not MARK_REQUIRES_OBJECT_SUFFIX:
+            return True
+        if rest[0] == "_" or rest[0].isupper():
+            return True
+    return False
+
+
+def is_test_path(relative_path: str) -> bool:
+    """Return True iff ``relative_path`` is test/fixture/mock code (never an outcome site).
+
+    Matches a path SEGMENT against :data:`IGNORED_TEST_DIRS` and the filename STEM against
+    :data:`IGNORED_FILE_INFIXES` (so ``client.test.ts`` matches but ``latest.ts`` does not).
+    Mirrored in TS by ``isTestPath`` in ``onboard.ts``.
+    """
+    normalized = relative_path.replace("\\", "/")
+    segments = normalized.split("/")
+    if any(segment in IGNORED_TEST_DIRS for segment in segments[:-1]):
+        return True
+    filename = segments[-1]
+    stem = filename.split(".")[0] if filename.startswith(".") else filename
+    # Strip only the final extension so `.test` in `client.test.ts` remains visible.
+    dot = stem.rfind(".")
+    if dot > 0:
+        stem = stem[:dot]
+    return any(infix in stem for infix in IGNORED_FILE_INFIXES)
 
 
 def as_dict() -> dict[str, object]:
@@ -139,11 +238,15 @@ def as_dict() -> dict[str, object]:
         "ts_provider_calls": sorted(TS_PROVIDER_CALLS),
         "orm_writes": sorted(ORM_WRITES),
         "mark_prefixes": sorted(MARK_PREFIXES),
+        "mark_requires_object_suffix": MARK_REQUIRES_OBJECT_SUFFIX,
         "ts_suffixes": sorted(TS_SUFFIXES),
         "echoing_systems": sorted(ECHOING_SYSTEMS),
         "external_systems": dict(sorted(EXTERNAL_SYSTEMS.items())),
         "ignored_dirs": sorted(IGNORED_DIRS),
+        "ignored_test_dirs": sorted(IGNORED_TEST_DIRS),
+        "ignored_file_infixes": sorted(IGNORED_FILE_INFIXES),
         "entity_id_exclusions": sorted(ENTITY_ID_EXCLUSIONS),
+        "module_symbol": MODULE_SYMBOL,
         "redaction_placeholder": REDACTION_PLACEHOLDER,
         # Redaction patterns keep source ORDER (the admin-key pattern must precede the
         # generic sk-ant one), so they are NOT sorted.
@@ -168,7 +271,11 @@ __all__ = [
     "ENTITY_ID_EXCLUSIONS",
     "EXTERNAL_SYSTEMS",
     "IGNORED_DIRS",
+    "IGNORED_FILE_INFIXES",
+    "IGNORED_TEST_DIRS",
     "MARK_PREFIXES",
+    "MARK_REQUIRES_OBJECT_SUFFIX",
+    "MODULE_SYMBOL",
     "ORM_WRITES",
     "REDACTION_PLACEHOLDER",
     "REDACT_HIGH_ENTROPY_BITS",

@@ -19,10 +19,28 @@ import type { OnboardingRules, ScanResult, ScanSite } from "./types.js";
 
 const RULES = rulesJson as OnboardingRules;
 
-/** Walk `root` for TS/JS source files, skipping ignored + dot directories (like Python). */
+/**
+ * True iff `filename` is test/fixture/mock code (never a production outcome site).
+ * Checks the filename STEM against `ignored_file_infixes`, so `client.test.ts` matches
+ * while `latest.ts` does not. Mirrors Python `rules.is_test_path`.
+ */
+function isTestFile(filename: string): boolean {
+  const ext = extname(filename);
+  const stem = ext ? filename.slice(0, -ext.length) : filename;
+  return RULES.ignored_file_infixes.some((infix) => stem.includes(infix));
+}
+
+/**
+ * Walk `root` for TS/JS source files, skipping ignored + dot directories (like Python).
+ *
+ * Test/fixture directories and files are pruned too: a test's `markCompleted()` is a fake,
+ * and proposing a rule against it would bind real production cost to an assertion. On a real
+ * repo this alone removed ~63% of proposed rules.
+ */
 function iterSourceFiles(root: string): string[] {
   const suffixes = new Set(RULES.ts_suffixes);
   const ignored = new Set(RULES.ignored_dirs);
+  const ignoredTestDirs = new Set(RULES.ignored_test_dirs);
   const out: string[] = [];
   const walk = (dir: string): void => {
     let entries: string[];
@@ -40,9 +58,9 @@ function iterSourceFiles(root: string): string[] {
         continue;
       }
       if (st.isDirectory()) {
-        if (ignored.has(entry) || entry.startsWith(".")) continue;
+        if (ignored.has(entry) || ignoredTestDirs.has(entry) || entry.startsWith(".")) continue;
         walk(full);
-      } else if (suffixes.has(extname(entry))) {
+      } else if (suffixes.has(extname(entry)) && !isTestFile(entry)) {
         out.push(full);
       }
     }

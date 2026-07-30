@@ -74,4 +74,45 @@ describe("TS onboarding scanner", () => {
     expect(setter).toBeDefined();
     expect(setter?.line).toBeGreaterThan(0);
   });
+
+  // An outcome stem must be a verb applied to an object. Without this, `close()` on a DB
+  // lease and `resolve()` on a Promise become CONFIRMED business outcomes — the exact
+  // honesty violation the binding tiers exist to prevent.
+  it("does NOT treat a bare stem or a lowercase continuation as an outcome", () => {
+    const src = `
+export async function handler(db: Db, deferred: Deferred) {
+  await db.close();
+  deferred.resolve();
+  const marker = makeMarker();
+  markdown(marker);
+  completes(marker);
+}
+`;
+    const { outcomeSites } = scanTsSource(src, "src/noise.ts", rules);
+    expect(outcomeSites.filter((s) => s.kind === "mark_function")).toHaveLength(0);
+  });
+
+  it("treats verb+Object and verb_object as outcome transitions", () => {
+    const src = `
+export async function handler(job: Job) {
+  await markCompleted(job);
+  await mark_approved(job);
+  await finalizeTurn(job);
+}
+`;
+    const { outcomeSites } = scanTsSource(src, "src/real.ts", rules);
+    const marks = outcomeSites.filter((s) => s.kind === "mark_function");
+    expect(marks).toHaveLength(3);
+  });
+
+  // A long kebab-case path is 40+ chars of [A-Za-z0-9_-] and scores ~4.1 bits — above the
+  // entropy threshold. Scrubbing it destroyed the match_target of every rule in a deeply
+  // nested repo, so `/` must stay out of the high-entropy character class.
+  it("does not redact a long nested file path as if it were a secret", () => {
+    const deep = "src/workflows/complete-submission/steps/capture-and-store/index.ts";
+    const src = `export async function go() { return generateText({ prompt: "x" }); }`;
+    const { runBoundaries } = scanTsSource(src, deep, rules);
+    expect(runBoundaries.length).toBeGreaterThan(0);
+    for (const s of runBoundaries) expect(s.file).toBe(deep);
+  });
 });

@@ -33,10 +33,18 @@ export interface OnboardingRules {
   readonly ts_provider_calls: readonly string[];
   readonly orm_writes: readonly string[];
   readonly mark_prefixes: readonly string[];
+  /** An outcome stem must be followed by an uppercase char or `_` (`markCompleted`). */
+  readonly mark_requires_object_suffix: boolean;
   readonly ts_suffixes: readonly string[];
   readonly echoing_systems: readonly string[];
   readonly external_systems: Readonly<Record<string, string>>;
   readonly ignored_dirs: readonly string[];
+  /** Directory names that hold test/fixture code — never production outcome sites. */
+  readonly ignored_test_dirs: readonly string[];
+  /** Filename-stem infixes marking a test/fixture/mock module (`.test`, `.spec`, …). */
+  readonly ignored_file_infixes: readonly string[];
+  /** The symbol used when a site is at module scope (not inside a named function). */
+  readonly module_symbol: string;
   readonly entity_id_exclusions: readonly string[];
   readonly redaction_placeholder: string;
   readonly redact_prefix_patterns: readonly string[];

@@ -240,7 +240,9 @@ def _iter_source_files(root: Path, suffixes: tuple[str, ...]) -> list[Path]:
     """Walk ``root`` for files with one of ``suffixes``, skipping ignored dirs.
 
     Prunes :data:`_IGNORED_DIRS` and any other dot-directory so a real repo's
-    dependencies/build output/caches are never scanned.
+    dependencies/build output/caches are never scanned, and prunes test/fixture code
+    (:func:`rules.is_test_path`) — a test's ``markCompleted()`` is a fake, and proposing a
+    rule against it would bind real production cost to an assertion.
     """
     found: list[Path] = []
     stack: list[Path] = [root]
@@ -253,10 +255,10 @@ def _iter_source_files(root: Path, suffixes: tuple[str, ...]) -> list[Path]:
         for entry in entries:
             if entry.is_dir():
                 name = entry.name
-                if name in _IGNORED_DIRS or name.startswith("."):
+                if name in _IGNORED_DIRS or name in rules.IGNORED_TEST_DIRS or name.startswith("."):
                     continue
                 stack.append(entry)
-            elif entry.suffix in suffixes:
+            elif entry.suffix in suffixes and not rules.is_test_path(entry.name):
                 found.append(entry)
     return sorted(found)
 

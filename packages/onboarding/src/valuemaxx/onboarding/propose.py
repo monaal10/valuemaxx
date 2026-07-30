@@ -32,6 +32,7 @@ from valuemaxx.onboarding.capabilities import (
     ScanSite,
 )
 from valuemaxx.onboarding.redact import redact
+from valuemaxx.onboarding.rules import MODULE_SYMBOL
 
 if TYPE_CHECKING:
     from valuemaxx.core import SignalClassMapper
@@ -122,8 +123,22 @@ def build_proposal(
     False and no shared_costs.yaml is implied (M6 — never report a partial number as
     complete).
     """
-    rules = tuple(_rule_for_site(site, signal_mapper) for site in scan.outcome_sites)
-    warnings = tuple(redact(w) for w in scan.warnings)
+    # A site whose enclosing symbol is the module fallback ("<module>") has no function to
+    # bind a rule to — the SDK instruments a NAMED function at init(). Proposing it yields a
+    # rule named "<module>" targeting "<module>" that can never bind, and on a real repo
+    # these were 57% of all rules. Drop them rather than ask a human to review noise.
+    bindable = tuple(site for site in scan.outcome_sites if site.symbol != MODULE_SYMBOL)
+    rules = tuple(_rule_for_site(site, signal_mapper) for site in bindable)
+    dropped = len(scan.outcome_sites) - len(bindable)
+    extra_warnings = (
+        (
+            f"{dropped} outcome site(s) were skipped: they sit at module scope, not inside a "
+            f"named function, so no rule could bind to them.",
+        )
+        if dropped
+        else ()
+    )
+    warnings = tuple(redact(w) for w in scan.warnings) + extra_warnings
     return Proposal(
         rules=rules,
         entity_ids=tuple(redact(e) for e in scan.entity_ids),

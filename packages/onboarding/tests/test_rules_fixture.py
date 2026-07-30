@@ -44,10 +44,14 @@ def test_fixture_shape_is_complete() -> None:
         "ts_provider_calls",
         "orm_writes",
         "mark_prefixes",
+        "mark_requires_object_suffix",
         "ts_suffixes",
         "echoing_systems",
         "external_systems",
         "ignored_dirs",
+        "ignored_test_dirs",
+        "ignored_file_infixes",
+        "module_symbol",
         "entity_id_exclusions",
     ):
         assert key in d, f"onboarding rules fixture is missing {key!r}"
@@ -58,3 +62,54 @@ def test_fixture_shape_is_complete() -> None:
     assert isinstance(suffixes, list)
     assert "generateText" in llm_calls
     assert ".ts" in suffixes
+
+
+# --- outcome-transition naming -------------------------------------------------------
+#
+# An outcome stem must be a verb applied to an object. Without this, `close()` on a DB lease
+# and `resolve()` on a Promise register as CONFIRMED business outcomes — the exact honesty
+# violation the binding tiers exist to prevent. Mirrored in TS by `isOutcomeTransitionName`.
+
+
+def test_verb_object_names_are_outcome_transitions() -> None:
+    for name in ("markCompleted", "mark_completed", "markApproved", "finalizeTurn"):
+        assert rules.is_outcome_transition_name(name), name
+
+
+def test_bare_stem_and_lowercase_continuation_are_not_outcomes() -> None:
+    for name in ("close", "complete", "finalize", "marker", "markdown", "closed", "completes"):
+        assert not rules.is_outcome_transition_name(name), name
+
+
+def test_resolve_is_not_a_ts_outcome_stem() -> None:
+    """In TS/JS `resolve*` means "look up"/Promise settle, not "resolve a ticket"."""
+    assert "resolve" not in rules.MARK_PREFIXES
+    assert not rules.is_outcome_transition_name("resolveGatewayUrl")
+
+
+# --- test/fixture path detection -----------------------------------------------------
+
+
+def test_test_paths_are_detected() -> None:
+    for path in (
+        "src/platform/llm/client.test.ts",
+        "e2e/apply.spec.ts",
+        "tests/helpers/setup-db.ts",
+        "src/foo/__tests__/a.ts",
+        "src/a.stories.tsx",
+    ):
+        assert rules.is_test_path(path), path
+
+
+def test_production_files_with_test_like_names_are_kept() -> None:
+    """`latest.ts` / `contest.ts` merely CONTAIN a test word — they are production code."""
+    for path in ("src/latest.ts", "src/contest.ts", "src/platform/llm/client.ts"):
+        assert not rules.is_test_path(path), path
+
+
+# --- redaction ------------------------------------------------------------------------
+
+
+def test_high_entropy_pattern_excludes_the_path_separator() -> None:
+    """A long nested path must not be scrubbed as a credential (it destroyed match_targets)."""
+    assert "/" not in rules.REDACT_HIGH_ENTROPY_PATTERN

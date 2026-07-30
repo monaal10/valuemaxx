@@ -27,8 +27,30 @@ function calleeName(call: ts.CallExpression): string | null {
   return null;
 }
 
+/**
+ * True iff `name` reads as a *verb + object* outcome transition (`markCompleted`,
+ * `mark_completed`). A bare stem (`close`) or a lowercase continuation (`marker`, `closed`,
+ * `markdown`) is NOT an outcome — those are a DB-lease close, a Promise settle, or a noun
+ * that merely starts with the stem, and labeling them CONFIRMED is exactly the honesty
+ * violation the binding tiers exist to prevent.
+ *
+ * Mirrors Python `rules.is_outcome_transition_name`.
+ */
+function isOutcomeTransitionName(name: string, rules: OnboardingRules): boolean {
+  const low = name.toLowerCase();
+  for (const prefix of rules.mark_prefixes) {
+    if (!low.startsWith(prefix)) continue;
+    const rest = name.slice(prefix.length);
+    if (rest.length === 0) return false; // bare verb: close(), complete()
+    if (!rules.mark_requires_object_suffix) return true;
+    const c = rest[0]!;
+    if (c === "_" || (c >= "A" && c <= "Z")) return true;
+  }
+  return false;
+}
+
 /** Best-effort name of the function/method enclosing `node` (for the site symbol). */
-function enclosingSymbol(node: ts.Node): string {
+function enclosingSymbol(node: ts.Node, rules: OnboardingRules): string {
   let cur: ts.Node | undefined = node.parent;
   while (cur) {
     if (
@@ -48,7 +70,7 @@ function enclosingSymbol(node: ts.Node): string {
     }
     cur = cur.parent;
   }
-  return "<module>";
+  return rules.module_symbol;
 }
 
 /** If the call's receiver names a known echoing system, return it (stripe/…). */
@@ -75,7 +97,7 @@ function site(
     kind,
     file,
     line: line + 1, // 1-based, like Python
-    symbol: redact(enclosingSymbol(node), rules),
+    symbol: redact(enclosingSymbol(node, rules), rules),
     snippet: redact(node.getText(sourceFile), rules).slice(0, 200),
     system,
     echoesMetadata: system !== null && rules.echoing_systems.includes(system),
@@ -138,10 +160,7 @@ export function scanTsSource(
         outcomeSites.push(
           site("external_write", file, node, sourceFile, rules, systemForCall(node, rules)),
         );
-      } else if (
-        name !== null &&
-        rules.mark_prefixes.some((p) => name.toLowerCase().startsWith(p))
-      ) {
+      } else if (name !== null && isOutcomeTransitionName(name, rules)) {
         outcomeSites.push(site("mark_function", file, node, sourceFile, rules));
       } else {
         const system = systemForCall(node, rules);
