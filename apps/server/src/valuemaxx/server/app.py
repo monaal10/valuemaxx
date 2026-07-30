@@ -140,7 +140,13 @@ def _wire_runtimes(registry: Registry, bridge: StoreBridge, settings: ServerSett
                 tenant_id=tenant,
                 executor=executor,
                 window=MetricWindow(start=_WINDOW_START, end=_WINDOW_END),
-                outcomes=(),
+                # Resolved PER REQUEST, not snapshotted at startup. A static tuple
+                # here meant every outcome recorded after boot was invisible to the
+                # denominator, so cost-per-outcome stayed null no matter how cleanly
+                # the outcome bound.
+                outcomes=lambda: bridge.outcome_events.list_in_window(
+                    tenant, _WINDOW_START, _WINDOW_END
+                ),
             ),
         )
 

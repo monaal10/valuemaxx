@@ -190,6 +190,12 @@ class SyncOutcomeEventRepository(OutcomeEventRepository):
     def get(self, tenant_id: TenantId, outcome_id: OutcomeEventId) -> OutcomeEvent | None:
         return self._portal.call(self._repo.get, tenant_id, outcome_id)
 
+    def list_in_window(
+        self, tenant_id: TenantId, start: datetime, end: datetime
+    ) -> Sequence[OutcomeEvent]:
+        """Outcomes in [start, end) — the metrics executor's denominator candidates."""
+        return self._portal.call(self._repo.list_in_window, tenant_id, start, end)
+
     @override
     def retract(self, tenant_id: TenantId, outcome_id: OutcomeEventId) -> None:
         self._portal.call(self._repo.retract, tenant_id, outcome_id)

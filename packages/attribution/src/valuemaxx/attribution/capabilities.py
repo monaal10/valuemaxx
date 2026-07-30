@@ -165,9 +165,7 @@ def bind_runtime(registry: Registry, runtime: AttributionRuntime) -> None:
     holder.runtime = runtime
 
 
-def _persist(
-    runtime: AttributionRuntime, outcome: OutcomeEvent, result: AttributionResult
-) -> None:
+def _persist(runtime: AttributionRuntime, outcome: OutcomeEvent, result: AttributionResult) -> None:
     """Store the outcome with the binding the cascade just assigned.
 
     The cascade is a pure function over repositories — it decides a tier but writes no

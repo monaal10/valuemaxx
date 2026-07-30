@@ -28,7 +28,7 @@ from valuemaxx.metrics.compiler import compile_plan
 from valuemaxx.metrics.schemas import MetricResult
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
     from valuemaxx.capabilities import Registry
     from valuemaxx.core import OutcomeEvent, TenantId
@@ -54,7 +54,16 @@ class MetricRuntime:
     tenant_id: TenantId
     executor: MetricExecutor
     window: MetricWindow
-    outcomes: Sequence[OutcomeEvent]
+    # Either the outcomes themselves, or a callable resolving them AT QUERY TIME.
+    # A static sequence is snapshotted when the app starts, so an outcome recorded
+    # afterwards is invisible to every later metric run — which made a freshly-bound
+    # outcome never reach the denominator. A callable lets the server load the window's
+    # outcomes per request while keeping the pure-sequence form for tests.
+    outcomes: Sequence[OutcomeEvent] | Callable[[], Sequence[OutcomeEvent]]
+
+    def resolve_outcomes(self) -> Sequence[OutcomeEvent]:
+        """The candidate outcomes for this run (calling the provider if one was given)."""
+        return self.outcomes() if callable(self.outcomes) else self.outcomes
 
 
 class _RuntimeHolder:
@@ -94,7 +103,9 @@ def register(registry: Registry) -> None:
     def run_metric_handler(definition: MetricDefinition) -> MetricResult:
         runtime = holder.require()
         plan = compile_plan(definition)
-        return runtime.executor.run(runtime.tenant_id, plan, runtime.window, runtime.outcomes)
+        return runtime.executor.run(
+            runtime.tenant_id, plan, runtime.window, runtime.resolve_outcomes()
+        )
 
     registry.register(
         capability(

@@ -22,6 +22,7 @@ from valuemaxx.store.tenant_guard import require_tenant
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+    from datetime import datetime
 
     from valuemaxx.core.ids import OutcomeEventId, TenantId
     from valuemaxx.core.outcome import OutcomeEvent
@@ -80,6 +81,27 @@ class PgOutcomeEventRepository(BaseRepository):
         """List outcomes not yet bound to a run (the attribution work queue)."""
         stmt = require_tenant(select(outcome_event_table), tenant_id, outcome_event_table).where(
             outcome_event_table.c.bound_run_id.is_(None)
+        )
+        async with self._sessions() as session:
+            rows = (await session.execute(stmt)).mappings().all()
+        return [mappers.row_to_outcome_event(as_row(row)) for row in rows]
+
+    async def list_in_window(
+        self, tenant_id: TenantId, start: datetime, end: datetime
+    ) -> Sequence[OutcomeEvent]:
+        """List outcomes whose occurred_at falls in the half-open window [start, end).
+
+        The metrics executor needs the candidate outcomes for a window to compute a
+        cost-per-outcome denominator. Only ``list_unbound`` existed (the attribution
+        work queue), so the server had no way to supply them and passed an empty
+        tuple — leaving ``verified_outcome_count`` at zero and every cost-per-outcome
+        metric null, however cleanly the outcome had bound. Mirrors the cost repo's
+        window query so both sides of the ratio are loaded the same way.
+        """
+        stmt = (
+            require_tenant(select(outcome_event_table), tenant_id, outcome_event_table)
+            .where(outcome_event_table.c.occurred_at >= start)
+            .where(outcome_event_table.c.occurred_at < end)
         )
         async with self._sessions() as session:
             rows = (await session.execute(stmt)).mappings().all()
