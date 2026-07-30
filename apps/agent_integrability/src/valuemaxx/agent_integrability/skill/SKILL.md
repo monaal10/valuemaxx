@@ -30,12 +30,23 @@ Every rollup carries `minimum_tier` + `confidence_distribution` — never collap
 
 ## Steps
 
+> **Two approval gates.** This edits the host's production LLM call path. Stop and wait
+> for a human before writing capture wiring (step 3) and before writing `outcomes.yaml`
+> (step 4). Do not edit any file before the first approval. If the scope grows while you
+> work — a one-file change reaching five files, typically from threading a handle through
+> intermediate layers — stop and re-ask; it is no longer what they approved. Never run
+> destructive git commands on their tree, and never weaken a host safety setting
+> (lockfile policy, supply-chain minimum-release-age, a CI gate) to unblock yourself.
+
 1. **Scan** the codebase for run boundaries (where `valuemaxx.init()` goes) and
    candidate outcome sites (status setters, ORM saves, outbound Stripe/CRM/email
    calls, webhook handlers). Use the `scan_codebase` capability.
 2. **Propose** outcomes with `propose_onboarding_diff` (or draft a single rule with
    `scaffold_outcome_rule`). Every proposal is an **UNCONFIRMED candidate**.
-3. **Wire** the SDK init at the app entrypoint, then validate the snippet with
+3. **Wire** the SDK init at the app entrypoint — **after** presenting the exact file list
+   (and which model-call entry points it does and does not cover) and getting an explicit
+   go-ahead. Offer the smallest useful scope first: usually the host's one LLM wrapper,
+   one file. Then validate the snippet with
    `validate_init`. `init()` is **not** zero-argument — it takes `tenant_id`,
    `ingest_key`, and `endpoint` (there is no default hosted endpoint; the user runs the
    backend). Pick the capture path from the host's dependency manifest:

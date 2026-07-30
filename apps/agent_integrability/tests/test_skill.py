@@ -38,3 +38,27 @@ def test_skill_states_axes_are_system_owned() -> None:
     assert "system-owned" in lowered
     assert "binding tier" in lowered
     assert "signal_class" in lowered
+
+
+def test_skill_requires_human_approval_before_wiring() -> None:
+    """The Skill must gate FILE EDITS on human approval, not just outcome rules.
+
+    The approval language originally applied only to `outcomes.yaml` — the capture-wiring
+    step just said "add init()", so an agent following it went straight to editing a
+    stranger's production LLM call path. Observed in practice: a proposed one-file change
+    silently became a five-file signature change while threading a handle through
+    intermediate layers.
+    """
+    lowered = skill_path().read_text().lower()
+    assert "approval gate" in lowered or "approval gates" in lowered
+    # The gate must bind the WIRING step, not only the outcomes step.
+    assert "before writing capture wiring" in lowered
+    # Scope growth mid-change must send the agent back to the human.
+    assert "stop and re-ask" in lowered
+
+
+def test_skill_forbids_destructive_git_and_weakening_host_settings() -> None:
+    """An integrating agent is a guest in someone else's working tree."""
+    lowered = skill_path().read_text().lower()
+    assert "destructive git" in lowered
+    assert "minimum-release-age" in lowered

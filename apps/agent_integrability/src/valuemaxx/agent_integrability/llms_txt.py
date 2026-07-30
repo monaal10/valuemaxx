@@ -47,6 +47,29 @@ Everything you need is here and in `docs/onboarding/SKILL.md`. Do NOT clone or r
 the valuemaxx source to figure out the integration — if something is missing here,
 that is a documentation bug worth reporting, not a reason to go source-diving.
 
+STEP 0 — THE APPROVAL GATE. This integration edits the host's PRODUCTION LLM call
+path. There are two points where you STOP and wait for a human, and you must not
+edit a single file before the first one:
+
+  Gate 1 (before any capture wiring): present the exact list of files you would
+  change with one line on why each, which model-call entry points it covers and
+  which it does NOT, and anything you had to assume. Then ask which scope they
+  want and WAIT. Offer the smallest useful option first — usually the host's one
+  LLM wrapper, one file.
+  Gate 2 (before writing outcomes.yaml): present the candidate outcomes and let
+  them confirm which are real. See `scaffold_outcome_rule` / `suggest_attribution_rule`,
+  which return UNCONFIRMED candidates by design.
+
+If the scope GROWS mid-change, stop and re-ask — a one-file change that became a
+five-file change is no longer what they approved. Threading a handle from where the
+env lives to where the call happens is the usual cause: each hop looks trivial and
+the total is a signature change across the codebase.
+
+Never run destructive git commands (stash/checkout --/reset/clean) on the host's
+tree, and never weaken a host safety setting (lockfile policy, supply-chain
+minimum-release-age, a CI gate) to unblock yourself — use a one-off per-command
+override, or tell the user.
+
 STEP 1 — pick the capture path from the host's LLM stack. This is the fork agents
 most often get wrong. Check the host's dependency manifest FIRST:
 

@@ -5,9 +5,19 @@ description: Use when a user wants to integrate valuemaxx (AI agent cost-per-out
 
 # Integrating valuemaxx into a codebase
 
-valuemaxx captures the **correct** cost of every LLM call, binds it to the **business outcome** each agent run produced, and tells you whether a cheaper model would hold that outcome. This skill drives the integration **for** the user: you scan their code, propose what to track, write the wiring, and hand back a reviewable diff. The human's only job is to approve.
+valuemaxx captures the **correct** cost of every LLM call, binds it to the **business outcome** each agent run produced, and tells you whether a cheaper model would hold that outcome. This skill drives the integration **for** the user: you scan their code, propose what to track, propose the wiring, and — once they approve — write it as a reviewable diff.
 
 > **Golden rule:** propose, never assume. Everything you write is reviewable. Never invent an outcome the user didn't confirm. Never weaken the honesty labels.
+
+> **STOP-AND-ASK, TWICE.** This integration has **two** approval gates, and you must
+> stop at both — do not edit a single file before the human answers:
+>
+> 1. **Before writing capture wiring** (step 1c below) — you present the exact file list
+>    and the reason for each; they approve the scope.
+> 2. **Before writing `outcomes.yaml`** (step 3) — they confirm which outcomes are real.
+>
+> These are someone else's production LLM call path. An agent that "just wires it up" has
+> made an unreviewed change to how every model call in their app behaves.
 
 > **You should not need to read valuemaxx's own source to do this.** This skill plus
 > [`llms.txt`](../../llms.txt) is the contract: install, capture path, runtime requirements,
@@ -137,6 +147,34 @@ and never point telemetry at a host the user didn't choose.
 a reviewable diff — it looks for a Python entrypoint (`main.py`/`manage.py`) and cannot
 scaffold a TS/JS repo. The npm CLI ships `onboard` only; wire `init()` by hand there.
 
+**1e. GATE — get approval on the file list BEFORE you edit anything.**
+
+You now know enough to say exactly what you would change. Say it, and stop. Present:
+
+| | |
+|---|---|
+| **Files** | Every file you'd touch, with one line on why each |
+| **Entry points** | Which model-call paths this covers — and which it does **not** |
+| **Blast radius** | That this sits on their production LLM call path, and that it's inert until the endpoint env var is set |
+| **Unknowns** | The run-boundary choice, an unreachable platform-native call, anything you had to assume |
+
+Then ask which scope they want, and wait. Offer the smallest useful version first —
+**one wrapper, one file** — because that is usually the right amount:
+
+- **Chokepoint only** — the host's single LLM wrapper. Small, reviewable, covers most calls.
+- **Chokepoint + bypasses** — also threads the secondary entry points. Complete coverage,
+  but threading a handle from where `env` lives to where the call happens can cross several
+  files; if it does, that is exactly the kind of growth to flag rather than absorb.
+- **Nothing yet** — they wire it themselves from your proposal.
+
+**If the scope grows while you work, stop and re-ask.** A one-file change that turns into a
+five-file change is no longer the thing they approved. Threading a new parameter through
+intermediate layers is the usual cause: each hop looks trivial, and the total is a
+signature change across the codebase. Say what you found, and let them re-decide.
+
+Do not start with a proposal and then edit anyway because the change "seemed small". The
+approval is the gate, not a formality you narrate past.
+
 ### 2. Discover the outcomes — run the scanner, don't hand-read the repo
 
 ```bash
@@ -160,8 +198,8 @@ convention. If a proposal is enormous or mostly noise, say so rather than forwar
 If the npm `valuemaxx` binary is missing (`could not determine executable to run`), the
 installed version predates the CLI — upgrade, or run the pipeline from a clone.
 
-### 3. Propose (the human's only touch point)
-Present a short summary: *"I found these N outcomes, each run carries this entity ID, these can be bound deterministically and these will be candidate/likely confidence."* Let the human edit/confirm. Then write the config.
+### 3. GATE — propose the outcomes and wait (the second approval gate)
+Present a short summary: *"I found these N outcomes, each run carries this entity ID, these can be bound deterministically and these will be candidate/likely confidence."* Let the human edit/confirm. Then — and only then — write the config.
 
 Keep this list short enough to actually review. Group near-duplicates, lead with the
 outcomes that matter to the business, and state plainly which ones you're unsure about.
@@ -175,10 +213,22 @@ outcomes that matter to the business, and state plainly which ones you're unsure
 Call the valuemaxx MCP `validate_*` tools to confirm each rule produces a well-formed, bindable outcome; optionally dry-run against recent traffic to preview `cost-per-<outcome>`. Then deliver everything as a **reviewable diff / PR** — explicit, version-controlled, nothing silent.
 
 ## What you must NOT do
+- **Don't edit a file before the human approved the file list** (gate 1e). Not "just the
+  wrapper", not "just one line to see if it typechecks". Propose, then wait.
+- **Don't let an approved scope grow silently.** If the change reaches files that weren't in
+  the list you presented, stop and re-ask — especially when threading a parameter through
+  intermediate layers, where each hop looks trivial and the total is a cross-codebase
+  signature change.
+- **Don't run destructive or history-rewriting git commands on their tree** — no `stash`,
+  `checkout --`, `reset`, or `clean` to "test something" or undo your own work. You are a
+  guest in a working tree that may hold changes that are not yours. Leave reverting to them.
 - Don't exfiltrate raw source — emit the proposed config/diff, not the codebase.
 - Don't ever echo a secret you encountered while scanning into the diff or logs.
 - Don't mark a fuzzy (email/time-window) match as high-confidence — the system owns the confidence label; you only declare the rule.
 - Don't change how the human's app works — valuemaxx reads what's already there.
+- **Don't weaken a host's safety settings to unblock yourself.** If a lockfile policy, a
+  supply-chain guard (npm/bun minimum-release-age), or a CI gate blocks your install, use a
+  one-off per-command override or tell the user — never edit the setting.
 
 ## The outcome rule shape (what you write into `valuemaxx.outcomes.yaml`)
 
