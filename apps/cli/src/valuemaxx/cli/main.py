@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import typer
+from valuemaxx.eval.promptfoo import import_promptfoo_tests
 from valuemaxx.onboarding.diff import build_reviewable_diff
 from valuemaxx.onboarding.propose import build_proposal
 from valuemaxx.onboarding.render import render_outcomes_yaml
@@ -286,6 +287,65 @@ def onboard(repo: Path = _REPO_OPTION) -> None:
     typer.echo("\nonboard: candidate outcome rules are UNCONFIRMED until you review the diff.")
 
 
+_SUITE_ARGUMENT = typer.Argument(
+    ..., help="Path to a promptfoo test file (JSONL), or a directory to search."
+)
+
+
+def import_evals(suite: Path = _SUITE_ARGUMENT) -> None:
+    """Import an existing promptfoo suite as eval criteria (read-only, nothing applied).
+
+    Reads the suite LOCALLY and prints what it maps to: `llm-rubric` assertions become
+    judge-scored criteria carrying your exact wording, `contains`/`not-contains` become
+    checks decided without an LLM (so they cost nothing to run). Anything we cannot
+    honour — javascript, python, similar, custom graders — is listed as skipped rather
+    than approximated: a suite that quietly passes here while failing in promptfoo
+    would be worse than one that tells you what it left out.
+
+    The file is never uploaded by this command and no assertion code is executed; this
+    is a parser, not a runner.
+    """
+    paths = sorted(suite.rglob("*.jsonl")) if suite.is_dir() else [suite]
+    lines: list[str] = []
+    for path in paths:
+        try:
+            lines.extend(path.read_text(encoding="utf-8").splitlines())
+        except OSError as exc:
+            typer.echo(f"import-evals: could not read {path}: {exc}")
+
+    if not lines:
+        typer.echo(f"import-evals: no promptfoo test rows found under {suite}.")
+        return
+
+    imported = import_promptfoo_tests(lines)
+    judged = [c for c in imported.criteria if c.judge_required]
+    exact = [c for c in imported.criteria if not c.judge_required]
+
+    typer.echo(f"import-evals: read {len(lines)} row(s) from {len(paths)} file(s).\n")
+    typer.echo(f"{len(imported.criteria)} criteria imported:")
+    typer.echo(f"  {len(judged)} judge-scored (an LLM grades these against your rubric)")
+    typer.echo(f"  {len(exact)} exact checks (decided without an LLM — no tokens spent)")
+
+    for criterion in imported.criteria[:10]:
+        marker = "judge" if criterion.judge_required else "exact"
+        typer.echo(f"    [{marker}] {criterion.text[:88]}")
+    if len(imported.criteria) > 10:
+        typer.echo(f"    … and {len(imported.criteria) - 10} more")
+
+    if imported.unsupported:
+        counts: dict[str, int] = {}
+        for kind in imported.unsupported:
+            counts[kind] = counts.get(kind, 0) + 1
+        typer.echo("\nSKIPPED (unsupported here, still valid in promptfoo):")
+        for kind, count in sorted(counts.items()):
+            typer.echo(f"  {count}x {kind}")
+
+    typer.echo(
+        "\nimport-evals: nothing was applied. Pass a criterion to `run_eval_funnel` to "
+        "grade a candidate against it."
+    )
+
+
 def build_app() -> typer.Typer:
     """Build the ``valuemaxx`` typer app: init/up/onboard + the projected capability commands.
 
@@ -305,6 +365,7 @@ def build_app() -> typer.Typer:
     app.command(name="init")(init)
     app.command(name="up")(up)
     app.command(name="onboard")(onboard)
+    app.command(name="import-evals")(import_evals)
     try:
         from valuemaxx.agent_integrability.discovery import build_default_registry
         from valuemaxx.cli.projection import mount_capabilities

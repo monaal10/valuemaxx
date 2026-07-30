@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel
 from valuemaxx.capabilities import Mode, Surface, capability
 from valuemaxx.core import AtmError
+from valuemaxx.eval.promptfoo import import_promptfoo_tests
 
 if TYPE_CHECKING:
     from valuemaxx.capabilities import Registry
@@ -70,6 +71,38 @@ class RunEvalFunnelInput(BaseModel):
     # falls back to the generic parity rubric — "do these models agree" — which is a
     # different and usually less useful question.
     criterion: str = ""
+
+
+class ImportPromptfooInput(BaseModel):
+    """Request to import an existing promptfoo suite as eval criteria.
+
+    Takes the JSONL test-file CONTENT, never a path: the backend must never read the
+    caller's filesystem (it may be a container, a different host, or a shared server),
+    and a path would be both unreadable and an invitation to traverse. The CLI reads
+    the file locally and posts what it read.
+    """
+
+    tenant_id: str
+    jsonl: str
+
+
+class ImportedCriterion(BaseModel):
+    """One imported assertion, shown back so a human can see what was understood."""
+
+    text: str
+    """True when an LLM judge scores it; False when it is decided exactly (no tokens)."""
+    judge_required: bool
+
+
+class ImportPromptfooOutput(BaseModel):
+    """What the import produced — and, explicitly, what it could not."""
+
+    criteria: tuple[ImportedCriterion, ...]
+    judge_count: int
+    deterministic_count: int
+    """Assertion types skipped, with why. Reported so a partial import is never
+    mistaken for a complete one."""
+    unsupported: tuple[str, ...]
 
 
 class RunEvalFunnelOutput(BaseModel):
@@ -143,6 +176,10 @@ _RUN_EXAMPLE = RunEvalFunnelInput(
 _GET_EXAMPLE = GetRecommendationInput(
     tenant_id="00000000-0000-0000-0000-000000000000", incumbent_model="claude-opus-4-8"
 )
+_IMPORT_EXAMPLE = ImportPromptfooInput(
+    tenant_id="00000000-0000-0000-0000-000000000000",
+    jsonl='{"assert": [{"type": "llm-rubric", "value": "the answer stays on topic"}]}',
+)
 _APPROVE_EXAMPLE = ApproveGateInput(
     tenant_id="00000000-0000-0000-0000-000000000000", phase="smoke", approved=True
 )
@@ -161,6 +198,21 @@ def register(registry: Registry) -> None:
         clusters = holder.require().discover_agents(_calls_from(request))
         return DiscoverAgentsOutput(
             cluster_ids=tuple(c.cluster_id for c in clusters), cluster_count=len(clusters)
+        )
+
+    def import_promptfoo_handler(request: ImportPromptfooInput) -> ImportPromptfooOutput:
+        # Pure parse — no runtime needed, nothing persisted, no provider call. The
+        # result is a PROPOSAL a human reads before running an eval with it, which is
+        # why the unsupported list is part of the output rather than a log line.
+        suite = import_promptfoo_tests(request.jsonl.splitlines())
+        return ImportPromptfooOutput(
+            criteria=tuple(
+                ImportedCriterion(text=c.text, judge_required=c.judge_required)
+                for c in suite.criteria
+            ),
+            judge_count=sum(1 for c in suite.criteria if c.judge_required),
+            deterministic_count=sum(1 for c in suite.criteria if not c.judge_required),
+            unsupported=suite.unsupported,
         )
 
     def run_eval_funnel_handler(request: RunEvalFunnelInput) -> RunEvalFunnelOutput:
@@ -249,6 +301,23 @@ def register(registry: Registry) -> None:
             surfaces=_RR_SURFACES,
             mode=Mode.REQUEST_RESPONSE,
             examples=(_DISCOVER_EXAMPLE,),
+        )
+    )
+    registry.register(
+        capability(
+            name="import_promptfoo_suite",
+            input_model=ImportPromptfooInput,
+            output_model=ImportPromptfooOutput,
+            handler=import_promptfoo_handler,
+            description=(
+                "Import an existing promptfoo suite as eval criteria: llm-rubric "
+                "assertions become judge-scored criteria (the rubric text used "
+                "verbatim), contains/not-contains become exact checks. Every "
+                "unsupported assertion type is returned, never approximated."
+            ),
+            surfaces=_RR_SURFACES,
+            mode=Mode.REQUEST_RESPONSE,
+            examples=(_IMPORT_EXAMPLE,),
         )
     )
     registry.register(

@@ -100,3 +100,60 @@ def test_rows_without_assertions_are_skipped_quietly() -> None:
     suite = import_promptfoo_tests([json.dumps({"vars": {"a": 1}}), ""])
     assert suite.is_empty
     assert suite.unsupported == ()
+
+
+# --- the capability surface ----------------------------------------------------------
+
+
+def test_the_import_capability_returns_counts_and_what_it_skipped() -> None:
+    """The unsupported list is part of the OUTPUT, not a log line.
+
+    An import is a proposal a human reads before acting on it, so "what I could not
+    honour" has to travel with "what I imported" — otherwise a partial import is
+    indistinguishable from a complete one.
+    """
+    from typing import cast
+
+    from valuemaxx.capabilities import Registry
+    from valuemaxx.eval.capabilities import (
+        ImportPromptfooInput,
+        ImportPromptfooOutput,
+        register,
+    )
+
+    registry = Registry()
+    register(registry)
+    spec = next(s for s in registry.all() if s.name == "import_promptfoo_suite")
+
+    # The registry erases the handler's concrete output type; the capability's own
+    # model is the contract, so name it here rather than assert against `BaseModel`.
+    out = cast(
+        "ImportPromptfooOutput",
+        spec.handler(
+            ImportPromptfooInput(
+                tenant_id="00000000-0000-0000-0000-000000000000",
+                jsonl="\n".join(
+                    [
+                        _row({"type": "llm-rubric", "value": "stays on topic"}),
+                        _row({"type": "contains", "value": "remote"}),
+                        _row({"type": "javascript", "value": "output.length > 3"}),
+                    ]
+                ),
+            )
+        ),
+    )
+    assert out.judge_count == 1
+    assert out.deterministic_count == 1
+    assert out.unsupported == ("javascript",)
+
+
+def test_the_capability_takes_content_never_a_path() -> None:
+    """The backend must never read the caller's filesystem.
+
+    It may be a container or a different host entirely, so a path would be both
+    unreadable and an invitation to traverse. The CLI reads locally and posts content.
+    """
+    from valuemaxx.eval.capabilities import ImportPromptfooInput
+
+    assert "jsonl" in ImportPromptfooInput.model_fields
+    assert "path" not in ImportPromptfooInput.model_fields

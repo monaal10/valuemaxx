@@ -14,7 +14,13 @@ from valuemaxx.eval.capabilities import (
     register,
 )
 
-_EXPECTED = {"discover_agents", "run_eval_funnel", "get_recommendation", "approve_gate"}
+_EXPECTED = {
+    "discover_agents",
+    "import_promptfoo_suite",
+    "run_eval_funnel",
+    "get_recommendation",
+    "approve_gate",
+}
 
 
 def _registry() -> Registry:
