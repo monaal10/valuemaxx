@@ -137,42 +137,6 @@ _INGEST_HOLDERS: WeakKeyDictionary[Registry, _IngestHolder] = WeakKeyDictionary(
 def _make_ingest_handler(
     holder: _IngestHolder,
 ) -> Callable[[IngestOtlpSpanInput], IngestOtlpSpanOutput]:
-    def _register_run(
-        runtime: IngestRuntime,
-        tenant_id: TenantId,
-        run_id: str,
-        attributes: Mapping[str, object],
-    ) -> None:
-        """Register the run this span belongs to, so an outcome can later bind to it.
-
-        The attribution cascade REVALIDATES every deterministic run id against the run
-        repository and refuses one it cannot find — it will not bind a ghost. Ingesting
-        cost alone never created that row, so every outcome fell through to the advisory
-        tiers and `cost_per_outcome` stayed null even when the caller supplied the exact
-        run id. Registering here closes that gap at the only point that knows a run
-        exists.
-
-        Idempotent by upsert: a run with many attempts re-registers on each span. The
-        first span's timestamp wins as `started_at` only in the sense that the repo
-        upserts the row; we do not pretend to know the true start, and `ended_at` stays
-        None because a cost span cannot tell us the run finished.
-        """
-        run_repo = runtime.run_repo
-        if run_repo is None or run_id == "":
-            return
-        agent = attributes.get("ai_margin.agent_name")
-        run_repo.upsert(
-            tenant_id,
-            Run(
-                tenant_id=tenant_id,
-                id=RunId(run_id),
-                agent_name=str(agent) if agent is not None else None,
-                started_at=runtime.clock.now(),
-                ended_at=None,
-                entity_keys=frozenset(),
-            ),
-        )
-
     def _ingest_otlp_span(request: IngestOtlpSpanInput) -> IngestOtlpSpanOutput:
         # The dedup key is surfaced so a double delivery is visibly idempotent. When a
         # runtime is bound, the span is decoded to a CostEvent and persisted (the repo
@@ -213,6 +177,43 @@ def bind_ingest_runtime(registry: Registry, runtime: IngestRuntime) -> None:
     holder.runtime = runtime
 
 
+def _register_run(
+    runtime: IngestRuntime,
+    tenant_id: TenantId,
+    run_id: str,
+    attributes: Mapping[str, object],
+) -> None:
+    """Register the run this span belongs to, so an outcome can later bind to it.
+
+    The attribution cascade REVALIDATES every deterministic run id against the run
+    repository and refuses one it cannot find — it will not bind a ghost. Ingesting
+    cost alone never created that row, so every outcome fell through to the advisory
+    tiers and `cost_per_outcome` stayed null even when the caller supplied the exact
+    run id. Registering here closes that gap at the only point that knows a run
+    exists.
+
+    Idempotent by upsert: a run with many attempts re-registers on each span. The
+    first span's timestamp wins as `started_at` only in the sense that the repo
+    upserts the row; we do not pretend to know the true start, and `ended_at` stays
+    None because a cost span cannot tell us the run finished.
+    """
+    run_repo = runtime.run_repo
+    if run_repo is None or run_id == "":
+        return
+    agent = attributes.get("ai_margin.agent_name")
+    run_repo.upsert(
+        tenant_id,
+        Run(
+            tenant_id=tenant_id,
+            id=RunId(run_id),
+            agent_name=str(agent) if agent is not None else None,
+            started_at=runtime.clock.now(),
+            ended_at=None,
+            entity_keys=frozenset(),
+        ),
+    )
+
+
 def ingest_attribute_maps(
     registry: Registry,
     tenant_id: TenantId,
@@ -249,6 +250,10 @@ def ingest_attribute_maps(
             default_provenance=runtime.default_provenance,
         )
         runtime.repo.upsert(tenant_id, event)
+        # Register the run here too: the collector is a SEPARATE persistence entry
+        # point from the single-span capability, and a run that is never registered
+        # cannot be bound to by any outcome (the cascade refuses unknown run ids).
+        _register_run(runtime, tenant_id, str(attrs.get("ai_margin.run_id", "")), attrs)
         persisted += 1
     return persisted
 

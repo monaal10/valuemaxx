@@ -28,6 +28,8 @@ import {
   type SpanProcessor,
 } from "@opentelemetry/sdk-trace-base";
 
+import { AI_MARGIN_RUN_ID, AI_MARGIN_TENANT_ID } from "./semconv.js";
+import { activeRunId } from "./run.js";
 import { type BaggageTarget, installRunIdBaggage } from "./baggage.js";
 import { type EffectiveConfig, type InitConfig, resolveConfig } from "./config.js";
 import {
@@ -69,6 +71,39 @@ export interface InitResult {
   forceFlush(): Promise<void>;
   /** Flush + shut down the exporter/provider (drains pending spans). */
   shutdown(): Promise<void>;
+}
+
+/**
+ * A span processor that stamps the ambient run id (and tenant) onto every span at
+ * start.
+ *
+ * On the `clients` capture path our own wrapper creates the span, so it can read
+ * `activeRunId()` directly. On the TRACER path — the only route available to an
+ * AI-SDK-only host — the Vercel AI SDK creates the span and nothing injects the run
+ * id, so cost arrived with an EMPTY `ai_margin.run_id`. The backend then had no run
+ * to attribute it to, every outcome failed to bind, and cost-per-outcome was
+ * unreachable for exactly the codebases the tracer path exists to serve.
+ *
+ * `onStart` is the only correct hook: attributes set after a span ends are dropped,
+ * and a BatchSpanProcessor may export immediately on end.
+ */
+function runIdStampingProcessor(tenantId: string): SpanProcessor {
+  return {
+    onStart(span) {
+      const runId = activeRunId();
+      if (runId !== undefined) span.setAttribute(AI_MARGIN_RUN_ID, runId);
+      span.setAttribute(AI_MARGIN_TENANT_ID, tenantId);
+    },
+    onEnd() {
+      // no-op: exporting is the next processor's job
+    },
+    async forceFlush() {
+      // no-op: this processor buffers nothing
+    },
+    async shutdown() {
+      // no-op: this processor owns no resources
+    },
+  };
 }
 
 /** A client instance to instrument, plus which provider family it is. */
@@ -191,7 +226,10 @@ export function init(options: InitOptions): InitResult {
         : new BatchSpanProcessor(exporter);
     provider = new BasicTracerProvider({
       resource: resourceFromAttributes({ "service.name": config.serviceName }),
-      spanProcessors: [processor],
+      // The run-id stamper MUST run before the exporting processor: it writes the
+      // ambient run id onto each span at start, and a BatchSpanProcessor may export
+      // as soon as the span ends.
+      spanProcessors: [runIdStampingProcessor(config.tenantId), processor],
     });
     tracer = provider.getTracer("valuemaxx");
 
