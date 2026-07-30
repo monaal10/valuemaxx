@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { activeRunId, run, track } from "../src/run.js";
+import { activeAgentName, activeRunId, run, track } from "../src/run.js";
 
 describe("run()", () => {
   it("binds the run id for the duration of the call", () => {
@@ -52,5 +52,26 @@ describe("run()", () => {
   it("exposes the same API on the track façade (Python parity)", () => {
     expect(track.run).toBe(run);
     expect(track.activeRunId).toBe(activeRunId);
+  });
+});
+
+describe("agent name on the run scope", () => {
+  // Cost grouped by agent was the least useful possible rollup — everything landed
+  // under `unknown` — because nothing carried an agent name. `run()` is the only
+  // place that knows which agent the work belongs to.
+  it("exposes the agent name inside the run and nothing outside it", () => {
+    expect(activeAgentName()).toBeUndefined();
+    run("r1", { agentName: "build-alt" }, () => {
+      expect(activeAgentName()).toBe("build-alt");
+      expect(activeRunId()).toBe("r1");
+    });
+    expect(activeAgentName()).toBeUndefined();
+  });
+
+  it("keeps the two-argument form working (agent name is optional)", () => {
+    run("r2", () => {
+      expect(activeRunId()).toBe("r2");
+      expect(activeAgentName()).toBeUndefined();
+    });
   });
 });

@@ -49,6 +49,13 @@ export const AI_MARGIN_ATTEMPT_ID = "ai_margin.attempt_id";
 /** The tenant scope (required; ingest also takes it as a mandatory param). */
 export const AI_MARGIN_TENANT_ID = "ai_margin.tenant_id";
 
+/**
+ * Which agent produced this call — the dimension a cost rollup groups by to answer
+ * "what does THIS agent cost me". Without it every span rolls up under `unknown`,
+ * which is the least useful possible grouping for a multi-agent app.
+ */
+export const AI_MARGIN_AGENT_NAME = "ai_margin.agent_name";
+
 /** The cost-provenance honesty axis value (measured / provider_reconciled / ...). */
 export const AI_MARGIN_PROVENANCE = "ai_margin.provenance";
 

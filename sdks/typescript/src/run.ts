@@ -14,6 +14,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 interface RunContext {
   readonly runId: string;
+  /** Which agent this run belongs to; stamped on every span so cost rolls up by agent. */
+  readonly agentName?: string | undefined;
 }
 
 const storage = new AsyncLocalStorage<RunContext>();
@@ -21,6 +23,11 @@ const storage = new AsyncLocalStorage<RunContext>();
 /** The active run id bound by an enclosing {@link run}, or `undefined` if none. */
 export function activeRunId(): string | undefined {
   return storage.getStore()?.runId;
+}
+
+/** The active agent name bound by an enclosing {@link run}, or `undefined` if none. */
+export function activeAgentName(): string | undefined {
+  return storage.getStore()?.agentName;
 }
 
 /**
@@ -36,12 +43,29 @@ export function activeRunId(): string | undefined {
  *   await openai.chat.completions.create({ ... }); // binds to "checkout-agent-42"
  * });
  */
-export function run<T>(runId: string, fn: () => T): T {
-  return storage.run({ runId }, fn);
+export function run<T>(runId: string, fn: () => T): T;
+export function run<T>(runId: string, options: RunOptions, fn: () => T): T;
+export function run<T>(
+  runId: string,
+  optionsOrFn: RunOptions | (() => T),
+  maybeFn?: () => T,
+): T {
+  const fn = typeof optionsOrFn === "function" ? optionsOrFn : maybeFn;
+  const options = typeof optionsOrFn === "function" ? undefined : optionsOrFn;
+  if (fn === undefined) {
+    throw new TypeError("run(runId, [options], fn): fn is required");
+  }
+  return storage.run({ runId, agentName: options?.agentName }, fn);
+}
+
+/** Optional per-run metadata. `agentName` is what cost-by-agent rollups group on. */
+export interface RunOptions {
+  readonly agentName?: string | undefined;
 }
 
 /** The run-context façade, mirroring Python's `valuemaxx.track`. */
 export const track = {
   run,
   activeRunId,
+  activeAgentName,
 } as const;

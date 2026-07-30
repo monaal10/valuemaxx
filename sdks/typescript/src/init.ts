@@ -28,8 +28,8 @@ import {
   type SpanProcessor,
 } from "@opentelemetry/sdk-trace-base";
 
-import { AI_MARGIN_RUN_ID, AI_MARGIN_TENANT_ID } from "./semconv.js";
-import { activeRunId } from "./run.js";
+import { AI_MARGIN_AGENT_NAME, AI_MARGIN_RUN_ID, AI_MARGIN_TENANT_ID } from "./semconv.js";
+import { activeAgentName, activeRunId } from "./run.js";
 import { type BaggageTarget, installRunIdBaggage } from "./baggage.js";
 import { type EffectiveConfig, type InitConfig, resolveConfig } from "./config.js";
 import {
@@ -92,6 +92,8 @@ function runIdStampingProcessor(tenantId: string): SpanProcessor {
     onStart(span) {
       const runId = activeRunId();
       if (runId !== undefined) span.setAttribute(AI_MARGIN_RUN_ID, runId);
+      const agentName = activeAgentName();
+      if (agentName !== undefined) span.setAttribute(AI_MARGIN_AGENT_NAME, agentName);
       span.setAttribute(AI_MARGIN_TENANT_ID, tenantId);
     },
     onEnd() {
