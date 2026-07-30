@@ -7,6 +7,7 @@ rejects naive datetimes.
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -103,3 +104,33 @@ def test_tenant_scoped_inherits_strict_config() -> None:
     assert cfg.get("frozen") is True
     assert cfg.get("extra") == "forbid"
     assert cfg.get("strict") is True
+
+
+# --- JSON-mode parsing (the wire boundary) -------------------------------------------
+#
+# The API projection validates every wire payload with `model_validate_json`. A wildcard
+# `mode="before"` field_validator on TenantScopedModel silently disabled JSON-mode
+# parsing for EVERY tenant-scoped model: pydantic handed each field its Python value
+# instead of the raw JSON token, so under strict=True a JSON datetime string failed with
+# `datetime_type` and a JSON array failed `frozen_set_type`. That made every
+# tenant-scoped capability carrying a datetime or set uncallable over HTTP —
+# `bind_outcome` and `ingest_webhook_outcome` among them. The naive-datetime guard now
+# runs `mode="after"`, which sees the parsed value and leaves JSON parsing intact.
+
+
+def test_json_mode_parses_a_datetime_string() -> None:
+    """A tz-aware ISO string over the wire validates (the API's only input path)."""
+    payload = json.dumps(
+        {"tenant_id": str(_tenant()), "label": "x", "occurred_at": "2026-01-01T12:00:00+00:00"}
+    )
+    event = _Event.model_validate_json(payload)
+    assert event.occurred_at.tzinfo is not None
+
+
+def test_json_mode_still_rejects_a_naive_datetime_string() -> None:
+    """Moving the guard to mode="after" must not weaken it: no offset, no dice."""
+    payload = json.dumps(
+        {"tenant_id": str(_tenant()), "label": "x", "occurred_at": "2026-01-01T12:00:00"}
+    )
+    with pytest.raises(ValidationError):
+        _Event.model_validate_json(payload)

@@ -33,13 +33,25 @@ class TenantScopedModel(StrictModel):
 
     tenant_id: TenantId
 
-    @field_validator("*", mode="before")
+    @field_validator("*", mode="after")
     @classmethod
     def _reject_naive_datetimes(cls, value: object) -> object:
         """Reject naive datetimes on any field; require tz-aware (UTC) time.
 
-        Typed ``object`` (not ``Any``): a ``mode="before"`` validator over all
-        fields sees raw, unvalidated input, and we only narrow it via isinstance.
+        ``mode="after"`` is LOAD-BEARING, not a style choice. A wildcard
+        ``mode="before"`` validator makes pydantic hand every field its *Python*
+        value instead of the raw JSON token, which silently disables JSON-mode
+        parsing for the whole model: under ``strict=True`` a JSON datetime string
+        then fails with ``datetime_type`` and a JSON array fails ``frozen_set_type``,
+        even via ``model_validate_json``. That made EVERY tenant-scoped capability
+        with a datetime or set field uncallable over HTTP — ``bind_outcome`` and
+        ``ingest_webhook_outcome`` among them — because the API projection validates
+        wire payloads with ``model_validate_json``.
+
+        Running after parsing keeps the invariant identical (a naive datetime is
+        still rejected, whether it arrived as a Python ``datetime`` or a JSON string
+        without an offset) while leaving JSON parsing intact. Typed ``object`` rather
+        than ``Any``: the validator spans all fields, so we only narrow by isinstance.
         """
         if isinstance(value, datetime) and value.tzinfo is None:
             raise ValueError("naive datetime forbidden; supply tz-aware UTC")
