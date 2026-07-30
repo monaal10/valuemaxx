@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
 from valuemaxx.api.auth import ApiKeyAuthenticator
+from valuemaxx.api.dashboard import mount_dashboard
 from valuemaxx.api.jobs import JobStore
 from valuemaxx.api.mcp_route import mount_mcp_route
 from valuemaxx.api.projection import mount_capabilities
@@ -60,6 +61,9 @@ def build_app(
     # The MCP transport: POST /mcp speaks JSON-RPC over the same registry + auth, so
     # `valuemaxx up` serves an MCP URL alongside the API routes.
     mount_mcp_route(app, registry, auth)
+    # The local dashboard at GET / — `valuemaxx view`'s destination. Mounted last so a
+    # capability named `/` could never be shadowed by it.
+    mount_dashboard(app)
     return app
 
 
