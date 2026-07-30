@@ -108,6 +108,10 @@ def _wire_runtimes(registry: Registry, bridge: StoreBridge, settings: ServerSett
             # it cannot find, so without this an outcome can never bind exactly and
             # cost-per-outcome stays null.
             run_repo=bridge.runs,
+            # Keep the prompt + response text of a captured call so the eval funnel can
+            # REPLAY it against a candidate. Only populated when the host opted into
+            # content capture — presence of the text is the consent signal.
+            raw_record_repo=bridge.raw_records,
         ),
     )
     # Attribution: the binding cascade that turns an inbound outcome into a
@@ -155,6 +159,9 @@ def _wire_runtimes(registry: Registry, bridge: StoreBridge, settings: ServerSett
             # back to its built-in sample, and a recommendation from fabricated cases
             # says nothing about the host's workload while sounding just as confident.
             outcome_repo=bridge.outcome_events,
+            # The replay corpus: without it the funnel can only compare stored strings
+            # instead of re-running real prompts against the candidate.
+            raw_record_repo=bridge.raw_records,
         ),
     )
 

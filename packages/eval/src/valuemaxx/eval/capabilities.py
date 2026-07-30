@@ -174,7 +174,16 @@ def register(registry: Registry) -> None:
         # Grade the host's REAL recorded outcomes, not the built-in sample. The case
         # set also reports which ground truth actually exists, so the recommendation
         # cannot claim `reliable` off evidence nobody produced.
-        case_set = service.build_case_set_for(tenant)
+        # Prefer REPLAY: re-run the host's captured prompts against the candidate, so
+        # the comparison is what the candidate actually produces rather than text the
+        # host happened to store. Falls back to stored-output cases when no prompts were
+        # captured (content capture is opt-in), and to the built-in sample when neither
+        # exists — each fallback claims strictly less evidence than the one above it.
+        case_set = service.build_replay_case_set_for(
+            tenant, candidate_model=request.candidate_model
+        )
+        if case_set.is_empty:
+            case_set = service.build_case_set_for(tenant)
         service.run_eval_funnel(
             tenant_id=tenant,
             incumbent_model=request.incumbent_model,

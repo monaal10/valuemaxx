@@ -174,6 +174,17 @@ class RawRecordRepository(ABC):
     ) -> None:
         """Store a raw record JSON payload with its entity keys."""
 
+    def list_recent(self, tenant_id: TenantId, limit: int) -> Sequence[tuple[str, object]]:
+        """The most recent ``(record_id, payload)`` pairs for the tenant, newest first.
+
+        Concrete with an empty default rather than abstract: `get` alone cannot
+        enumerate records, the replay path needs a sample, and an existing
+        implementation must keep working. Callers already treat "nothing captured" as
+        a real answer.
+        """
+        del tenant_id, limit
+        return ()
+
     @abstractmethod
     def get(self, tenant_id: TenantId, record_id: str) -> object | None:
         """Fetch a raw record by id, or None."""

@@ -19,7 +19,7 @@ CaptureGranularity, etc. — still live only in ``valuemaxx.core``).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 from uuid import UUID
 from weakref import WeakKeyDictionary
 
@@ -38,7 +38,11 @@ if TYPE_CHECKING:
     from valuemaxx.capabilities import Registry
     from valuemaxx.core.context import Clock
     from valuemaxx.core.pricing import PriceBook
-    from valuemaxx.core.repositories import CostEventRepository, RunRepository
+    from valuemaxx.core.repositories import (
+        CostEventRepository,
+        RawRecordRepository,
+        RunRepository,
+    )
 
 
 class IngestOtlpSpanInput(BaseModel):
@@ -117,6 +121,10 @@ class IngestRuntime:
     # row the attribution cascade REFUSES to bind an outcome to the run ("never bind a
     # ghost"), so cost-per-outcome is permanently null no matter what the caller sends.
     run_repo: RunRepository | None = None
+    # Optional store for the replay corpus: the prompt + response text of a captured
+    # call, kept ONLY when the host sent them (content capture is opt-in). Without it
+    # the eval funnel can never re-run a real prompt against a candidate model.
+    raw_record_repo: RawRecordRepository | None = None
 
 
 class _IngestHolder:
@@ -157,6 +165,7 @@ def _make_ingest_handler(
             )
             runtime.repo.upsert(tenant_id, event)
             _register_run(runtime, tenant_id, run_id, request.attributes)
+            _record_replay_sample(runtime, tenant_id, run_id, request.attributes)
         return IngestOtlpSpanOutput(run_id=run_id, attempt_id=attempt_id, accepted=True)
 
     return _ingest_otlp_span
@@ -175,6 +184,57 @@ def bind_ingest_runtime(registry: Registry, runtime: IngestRuntime) -> None:
             "no capture capabilities registered for this registry; call register() first"
         )
     holder.runtime = runtime
+
+
+# The Vercel AI SDK puts the prompt and the response text on its span by default; the
+# valuemaxx SDK omits them unless the host opted into content capture. So PRESENCE is
+# the consent signal — we never ask for content, we only keep what the host chose to
+# send. Without these, replay has nothing to re-run and the eval funnel can only
+# compare pre-stored strings.
+_PROMPT_KEYS: Final[tuple[str, ...]] = ("ai.prompt", "ai.prompt.messages", "gen_ai.prompt")
+_RESPONSE_KEYS: Final[tuple[str, ...]] = ("ai.response.text", "gen_ai.completion")
+
+
+def _first_text(attributes: Mapping[str, object], keys: tuple[str, ...]) -> str | None:
+    """The first non-empty string among ``keys``, or None when the host sent no content."""
+    for key in keys:
+        value = attributes.get(key)
+        if isinstance(value, str) and value != "":
+            return value
+    return None
+
+
+def _record_replay_sample(
+    runtime: IngestRuntime,
+    tenant_id: TenantId,
+    run_id: str,
+    attributes: Mapping[str, object],
+) -> None:
+    """Store the prompt + response text for replay, when the host sent them.
+
+    Silently does nothing when either is absent — that is the content-capture-off case,
+    which is the DEFAULT and must stay a no-op rather than a warning. A deployment that
+    never opts in simply has no replay corpus.
+    """
+    repo = runtime.raw_record_repo
+    if repo is None or run_id == "":
+        return
+    prompt = _first_text(attributes, _PROMPT_KEYS)
+    response = _first_text(attributes, _RESPONSE_KEYS)
+    if prompt is None or response is None:
+        return
+    model = attributes.get("gen_ai.request.model")
+    repo.put(
+        tenant_id,
+        f"replay:{run_id}:{attributes.get('ai_margin.attempt_id', '')}",
+        {
+            "run_id": run_id,
+            "model": str(model) if model is not None else None,
+            "prompt": prompt,
+            "response": response,
+        },
+        frozenset(),
+    )
 
 
 def _register_run(
@@ -253,7 +313,9 @@ def ingest_attribute_maps(
         # Register the run here too: the collector is a SEPARATE persistence entry
         # point from the single-span capability, and a run that is never registered
         # cannot be bound to by any outcome (the cascade refuses unknown run ids).
-        _register_run(runtime, tenant_id, str(attrs.get("ai_margin.run_id", "")), attrs)
+        span_run_id = str(attrs.get("ai_margin.run_id", ""))
+        _register_run(runtime, tenant_id, span_run_id, attrs)
+        _record_replay_sample(runtime, tenant_id, span_run_id, attrs)
         persisted += 1
     return persisted
 

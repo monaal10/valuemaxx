@@ -28,6 +28,7 @@ from valuemaxx.core.eval.repositories import (
 from valuemaxx.core.repositories import (
     CostEventRepository,
     OutcomeEventRepository,
+    RawRecordRepository,
     ReviewQueue,
     RunRepository,
 )
@@ -38,6 +39,7 @@ from valuemaxx.store.repositories import (
     PgEvalDatasetRepository,
     PgEvalRecommendationRepository,
     PgOutcomeEventRepository,
+    PgRawRecordRepository,
     PgReviewQueue,
     PgRunRepository,
 )
@@ -81,6 +83,7 @@ class StoreBridge:
         self._outcome_events = PgOutcomeEventRepository(sessions)
         self._runs = PgRunRepository(sessions)
         self._review_queue = PgReviewQueue(sessions)
+        self._raw_records = PgRawRecordRepository(sessions)
         self._eval_datasets = PgEvalDatasetRepository(sessions)
         self._eval_recommendations = PgEvalRecommendationRepository(sessions)
 
@@ -131,6 +134,11 @@ class StoreBridge:
         confirm; ``list_review_queue`` reads exactly what it wrote.
         """
         return SyncReviewQueue(self._portal, self._review_queue)
+
+    @property
+    def raw_records(self) -> SyncRawRecordRepository:
+        """A synchronous raw-record repository (the replay corpus)."""
+        return SyncRawRecordRepository(self._portal, self._raw_records)
 
     @property
     def eval_datasets(self) -> SyncEvalDatasetRepository:
@@ -272,6 +280,36 @@ class SyncReviewQueue(ReviewQueue):
         return self._portal.call(self._repo.list_pending, tenant_id)
 
 
+class SyncRawRecordRepository(RawRecordRepository):
+    """Sync facade over the async raw-record repo, via the portal."""
+
+    def __init__(self, portal: BlockingPortal, repo: PgRawRecordRepository) -> None:
+        self._portal = portal
+        self._repo = repo
+
+    @override
+    def put(
+        self,
+        tenant_id: TenantId,
+        record_id: str,
+        payload: object,
+        entity_keys: frozenset[tuple[str, str]],
+    ) -> None:
+        self._portal.call(self._repo.put, tenant_id, record_id, payload, entity_keys)
+
+    @override
+    def get(self, tenant_id: TenantId, record_id: str) -> object | None:
+        return self._portal.call(self._repo.get, tenant_id, record_id)
+
+    @override
+    def list_recent(self, tenant_id: TenantId, limit: int) -> Sequence[tuple[str, object]]:
+        return self._portal.call(self._repo.list_recent, tenant_id, limit)
+
+    @override
+    def erase_by_entity(self, tenant_id: TenantId, entity_key: tuple[str, str]) -> int:
+        return self._portal.call(self._repo.erase_by_entity, tenant_id, entity_key)
+
+
 class SyncEvalDatasetRepository(EvalDatasetRepository):
     """Sync facade over the async eval-dataset repo, via the portal."""
 
@@ -312,6 +350,7 @@ __all__ = [
     "SyncEvalDatasetRepository",
     "SyncEvalRecommendationRepository",
     "SyncOutcomeEventRepository",
+    "SyncRawRecordRepository",
     "SyncReviewQueue",
     "SyncRunRepository",
 ]

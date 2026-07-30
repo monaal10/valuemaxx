@@ -24,6 +24,8 @@ from valuemaxx.store.tables import raw_record as raw_record_table
 from valuemaxx.store.tenant_guard import require_tenant
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from valuemaxx.core.ids import TenantId
 
 _CONFLICT_KEY = ["tenant_id", "id"]
@@ -57,6 +59,26 @@ class PgRawRecordRepository(BaseRepository):
         async with self._sessions() as session:
             row = (await session.execute(stmt)).one_or_none()
         return row[0] if row is not None else None
+
+    async def list_recent(self, tenant_id: TenantId, limit: int) -> Sequence[tuple[str, object]]:
+        """The most recently stored records for the tenant, newest first.
+
+        The replay path needs a sample of real prompts to re-run against a candidate;
+        `get` alone (by id) cannot enumerate them. Bounded by `limit` because replay
+        spends real tokens per case.
+        """
+        stmt = (
+            require_tenant(
+                select(raw_record_table.c.id, raw_record_table.c.payload),
+                tenant_id,
+                raw_record_table,
+            )
+            .order_by(raw_record_table.c.id.desc())
+            .limit(limit)
+        )
+        async with self._sessions() as session:
+            rows = (await session.execute(stmt)).mappings().all()
+        return [(str(as_row(r)["id"]), as_row(r)["payload"]) for r in rows]
 
     async def erase_by_entity(self, tenant_id: TenantId, entity_key: tuple[str, str]) -> int:
         """Erase all raw records carrying an entity key (GDPR/CCPA erasure, H10).

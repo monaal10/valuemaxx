@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from valuemaxx.eval.cases import CaseSet, build_case_set
 from valuemaxx.eval.costgate import (
@@ -26,6 +26,12 @@ from valuemaxx.eval.costgate import (
 )
 from valuemaxx.eval.discover import discover_clusters
 from valuemaxx.eval.grade import CaseGrade, GradeInputs, grade_case
+from valuemaxx.eval.replay import (
+    DEFAULT_REPLAY_CASES,
+    CandidateRunner,
+    build_replay_case_set,
+    parse_samples,
+)
 from valuemaxx.eval.report import RecommendationInputs, build_recommendation
 from valuemaxx.eval.stats import Percentiles
 from valuemaxx.eval.types import TaskType
@@ -45,7 +51,7 @@ if TYPE_CHECKING:
         EvalDatasetRepository,
         EvalRecommendationRepository,
     )
-    from valuemaxx.core.repositories import OutcomeEventRepository
+    from valuemaxx.core.repositories import OutcomeEventRepository, RawRecordRepository
     from valuemaxx.eval.costgate import ProviderTokenizer
 from valuemaxx.core import LabelSource
 from valuemaxx.eval.types import (
@@ -76,6 +82,11 @@ class EvalService:
     # sample — a recommendation computed from fabricated cases says nothing about
     # their workload, and would say it confidently.
     outcome_repo: OutcomeEventRepository | None = None
+    # The replay corpus: captured prompts + the incumbent's real responses. With it the
+    # funnel RE-RUNS those prompts against the candidate instead of comparing text the
+    # host happened to store, which is the difference between evaluating a model and
+    # comparing fixtures.
+    raw_record_repo: RawRecordRepository | None = None
 
     def discover_agents(self, calls: Sequence[CapturedCall]) -> tuple[ClusterCandidate, ...]:
         """Cluster captured calls into agent/prompt clusters (every cluster unconfirmed)."""
@@ -129,6 +140,34 @@ class EvalService:
             cases=cases,
             input_price_per_1k=input_price_per_1k,
             output_price_per_1k=output_price_per_1k,
+        )
+
+    def build_replay_case_set_for(
+        self, tenant_id: TenantId, *, candidate_model: str, max_cases: int = DEFAULT_REPLAY_CASES
+    ) -> CaseSet:
+        """Replay this tenant's captured prompts against ``candidate_model``.
+
+        This SPENDS TOKENS — one live candidate call per case — so it is bounded by
+        ``max_cases`` and only reached once the operator has approved the cost gate.
+        Returns an empty set (with a reason) when no prompts were captured, which is
+        the default until a host opts into content capture.
+        """
+        if self.raw_record_repo is None:
+            return CaseSet(
+                cases=(),
+                has_outcome_labels=False,
+                has_human_labels=False,
+                reason="no raw-record repository wired; cannot read captured prompts",
+            )
+        records = list(self.raw_record_repo.list_recent(tenant_id, max_cases * 3))
+        return build_replay_case_set(
+            parse_samples(records),
+            # The tokenizer and the candidate runner are the same Anthropic-backed
+            # provider in production; the cast documents that replay needs `complete`,
+            # which the ProviderTokenizer protocol does not itself promise.
+            runner=cast("CandidateRunner", self.provider),
+            candidate_model=candidate_model,
+            max_cases=max_cases,
         )
 
     def build_case_set_for(self, tenant_id: TenantId) -> CaseSet:
