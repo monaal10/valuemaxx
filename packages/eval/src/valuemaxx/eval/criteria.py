@@ -206,8 +206,28 @@ def _is_quantitative_only(text: str, checks: Sequence[DeterministicCheck]) -> bo
     return re.search(r"[a-z]{3,}", remainder, re.IGNORECASE) is None
 
 
+def compile_criteria(
+    texts: Sequence[str] = (), *, imported: Sequence[EvalCriterion] = ()
+) -> tuple[EvalCriterion, ...]:
+    """The criteria one eval run grades against — typed text plus an imported suite.
+
+    A run may carry MANY criteria (an imported promptfoo suite is typically dozens),
+    and a case satisfies the run only if it satisfies every one of them. That is
+    strictly stronger than the old single-criterion form, and it is the honest reading
+    of "these are my requirements": a candidate that meets four of five has not met the
+    bar, and averaging them would let a strong score on one hide a failure on another.
+
+    Empty in both arguments yields an empty tuple, and the caller falls back to the
+    generic parity rubric — an unspecified eval is unchanged.
+    """
+    compiled = [compile_criterion(t) for t in texts if t.strip()]
+    compiled.extend(imported)
+    return tuple(compiled)
+
+
 __all__ = [
     "DeterministicCheck",
     "EvalCriterion",
+    "compile_criteria",
     "compile_criterion",
 ]

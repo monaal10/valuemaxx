@@ -25,7 +25,7 @@ from valuemaxx.eval.costgate import (
     estimate_full_run_cost,
     estimate_smoke_cost,
 )
-from valuemaxx.eval.criteria import compile_criterion
+from valuemaxx.eval.criteria import EvalCriterion, compile_criteria, compile_criterion
 from valuemaxx.eval.discover import discover_clusters
 from valuemaxx.eval.grade import CaseGrade, GradeInputs, grade_case
 from valuemaxx.eval.replay import (
@@ -199,6 +199,7 @@ class EvalService:
         cases: Sequence[tuple[str, str, str]] | None = None,
         case_set: CaseSet | None = None,
         criterion: str = "",
+        criteria: Sequence[EvalCriterion] = (),
     ) -> EvalRecommendation:
         """Run the funnel end to end over fakes and persist a tenant-scoped recommendation.
 
@@ -229,17 +230,26 @@ class EvalService:
         )
         has_human_labels = case_set.has_human_labels if use_real and case_set is not None else False
 
-        # A user's plain-language criterion ("warm, under 20 words") replaces the
-        # generic parity rubric — "do these two models agree" is not the question a
-        # user has. Empty falls back to parity, so an unspecified eval is unchanged.
-        compiled = compile_criterion(criterion)
+        # A run grades against typed text AND an imported suite (a promptfoo import is
+        # typically dozens of rules). A case must satisfy EVERY criterion: meeting four
+        # of five is not meeting the bar, and averaging would let a strong score on one
+        # hide a failure on another. Empty falls back to the generic parity rubric, so
+        # an unspecified eval is unchanged.
+        all_criteria = compile_criteria([criterion], imported=criteria)
+        if not all_criteria:
+            # No criterion given: grade on the generic parity question rather than on
+            # nothing. An empty set would leave every case with no check to fail, so
+            # the run would pass silently — a false green, which is the one outcome
+            # worse than a low grade.
+            all_criteria = (compile_criterion(""),)
 
         graded: list[CaseGrade] = []
         for case_id, incumbent_out, candidate_out in selected:
-            # Exact checks run FIRST and are authoritative: counting words is arithmetic,
-            # and an LLM asked to count is slower, costlier and less reliable. A case
-            # failing one is failed outright — the judge cannot overrule a fact.
-            deterministic_ok, _failures = compiled.evaluate_deterministic(candidate_out)
+            # Exact checks run FIRST across EVERY criterion and are authoritative:
+            # counting words is arithmetic, and an LLM asked to count is slower,
+            # costlier and less reliable. One exact failure fails the case outright —
+            # the judge cannot overrule a fact.
+            deterministic_ok = all(c.evaluate_deterministic(candidate_out)[0] for c in all_criteria)
             if not deterministic_ok:
                 graded.append(
                     CaseGrade(
@@ -256,7 +266,12 @@ class EvalService:
                     )
                 )
                 continue
-            if not compiled.judge_required:
+            # Judge every criterion that still needs one; the case passes only if all
+            # of them pass. `grade_case` scores one rubric, so a multi-criterion run
+            # walks them and stops at the first failure — a later pass cannot redeem an
+            # earlier failure.
+            judged_criteria = [c for c in all_criteria if c.judge_required]
+            if not judged_criteria:
                 # Every clause was decidable exactly and all of them passed, so there is
                 # nothing left for a judge to weigh in on. Calling one anyway would spend
                 # tokens to re-answer a question arithmetic already settled — and would
@@ -273,8 +288,9 @@ class EvalService:
                     )
                 )
                 continue
-            graded.append(
-                grade_case(
+            case_grade = None
+            for criterion_to_judge in judged_criteria:
+                case_grade = grade_case(
                     GradeInputs(
                         case_id=case_id,
                         candidate_model=candidate_model,
@@ -287,7 +303,7 @@ class EvalService:
                         # `directional` by the rung table — this is the honest floor,
                         # not a claim of strong evidence.
                         judge_validated=True,
-                        rubric=compiled.rubric,
+                        rubric=criterion_to_judge.rubric,
                     ),
                     validator=self.validator,
                     judge=self.judge,
@@ -295,7 +311,13 @@ class EvalService:
                     # gave would manufacture agreement.
                     human_verdict=has_human_labels,
                 )
-            )
+                if not case_grade.passed:
+                    # A failure is final for this case: stop judging (and stop paying)
+                    # the moment one requirement is broken.
+                    break
+            if case_grade is not None:
+                graded.append(case_grade)
+
         recommendation = build_recommendation(
             RecommendationInputs(
                 tenant_id=tenant_id,

@@ -71,6 +71,11 @@ class RunEvalFunnelInput(BaseModel):
     # falls back to the generic parity rubric — "do these models agree" — which is a
     # different and usually less useful question.
     criterion: str = ""
+    # A promptfoo suite to grade against, as the JSONL content `import_promptfoo_suite`
+    # accepts. Sent with the run rather than stored, so a user can evaluate against the
+    # suite they already maintain without valuemaxx holding a copy that silently drifts
+    # from theirs. Combined with `criterion`: a case must satisfy every rule from both.
+    promptfoo_jsonl: str = ""
 
 
 class ImportPromptfooInput(BaseModel):
@@ -254,6 +259,9 @@ def register(registry: Registry) -> None:
             label_source=LabelSource(request.label_source),
             case_set=case_set,
             criterion=request.criterion,
+            criteria=import_promptfoo_tests(request.promptfoo_jsonl.splitlines()).criteria
+            if request.promptfoo_jsonl
+            else (),
         )
         return RunEvalFunnelOutput(
             job_id=f"eval-{request.tenant_id}-{request.candidate_model}", accepted=True

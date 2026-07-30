@@ -12,7 +12,7 @@ result is trusted.
 from __future__ import annotations
 
 import pytest
-from valuemaxx.eval.criteria import compile_criterion
+from valuemaxx.eval.criteria import compile_criteria, compile_criterion
 
 
 def test_word_limit_becomes_an_exact_check_not_a_judge_call() -> None:
@@ -104,3 +104,52 @@ def test_a_fully_quantitative_criterion_needs_no_judge_at_all() -> None:
     assert compile_criterion("must not mention 'salary'").judge_required is False
     # Any qualitative language and the judge is back in play.
     assert compile_criterion("warm and under 20 words").judge_required is True
+
+
+# --- many criteria in one run ---------------------------------------------------------
+
+
+def test_compile_criteria_combines_typed_text_and_an_imported_suite() -> None:
+    from valuemaxx.eval.promptfoo import import_promptfoo_tests
+
+    imported = import_promptfoo_tests(
+        ['{"assert": [{"type": "llm-rubric", "value": "stays on topic"}]}']
+    ).criteria
+    combined = compile_criteria(["under 20 words"], imported=imported)
+    assert len(combined) == 2
+    assert any(c.text == "under 20 words" for c in combined)
+    assert any(c.text == "stays on topic" for c in combined)
+
+
+def test_blank_text_is_dropped_so_an_unspecified_criterion_adds_nothing() -> None:
+    assert compile_criteria(["", "   "]) == ()
+
+
+def test_every_criterion_must_pass_not_a_majority() -> None:
+    """Meeting four of five requirements is not meeting the bar.
+
+    A run holds many criteria (an imported suite is typically dozens). Averaging or
+    majority-voting them would let a strong result on one hide a broken requirement on
+    another — so the caller ANDs them, and these are the pieces it ANDs.
+    """
+    criteria = compile_criteria(["under 5 words", "must not mention 'salary'"])
+    good = "short and clean"
+    bad_length = "this one is definitely far too long to pass"
+    bad_word = "salary here"
+
+    assert all(c.evaluate_deterministic(good)[0] for c in criteria) is True
+    assert all(c.evaluate_deterministic(bad_length)[0] for c in criteria) is False
+    assert all(c.evaluate_deterministic(bad_word)[0] for c in criteria) is False
+
+
+def test_a_run_with_no_criteria_still_grades_on_parity() -> None:
+    """An empty criteria set must not mean "nothing to fail, so everything passes".
+
+    `compile_criteria` legitimately returns () when nothing was specified, and the
+    service substitutes the parity criterion — without that, every case would sail
+    through ungraded and the run would report a silent false green.
+    """
+    assert compile_criteria([""]) == ()
+    fallback = compile_criterion("")
+    assert fallback.rubric == "is the candidate at parity with the incumbent?"
+    assert fallback.judge_required is True
