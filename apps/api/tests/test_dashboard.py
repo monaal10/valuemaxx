@@ -17,6 +17,7 @@ from valuemaxx.agent_integrability.discovery import build_default_registry
 from valuemaxx.api.app import build_app
 from valuemaxx.api.dashboard import (
     _COST_PER_OUTCOME,  # pyright: ignore[reportPrivateUsage]
+    _OUTCOME_VOLUME,  # pyright: ignore[reportPrivateUsage]
     _SPEND_BY_AGENT,  # pyright: ignore[reportPrivateUsage]
     _SPEND_BY_MODEL,  # pyright: ignore[reportPrivateUsage]
     DashboardMetric,
@@ -24,7 +25,12 @@ from valuemaxx.api.dashboard import (
 from valuemaxx.core import MetricDefinition
 from valuemaxx.metrics.grammar import validate_definition
 
-_EMBEDDED: tuple[DashboardMetric, ...] = (_SPEND_BY_MODEL, _SPEND_BY_AGENT, _COST_PER_OUTCOME)
+_EMBEDDED: tuple[DashboardMetric, ...] = (
+    _SPEND_BY_MODEL,
+    _SPEND_BY_AGENT,
+    _COST_PER_OUTCOME,
+    _OUTCOME_VOLUME,
+)
 
 
 def _client() -> TestClient:
@@ -91,3 +97,26 @@ def test_dashboard_does_not_shadow_a_capability_route() -> None:
     """Mounting `/` must not hide any projected capability."""
     res = post(_client(), "/capture_healthcheck", json={}, headers={"x-api-key": "dev"})
     assert res.status_code == 200
+
+
+def test_dashboard_offers_an_eval_model_picker() -> None:
+    """A user must be able to choose a candidate and supply their OWN key."""
+    body = get(_client(), "/").text
+    assert "run_eval_funnel" in body
+    assert "candidate_secret_ref" in body
+    assert 'id="ev-candidate"' in body
+
+
+def test_eval_key_field_is_a_password_input_and_never_echoed() -> None:
+    """The candidate key is a secret: masked on entry, never rendered back."""
+    body = get(_client(), "/").text
+    assert 'id="ev-key" type="password"' in body
+    # The page must not contain any pre-filled key value.
+    assert "sk-ant-" not in body
+
+
+def test_dashboard_shows_outcomes_and_agents() -> None:
+    """Both dimensions the user asked to see are present as panels."""
+    body = get(_client(), "/").text
+    assert "OUTCOMES RECORDED" in body
+    assert "SPEND BY AGENT" in body

@@ -54,6 +54,15 @@ class ServerSettings(BaseSettings):
         default="dev-webhook-secret",
         description="HMAC secret used to verify webhook_inbound (OTLP ingest) bodies.",
     )
+    eval_judge_api_key: str = Field(
+        default="",
+        description=(
+            "Anthropic key used ONLY for the eval judge/tokenizer (grading and the free "
+            "count_tokens call). The CANDIDATE model's key is supplied per run as "
+            "`candidate_secret_ref` and is never stored. Empty disables eval runs rather "
+            "than silently grading with someone else's credentials."
+        ),
+    )
     host: str = Field(default="127.0.0.1", description="The bind host for the ASGI server.")
     port: int = Field(default=8000, description="The bind port for the ASGI server.")
     capture_content: bool = Field(

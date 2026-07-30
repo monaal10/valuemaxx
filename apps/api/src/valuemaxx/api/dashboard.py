@@ -69,6 +69,13 @@ _SPEND_BY_AGENT: DashboardMetric = {
     "filters": {},
     "group_by": ["agent_name"],
 }
+_OUTCOME_VOLUME: DashboardMetric = {
+    "name": "outcome_volume",
+    "numerator": "outcome_count",
+    "denominator": "attempt_count",
+    "filters": {},
+    "group_by": ["outcome_name"],
+}
 _COST_PER_OUTCOME: DashboardMetric = {
     "name": "cost_per_outcome",
     "numerator": "total_cost_usd",
@@ -135,6 +142,19 @@ _PAGE = """<!doctype html>
   .bad { color: var(--bad); }
   code { font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
   .note { color: var(--muted); font-size: 12.5px; padding: 10px 16px 14px; }
+  .picker { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+  .picker label { display: flex; flex-direction: column; gap: 4px; font-size: 12px;
+    color: var(--muted); }
+  .picker select, .picker input {
+    padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px;
+    background: var(--bg); color: var(--fg); font: inherit; font-size: 13px;
+  }
+  .picker button {
+    padding: 7px 14px; border: 1px solid var(--accent); border-radius: 6px;
+    background: transparent; color: var(--accent); font: inherit; font-size: 13px;
+    cursor: pointer;
+  }
+  .picker button:disabled { opacity: 0.5; cursor: default; }
 </style>
 </head>
 <body>
@@ -151,6 +171,43 @@ _PAGE = """<!doctype html>
     <div class="note">
       Billing-grade only: advisory (candidate/likely) and retracted outcomes are
       excluded from the denominator, so this number is never inflated by a guess.
+    </div>
+  </section>
+  <section>
+    <h2>OUTCOMES RECORDED</h2><div id="outcomes">loading&hellip;</div>
+    <div class="note">
+      What your agents actually produced. An outcome appears here as soon as it is
+      recorded; it only reaches the cost-per-outcome denominator once it binds to a run
+      at an exact/deterministic tier.
+    </div>
+  </section>
+  <section>
+    <h2>TRY A CHEAPER MODEL</h2>
+    <div class="body">
+      <p class="sub" style="margin:0 0 10px">
+        Evaluate a candidate against your real workload. Your key is used for the run
+        and never stored with the recommendation. Nothing runs until you approve the
+        estimated cost.
+      </p>
+      <div class="picker">
+        <label>incumbent <select id="ev-incumbent"></select></label>
+        <label>candidate
+          <select id="ev-candidate">
+            <option value="claude-haiku-4-5">claude-haiku-4-5</option>
+            <option value="claude-sonnet-4-6">claude-sonnet-4-6</option>
+            <option value="gpt-5.5">gpt-5.5</option>
+          </select>
+        </label>
+        <label>provider
+          <select id="ev-provider">
+            <option value="anthropic">anthropic</option>
+            <option value="openai">openai</option>
+          </select>
+        </label>
+        <label>your API key <input id="ev-key" type="password" placeholder="sk-..." /></label>
+        <button id="ev-run" type="button">Estimate &amp; run</button>
+      </div>
+      <div id="ev-status" class="note" style="padding-left:0"></div>
     </div>
   </section>
   <section>
@@ -241,12 +298,21 @@ async function load() {
     await call("run_metric", SPEND_BY_AGENT), "cost / outcome");
   renderMetric(document.getElementById("cpo"),
     await call("run_metric", COST_PER_OUTCOME), "cost / outcome");
+  renderMetric(document.getElementById("outcomes"),
+    await call("run_metric", OUTCOME_VOLUME), "outcomes / attempt");
 
   // get_recommendation is per-incumbent-model, so ask about the models we actually saw.
   const byModel = await call("run_metric", SPEND_BY_MODEL);
   const models = (byModel.cells || [])
     .map((c) => (c.group_key || []).map((kv) => kv[1]).join(""))
     .filter(Boolean);
+  // Populate the incumbent picker from the models actually observed — offering a
+  // model the user does not run would be a meaningless comparison.
+  const incumbentSel = document.getElementById("ev-incumbent");
+  incumbentSel.innerHTML = models.map((m) =>
+    '<option value="' + esc(m) + '">' + esc(m) + "</option>").join("") ||
+    '<option value="">(no models observed yet)</option>';
+
   const el = document.getElementById("evals");
   if (models.length === 0) {
     el.innerHTML = '<p class="empty">No models observed yet &mdash; recommendations ' +
@@ -272,6 +338,41 @@ async function load() {
     "</tbody></table>";
 }
 
+// --- eval run ---------------------------------------------------------------
+// The key is read from the field and sent with THIS request only; it is never
+// persisted with the recommendation and never rendered back into the page.
+document.getElementById("ev-run").addEventListener("click", async () => {
+  const btn = document.getElementById("ev-run");
+  const status = document.getElementById("ev-status");
+  const incumbent = document.getElementById("ev-incumbent").value;
+  const candidate = document.getElementById("ev-candidate").value;
+  const provider = document.getElementById("ev-provider").value;
+  const key = document.getElementById("ev-key").value;
+
+  if (!incumbent) { status.textContent = "No incumbent model observed yet."; return; }
+  if (!key) { status.textContent = "Enter your API key for the candidate provider."; return; }
+
+  btn.disabled = true;
+  status.textContent = "Submitting eval run…";
+  const res = await call("run_eval_funnel", {
+    incumbent_model: incumbent,
+    candidate_model: candidate,
+    candidate_provider: provider,
+    candidate_secret_ref: key,
+    label_source: "outcome_label",
+  });
+  btn.disabled = false;
+
+  if (res.__error) {
+    status.innerHTML = '<span class="bad">Could not start: ' + esc(res.__error) + "</span>";
+    return;
+  }
+  status.innerHTML = res.accepted
+    ? '<span class="ok">Eval queued</span> — job <code>' + esc(res.job_id) +
+      "</code>. Recommendations appear below when it completes."
+    : "Eval was not accepted (check the cost gate).";
+});
+
 load();
 </script>
 </body>
@@ -289,6 +390,7 @@ def mount_dashboard(app: FastAPI) -> None:
         _PAGE.replace("SPEND_BY_MODEL", json.dumps(_SPEND_BY_MODEL))
         .replace("SPEND_BY_AGENT", json.dumps(_SPEND_BY_AGENT))
         .replace("COST_PER_OUTCOME", json.dumps(_COST_PER_OUTCOME))
+        .replace("OUTCOME_VOLUME", json.dumps(_OUTCOME_VOLUME))
     )
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)

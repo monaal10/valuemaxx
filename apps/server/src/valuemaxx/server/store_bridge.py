@@ -21,6 +21,10 @@ from typing import TYPE_CHECKING, Self
 
 from anyio.from_thread import BlockingPortal, start_blocking_portal
 from typing_extensions import override
+from valuemaxx.core.eval.repositories import (
+    EvalDatasetRepository,
+    EvalRecommendationRepository,
+)
 from valuemaxx.core.repositories import (
     CostEventRepository,
     OutcomeEventRepository,
@@ -31,6 +35,8 @@ from valuemaxx.store.engine import create_engine, create_sessionmaker
 from valuemaxx.store.migrations_api import upgrade_to_head
 from valuemaxx.store.repositories import (
     PgCostEventRepository,
+    PgEvalDatasetRepository,
+    PgEvalRecommendationRepository,
     PgOutcomeEventRepository,
     PgReviewQueue,
     PgRunRepository,
@@ -44,6 +50,7 @@ if TYPE_CHECKING:
 
     from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
     from valuemaxx.core.cost import CostEvent
+    from valuemaxx.core.eval.models import EvalDataset, EvalRecommendation
     from valuemaxx.core.ids import OutcomeEventId, RunId, TenantId
     from valuemaxx.core.outcome import OutcomeEvent
     from valuemaxx.core.run import Run
@@ -74,6 +81,8 @@ class StoreBridge:
         self._outcome_events = PgOutcomeEventRepository(sessions)
         self._runs = PgRunRepository(sessions)
         self._review_queue = PgReviewQueue(sessions)
+        self._eval_datasets = PgEvalDatasetRepository(sessions)
+        self._eval_recommendations = PgEvalRecommendationRepository(sessions)
 
     @classmethod
     def open(cls, database_url: str, *, run_migrations: bool = True) -> StoreBridge:
@@ -122,6 +131,16 @@ class StoreBridge:
         confirm; ``list_review_queue`` reads exactly what it wrote.
         """
         return SyncReviewQueue(self._portal, self._review_queue)
+
+    @property
+    def eval_datasets(self) -> SyncEvalDatasetRepository:
+        """A synchronous eval-dataset repository (the funnel's case store)."""
+        return SyncEvalDatasetRepository(self._portal, self._eval_datasets)
+
+    @property
+    def eval_recommendations(self) -> SyncEvalRecommendationRepository:
+        """A synchronous eval-recommendation repository (what `get_recommendation` reads)."""
+        return SyncEvalRecommendationRepository(self._portal, self._eval_recommendations)
 
     def close(self) -> None:
         """Dispose the engine on the portal's loop, then stop the portal."""
@@ -252,9 +271,45 @@ class SyncReviewQueue(ReviewQueue):
         return self._portal.call(self._repo.list_pending, tenant_id)
 
 
+class SyncEvalDatasetRepository(EvalDatasetRepository):
+    """Sync facade over the async eval-dataset repo, via the portal."""
+
+    def __init__(self, portal: BlockingPortal, repo: PgEvalDatasetRepository) -> None:
+        self._portal = portal
+        self._repo = repo
+
+    @override
+    def upsert(self, tenant_id: TenantId, dataset: EvalDataset) -> None:
+        self._portal.call(self._repo.upsert, tenant_id, dataset)
+
+    @override
+    def get(self, tenant_id: TenantId, dataset_id: str) -> EvalDataset | None:
+        return self._portal.call(self._repo.get, tenant_id, dataset_id)
+
+
+class SyncEvalRecommendationRepository(EvalRecommendationRepository):
+    """Sync facade over the async eval-recommendation repo, via the portal."""
+
+    def __init__(self, portal: BlockingPortal, repo: PgEvalRecommendationRepository) -> None:
+        self._portal = portal
+        self._repo = repo
+
+    @override
+    def upsert(self, tenant_id: TenantId, recommendation: EvalRecommendation) -> None:
+        self._portal.call(self._repo.upsert, tenant_id, recommendation)
+
+    @override
+    def list_for_incumbent(
+        self, tenant_id: TenantId, incumbent_model: str
+    ) -> Sequence[EvalRecommendation]:
+        return self._portal.call(self._repo.list_for_incumbent, tenant_id, incumbent_model)
+
+
 __all__ = [
     "StoreBridge",
     "SyncCostEventRepository",
+    "SyncEvalDatasetRepository",
+    "SyncEvalRecommendationRepository",
     "SyncOutcomeEventRepository",
     "SyncReviewQueue",
     "SyncRunRepository",

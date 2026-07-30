@@ -37,6 +37,13 @@ from valuemaxx.attribution import bind_runtime as bind_attribution_runtime
 from valuemaxx.capture import IngestRuntime, bind_ingest_runtime, default_pricebook
 from valuemaxx.core.enums import Provenance
 from valuemaxx.core.ids import TenantId
+from valuemaxx.eval import EvalService
+from valuemaxx.eval import bind_runtime as bind_eval_runtime
+from valuemaxx.eval.providers import (
+    AnthropicEvalProvider,
+    StructuralReconstructibilityValidator,
+    UrllibHttpPost,
+)
 from valuemaxx.metrics import MetricExecutor, MetricRuntime, MetricWindow
 from valuemaxx.metrics import bind_runtime as bind_metrics_runtime
 from valuemaxx.server.settings import ServerSettings
@@ -124,6 +131,26 @@ def _wire_runtimes(registry: Registry, bridge: StoreBridge, settings: ServerSett
             # outcomes from the store, so an unpersisted outcome leaves
             # verified_outcome_count at zero and cost-per-outcome null.
             outcome_repo=bridge.outcome_events,
+        ),
+    )
+
+    # Eval: the "would a cheaper model hold this outcome" funnel. Its three seams
+    # (judge, provider tokenizer, reconstructibility validator) had only test stubs, so
+    # `run_eval_funnel` raised EvalNotWiredError and the model-recommendation surface
+    # was permanently empty. The judge/tokenizer share one Anthropic-backed provider;
+    # the CANDIDATE's key rides each request (`candidate_secret_ref`) so a user
+    # evaluates with their own key and it is never persisted with the recommendation.
+    eval_provider = AnthropicEvalProvider(
+        http=UrllibHttpPost(), api_key=settings.eval_judge_api_key or ""
+    )
+    bind_eval_runtime(
+        registry,
+        EvalService(
+            dataset_repo=bridge.eval_datasets,
+            recommendation_repo=bridge.eval_recommendations,
+            validator=StructuralReconstructibilityValidator(),
+            judge=eval_provider,
+            provider=eval_provider,
         ),
     )
 
