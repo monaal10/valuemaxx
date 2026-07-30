@@ -18,12 +18,14 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, cast
 
+from valuemaxx.core import EvalGrade, LabelSource
 from valuemaxx.eval.cases import CaseSet, build_case_set
 from valuemaxx.eval.costgate import (
     Phase1Approval,
     estimate_full_run_cost,
     estimate_smoke_cost,
 )
+from valuemaxx.eval.criteria import compile_criterion
 from valuemaxx.eval.discover import discover_clusters
 from valuemaxx.eval.grade import CaseGrade, GradeInputs, grade_case
 from valuemaxx.eval.replay import (
@@ -53,7 +55,6 @@ if TYPE_CHECKING:
     )
     from valuemaxx.core.repositories import OutcomeEventRepository, RawRecordRepository
     from valuemaxx.eval.costgate import ProviderTokenizer
-from valuemaxx.core import LabelSource
 from valuemaxx.eval.types import (
     CapturedCall,
     ClusterCandidate,
@@ -197,6 +198,7 @@ class EvalService:
         label_source: LabelSource,
         cases: Sequence[tuple[str, str, str]] | None = None,
         case_set: CaseSet | None = None,
+        criterion: str = "",
     ) -> EvalRecommendation:
         """Run the funnel end to end over fakes and persist a tenant-scoped recommendation.
 
@@ -227,8 +229,33 @@ class EvalService:
         )
         has_human_labels = case_set.has_human_labels if use_real and case_set is not None else False
 
+        # A user's plain-language criterion ("warm, under 20 words") replaces the
+        # generic parity rubric — "do these two models agree" is not the question a
+        # user has. Empty falls back to parity, so an unspecified eval is unchanged.
+        compiled = compile_criterion(criterion)
+
         graded: list[CaseGrade] = []
         for case_id, incumbent_out, candidate_out in selected:
+            # Exact checks run FIRST and are authoritative: counting words is arithmetic,
+            # and an LLM asked to count is slower, costlier and less reliable. A case
+            # failing one is failed outright — the judge cannot overrule a fact.
+            deterministic_ok, _failures = compiled.evaluate_deterministic(candidate_out)
+            if not deterministic_ok:
+                graded.append(
+                    CaseGrade(
+                        case_id=case_id,
+                        candidate_model=candidate_model,
+                        incumbent_prediction=incumbent_out,
+                        candidate_prediction=candidate_out,
+                        passed=False,
+                        # A deterministic failure is a FACT, so it is recorded on the
+                        # weakest rung: it proves the candidate broke the requirement,
+                        # not that we have strong evidence about quality overall.
+                        label_source=LabelSource.REFERENCE,
+                        grade=EvalGrade.DIRECTIONAL,
+                    )
+                )
+                continue
             graded.append(
                 grade_case(
                     GradeInputs(
@@ -243,7 +270,7 @@ class EvalService:
                         # `directional` by the rung table — this is the honest floor,
                         # not a claim of strong evidence.
                         judge_validated=True,
-                        rubric="is the candidate at parity with the incumbent?",
+                        rubric=compiled.rubric,
                     ),
                     validator=self.validator,
                     judge=self.judge,

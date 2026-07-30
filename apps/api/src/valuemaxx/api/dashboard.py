@@ -185,9 +185,10 @@ _PAGE = """<!doctype html>
     <h2>TRY A CHEAPER MODEL</h2>
     <div class="body">
       <p class="sub" style="margin:0 0 10px">
-        Evaluate a candidate against your real workload. Your key is used for the run
-        and never stored with the recommendation. Nothing runs until you approve the
-        estimated cost.
+        Replays your real captured prompts against the candidate and grades the result.
+        Say what matters to you and it is graded on that; leave it blank and the run
+        asks the generic question, "does the candidate match the incumbent". Your key is
+        used for the run and never stored with the recommendation.
       </p>
       <div class="picker">
         <label>incumbent <select id="ev-incumbent"></select></label>
@@ -205,6 +206,10 @@ _PAGE = """<!doctype html>
           </select>
         </label>
         <label>your API key <input id="ev-key" type="password" placeholder="sk-..." /></label>
+        <label style="flex:1 1 100%">what matters to you (optional)
+          <input id="ev-criterion" type="text"
+            placeholder="e.g. the bio should be warm and under 20 words" />
+        </label>
         <button id="ev-run" type="button">Estimate &amp; run</button>
       </div>
       <div id="ev-status" class="note" style="padding-left:0"></div>
@@ -348,6 +353,7 @@ document.getElementById("ev-run").addEventListener("click", async () => {
   const candidate = document.getElementById("ev-candidate").value;
   const provider = document.getElementById("ev-provider").value;
   const key = document.getElementById("ev-key").value;
+  const criterion = document.getElementById("ev-criterion").value;
 
   if (!incumbent) { status.textContent = "No incumbent model observed yet."; return; }
   if (!key) { status.textContent = "Enter your API key for the candidate provider."; return; }
@@ -360,6 +366,9 @@ document.getElementById("ev-run").addEventListener("click", async () => {
     candidate_provider: provider,
     candidate_secret_ref: key,
     label_source: "outcome_label",
+    // Graded against the user's own words when given; otherwise the generic
+    // "are these two models at parity" question.
+    criterion,
   });
   btn.disabled = false;
 

@@ -66,6 +66,10 @@ class RunEvalFunnelInput(BaseModel):
     candidate_provider: str
     candidate_secret_ref: str
     label_source: str
+    # What the USER cares about, in their own words ("warm, under 20 words"). Empty
+    # falls back to the generic parity rubric — "do these models agree" — which is a
+    # different and usually less useful question.
+    criterion: str = ""
 
 
 class RunEvalFunnelOutput(BaseModel):
@@ -197,6 +201,7 @@ def register(registry: Registry) -> None:
             # The wire carries a plain string; the funnel needs the enum.
             label_source=LabelSource(request.label_source),
             case_set=case_set,
+            criterion=request.criterion,
         )
         return RunEvalFunnelOutput(
             job_id=f"eval-{request.tenant_id}-{request.candidate_model}", accepted=True
