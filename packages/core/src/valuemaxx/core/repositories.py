@@ -89,6 +89,20 @@ class OutcomeEventRepository(ABC):
     def list_unbound(self, tenant_id: TenantId) -> Sequence[OutcomeEvent]:
         """List outcomes not yet bound to a run (the attribution work queue)."""
 
+    def list_in_window(
+        self, tenant_id: TenantId, start: datetime, end: datetime
+    ) -> Sequence[OutcomeEvent]:
+        """List outcomes in the half-open window [start, end).
+
+        Deliberately CONCRETE with an empty default rather than abstract: an
+        implementation that predates this method keeps working, and the callers
+        (the metrics denominator, the eval case set) treat "no outcomes" as a
+        real answer they already handle. A hard abstract would break every
+        existing repository to add a read.
+        """
+        del tenant_id, start, end
+        return ()
+
 
 class AttributionResultRepository(ABC):
     """Persistence for :class:`~valuemaxx.core.attribution.AttributionResult` records."""

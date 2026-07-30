@@ -170,8 +170,13 @@ def register(registry: Registry) -> None:
         from valuemaxx.core import LabelSource, ProviderKeyRef, TenantId
 
         service = holder.require()
+        tenant = TenantId(UUID(request.tenant_id))
+        # Grade the host's REAL recorded outcomes, not the built-in sample. The case
+        # set also reports which ground truth actually exists, so the recommendation
+        # cannot claim `reliable` off evidence nobody produced.
+        case_set = service.build_case_set_for(tenant)
         service.run_eval_funnel(
-            tenant_id=TenantId(UUID(request.tenant_id)),
+            tenant_id=tenant,
             incumbent_model=request.incumbent_model,
             candidate=ProviderKeyRef(
                 provider=request.candidate_provider,
@@ -182,6 +187,7 @@ def register(registry: Registry) -> None:
             candidate_model=request.candidate_model,
             # The wire carries a plain string; the funnel needs the enum.
             label_source=LabelSource(request.label_source),
+            case_set=case_set,
         )
         return RunEvalFunnelOutput(
             job_id=f"eval-{request.tenant_id}-{request.candidate_model}", accepted=True

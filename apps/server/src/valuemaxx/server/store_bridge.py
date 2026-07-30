@@ -209,6 +209,7 @@ class SyncOutcomeEventRepository(OutcomeEventRepository):
     def get(self, tenant_id: TenantId, outcome_id: OutcomeEventId) -> OutcomeEvent | None:
         return self._portal.call(self._repo.get, tenant_id, outcome_id)
 
+    @override
     def list_in_window(
         self, tenant_id: TenantId, start: datetime, end: datetime
     ) -> Sequence[OutcomeEvent]:

@@ -151,6 +151,10 @@ def _wire_runtimes(registry: Registry, bridge: StoreBridge, settings: ServerSett
             validator=StructuralReconstructibilityValidator(),
             judge=eval_provider,
             provider=eval_provider,
+            # Grade the tenant's REAL recorded outcomes. Without this the funnel falls
+            # back to its built-in sample, and a recommendation from fabricated cases
+            # says nothing about the host's workload while sounding just as confident.
+            outcome_repo=bridge.outcome_events,
         ),
     )
 

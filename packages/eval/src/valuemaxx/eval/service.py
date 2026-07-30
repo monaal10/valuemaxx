@@ -14,9 +14,11 @@ registry; it carries no surface knowledge of its own.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
+from valuemaxx.eval.cases import CaseSet, build_case_set
 from valuemaxx.eval.costgate import (
     Phase1Approval,
     estimate_full_run_cost,
@@ -43,14 +45,14 @@ if TYPE_CHECKING:
         EvalDatasetRepository,
         EvalRecommendationRepository,
     )
+    from valuemaxx.core.repositories import OutcomeEventRepository
     from valuemaxx.eval.costgate import ProviderTokenizer
-    from valuemaxx.eval.types import (
-        CapturedCall,
-        ClusterCandidate,
-        ReconstructibilityValidator,
-    )
-
 from valuemaxx.core import LabelSource
+from valuemaxx.eval.types import (
+    CapturedCall,
+    ClusterCandidate,
+    ReconstructibilityValidator,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +71,11 @@ class EvalService:
     judge: LlmJudge
     provider: ProviderTokenizer
     embedder: Embedder | None = None
+    # Optional so the pure service stays constructible without a store. When present,
+    # the funnel grades the host's REAL recorded outcomes instead of the built-in
+    # sample — a recommendation computed from fabricated cases says nothing about
+    # their workload, and would say it confidently.
+    outcome_repo: OutcomeEventRepository | None = None
 
     def discover_agents(self, calls: Sequence[CapturedCall]) -> tuple[ClusterCandidate, ...]:
         """Cluster captured calls into agent/prompt clusters (every cluster unconfirmed)."""
@@ -124,6 +131,23 @@ class EvalService:
             output_price_per_1k=output_price_per_1k,
         )
 
+    def build_case_set_for(self, tenant_id: TenantId) -> CaseSet:
+        """Build the graded-case set from this tenant's recorded outcomes.
+
+        Returns an EMPTY set (with a reason) when there is nothing real to grade —
+        no outcome repository wired, or no bound outcomes carrying comparable output.
+        The caller passes it through so the funnel falls back to the built-in cases
+        WITHOUT claiming outcome/human labels for them.
+        """
+        if self.outcome_repo is None:
+            return CaseSet(
+                cases=(),
+                has_outcome_labels=False,
+                has_human_labels=False,
+                reason="no outcome repository wired; cannot read recorded outcomes",
+            )
+        return build_case_set(list(self.outcome_repo.list_in_window(tenant_id, _EPOCH, _FOREVER)))
+
     def run_eval_funnel(
         self,
         *,
@@ -133,6 +157,7 @@ class EvalService:
         candidate_model: str,
         label_source: LabelSource,
         cases: Sequence[tuple[str, str, str]] | None = None,
+        case_set: CaseSet | None = None,
     ) -> EvalRecommendation:
         """Run the funnel end to end over fakes and persist a tenant-scoped recommendation.
 
@@ -145,8 +170,26 @@ class EvalService:
         The ``candidate`` key ref is the provider-key reference — it carries no
         plaintext and is never logged or persisted (the recommendation has no key field).
         """
+        # Ground truth is DERIVED, not asserted. These flags select the evidence rung
+        # (see grade.py) and the rung caps the grade, so hardcoding them made every run
+        # claim `reliable` no matter what evidence existed. With a real case set we
+        # claim only what it actually carries; without one we fall back to the built-in
+        # cases and must NOT claim outcome/human labels for them.
+        # The flags must describe the cases ACTUALLY graded. An empty-but-present case
+        # set still reported `has_outcome_labels=True` (bound outcomes existed, they
+        # just carried no comparable text), which then labelled the FABRICATED fallback
+        # cases as outcome-labelled — the exact over-claim this change exists to remove.
+        use_real = case_set is not None and not case_set.is_empty
+        selected = (
+            case_set.cases if use_real and case_set is not None else (cases or _default_cases())
+        )
+        has_outcome_labels = (
+            case_set.has_outcome_labels if use_real and case_set is not None else False
+        )
+        has_human_labels = case_set.has_human_labels if use_real and case_set is not None else False
+
         graded: list[CaseGrade] = []
-        for case_id, incumbent_out, candidate_out in cases or _default_cases():
+        for case_id, incumbent_out, candidate_out in selected:
             graded.append(
                 grade_case(
                     GradeInputs(
@@ -155,14 +198,19 @@ class EvalService:
                         incumbent_prediction=incumbent_out,
                         candidate_prediction=candidate_out,
                         task_type=_TASK_FOR_LABEL[label_source],
-                        has_outcome_labels=True,
-                        has_human_labels=True,
+                        has_outcome_labels=has_outcome_labels,
+                        has_human_labels=has_human_labels,
+                        # The judge is always available and always capped at
+                        # `directional` by the rung table — this is the honest floor,
+                        # not a claim of strong evidence.
                         judge_validated=True,
                         rubric="is the candidate at parity with the incumbent?",
                     ),
                     validator=self.validator,
                     judge=self.judge,
-                    human_verdict=True,
+                    # Only meaningful when human labels exist; claiming a verdict nobody
+                    # gave would manufacture agreement.
+                    human_verdict=has_human_labels,
                 )
             )
         recommendation = build_recommendation(
@@ -200,6 +248,12 @@ _TASK_FOR_LABEL: dict[LabelSource, TaskType] = {
     LabelSource.LLM_JUDGE: TaskType.OPEN_ENDED,
     LabelSource.REFERENCE: TaskType.OPEN_ENDED,
 }
+
+
+# The full recorded window: the funnel grades whatever outcomes exist, and the case
+# cap (not a time bound) is what keeps a run affordable.
+_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+_FOREVER = datetime(9999, 12, 31, tzinfo=UTC)
 
 
 def _default_cases() -> list[tuple[str, str, str]]:
