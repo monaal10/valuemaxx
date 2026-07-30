@@ -1,8 +1,17 @@
 {
   "name": "valuemaxx",
   "version": "0.1.2",
-  "description": "AI Margin Intelligence \u2014 one-line, fail-open OTel instrumentation that captures correct, per-attempt LLM cost for the OpenAI / Anthropic Node clients and the Vercel AI SDK.",
+  "description": "AI Margin Intelligence — one-line, fail-open OTel instrumentation that captures correct, per-attempt LLM cost for the OpenAI / Anthropic Node clients and the Vercel AI SDK.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/monaal10/valuemaxx.git",
+    "directory": "sdks/typescript"
+  },
+  "homepage": "https://github.com/monaal10/valuemaxx#readme",
+  "bugs": {
+    "url": "https://github.com/monaal10/valuemaxx/issues"
+  },
   "type": "module",
   "sideEffects": false,
   "main": "./dist/index.cjs",

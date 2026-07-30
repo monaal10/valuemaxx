@@ -17,7 +17,11 @@ import { describe, expect, it } from "vitest";
 
 const pkg = JSON.parse(
   readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8"),
-) as { bin?: Record<string, string>; files?: string[] };
+) as {
+  bin?: Record<string, string>;
+  files?: string[];
+  repository?: { url?: string; directory?: string };
+};
 
 describe("published package bin", () => {
   it("declares the valuemaxx executable", () => {
@@ -30,5 +34,19 @@ describe("published package bin", () => {
 
   it("ships the dist/ directory that contains the bin", () => {
     expect(pkg.files ?? []).toContain("dist");
+  });
+});
+
+// npm publishes with provenance by default under OIDC trusted publishing, and sigstore
+// REJECTS the upload if `repository.url` does not match the repo the workflow ran in:
+//   422 ... "repository.url" is "", expected to match "https://github.com/<org>/<repo>"
+// The manifest carried no `repository` at all, so every provenance publish 422'd.
+describe("provenance metadata", () => {
+  it("declares repository.url matching the GitHub repo", () => {
+    expect(pkg.repository?.url).toBe("git+https://github.com/monaal10/valuemaxx.git");
+  });
+
+  it("declares the monorepo subdirectory the package lives in", () => {
+    expect(pkg.repository?.directory).toBe("sdks/typescript");
   });
 });
