@@ -26,12 +26,14 @@ serves) builds no database at import time.
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import UUID
 
 from valuemaxx.agent_integrability.discovery import build_default_registry
 from valuemaxx.api.app import build_app
+from valuemaxx.attribution import AttributionRuntime
+from valuemaxx.attribution import bind_runtime as bind_attribution_runtime
 from valuemaxx.capture import IngestRuntime, bind_ingest_runtime, default_pricebook
 from valuemaxx.core.enums import Provenance
 from valuemaxx.core.ids import TenantId
@@ -61,6 +63,12 @@ class _SystemClock:
 _WINDOW_START = datetime(1970, 1, 1, tzinfo=UTC)
 _WINDOW_END = datetime(9999, 12, 31, tzinfo=UTC)
 
+# How far back a delayed outcome may reach to claim a run by shared entity id (T4).
+# 24h covers the common "the deal closed the next morning" case without letting an
+# outcome bind to a week-old run it had nothing to do with. Entity-matched bindings are
+# labeled `candidate` regardless, so this bounds a fallback, never a billing-grade link.
+_ENTITY_BINDING_WINDOW = timedelta(hours=24)
+
 
 def _first_tenant(ingest_keys: dict[str, str]) -> TenantId | None:
     """The tenant the metrics runtime is scoped to (the first configured ingest key).
@@ -88,8 +96,37 @@ def _wire_runtimes(registry: Registry, bridge: StoreBridge, settings: ServerSett
             pricebook=default_pricebook(),
             clock=clock,
             default_provenance=Provenance.ESTIMATED,
+            # Register the run as its first span arrives. The attribution cascade
+            # revalidates every deterministic run id against this repo and refuses one
+            # it cannot find, so without this an outcome can never bind exactly and
+            # cost-per-outcome stays null.
+            run_repo=bridge.runs,
         ),
     )
+    # Attribution: the binding cascade that turns an inbound outcome into a
+    # tier-labeled link to the run that produced it. Without this the `bind_outcome`
+    # and `list_review_queue` capabilities raise AttributionNotWiredError, so an
+    # outcome can never be recorded and cost-per-outcome is permanently null — the
+    # product's headline metric, unreachable.
+    #
+    # `judge` and `semantic_window` stay None: those power the LOWEST-confidence
+    # (`likely`) tier, an LLM-judged semantic match. Leaving them unset means the
+    # cascade stops at the entity/time fallback rather than guessing, which is the
+    # honest default — a binding we cannot make deterministically should surface for
+    # human review, not be invented by a model the operator never configured.
+    bind_attribution_runtime(
+        registry,
+        AttributionRuntime(
+            run_repo=bridge.runs,
+            review_queue=bridge.review_queue,
+            entity_window=_ENTITY_BINDING_WINDOW,
+            # Persist the bound outcome, or metrics never see it: the executor reads
+            # outcomes from the store, so an unpersisted outcome leaves
+            # verified_outcome_count at zero and cost-per-outcome null.
+            outcome_repo=bridge.outcome_events,
+        ),
+    )
+
     tenant = _first_tenant(settings.resolved_ingest_keys())
     if tenant is not None:
         executor = MetricExecutor(

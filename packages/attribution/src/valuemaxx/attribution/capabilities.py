@@ -24,12 +24,13 @@ from typing import TYPE_CHECKING
 from valuemaxx.attribution.cascade import Cascade
 from valuemaxx.capabilities import Mode, Surface, capability
 from valuemaxx.core import AtmError, AttributionResult, OutcomeEvent
+from valuemaxx.core.outcome import OutcomeBinding
 
 if TYPE_CHECKING:
     from datetime import timedelta
 
     from valuemaxx.capabilities import Registry
-    from valuemaxx.core import LlmJudge, ReviewQueue, RunRepository
+    from valuemaxx.core import LlmJudge, OutcomeEventRepository, ReviewQueue, RunRepository
 
 _SURFACES = Surface.API | Surface.MCP | Surface.CLI
 
@@ -52,6 +53,11 @@ class AttributionRuntime:
     entity_window: timedelta
     judge: LlmJudge | None = None
     semantic_window: timedelta | None = None
+    # Optional so the pure cascade stays usable without a store. When supplied,
+    # `bind_outcome` PERSISTS the outcome (carrying the tier the cascade just
+    # assigned) — without it the binding is computed, returned, and forgotten, so no
+    # metric ever counts the outcome and cost-per-outcome divides by zero forever.
+    outcome_repo: OutcomeEventRepository | None = None
 
     def cascade(self) -> Cascade:
         """Build the cascade over this runtime's dependencies."""
@@ -97,7 +103,18 @@ def register(registry: Registry) -> None:
     holder = _HOLDERS.setdefault(id(registry), _RuntimeHolder())
 
     def bind_outcome_handler(outcome: OutcomeEvent) -> AttributionResult:
-        return holder.require().cascade().bind(outcome)
+        # A caller that already knows the run (the SDK's in-process carry, or an
+        # integration posting the run id it just used) supplies it on the event's
+        # `binding`. Feed that in as the ambient signal: the cascade still REVALIDATES
+        # it against the run repository and refuses a dangling id, so this cannot bind
+        # a ghost — it only stops us discarding a deterministic signal the caller
+        # already has. Without this, `binding.run_id` was read by nothing at all, and
+        # every outcome fell through to the advisory tiers no matter what was sent,
+        # leaving cost-per-outcome permanently null.
+        runtime = holder.require()
+        result = runtime.cascade().bind(outcome, ambient_run_id=outcome.binding.run_id)
+        _persist(runtime, outcome, result)
+        return result
 
     def list_review_queue_handler(outcome: OutcomeEvent) -> AttributionResult:
         return _pending_for(holder.require(), outcome)
@@ -146,6 +163,33 @@ def bind_runtime(registry: Registry, runtime: AttributionRuntime) -> None:
             "no attribution capabilities registered for this registry; call register() first"
         )
     holder.runtime = runtime
+
+
+def _persist(
+    runtime: AttributionRuntime, outcome: OutcomeEvent, result: AttributionResult
+) -> None:
+    """Store the outcome with the binding the cascade just assigned.
+
+    The cascade is a pure function over repositories — it decides a tier but writes no
+    outcome. Something has to persist it or the outcome exists only in the HTTP
+    response: metrics load outcomes from the store, so an unpersisted outcome makes
+    `verified_outcome_count` zero and `cost_per_outcome` null no matter how cleanly it
+    bound. We write the RESULT's binding, not the caller's, so the stored tier is the
+    system-owned one (a caller cannot promote its own outcome to `exact`).
+    """
+    repo = runtime.outcome_repo
+    if repo is None:
+        return
+    repo.upsert(
+        outcome.tenant_id,
+        outcome.model_copy(
+            update={
+                "binding": OutcomeBinding(
+                    run_id=result.run_id, tier=result.tier, bound_by=result.bound_by
+                )
+            }
+        ),
+    )
 
 
 def _pending_for(runtime: AttributionRuntime, outcome: OutcomeEvent) -> AttributionResult:

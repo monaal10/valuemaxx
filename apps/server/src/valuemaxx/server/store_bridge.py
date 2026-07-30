@@ -24,6 +24,7 @@ from typing_extensions import override
 from valuemaxx.core.repositories import (
     CostEventRepository,
     OutcomeEventRepository,
+    ReviewQueue,
     RunRepository,
 )
 from valuemaxx.store.engine import create_engine, create_sessionmaker
@@ -31,6 +32,7 @@ from valuemaxx.store.migrations_api import upgrade_to_head
 from valuemaxx.store.repositories import (
     PgCostEventRepository,
     PgOutcomeEventRepository,
+    PgReviewQueue,
     PgRunRepository,
 )
 
@@ -71,6 +73,7 @@ class StoreBridge:
         self._cost_events = PgCostEventRepository(sessions)
         self._outcome_events = PgOutcomeEventRepository(sessions)
         self._runs = PgRunRepository(sessions)
+        self._review_queue = PgReviewQueue(sessions)
 
     @classmethod
     def open(cls, database_url: str, *, run_migrations: bool = True) -> StoreBridge:
@@ -110,6 +113,15 @@ class StoreBridge:
         ``Run.agent_name`` when a metric groups cost by ``agent_name``.
         """
         return SyncRunRepository(self._portal, self._runs)
+
+    @property
+    def review_queue(self) -> SyncReviewQueue:
+        """A synchronous :class:`~valuemaxx.core.repositories.ReviewQueue`.
+
+        The attribution cascade writes candidate/likely bindings here for a human to
+        confirm; ``list_review_queue`` reads exactly what it wrote.
+        """
+        return SyncReviewQueue(self._portal, self._review_queue)
 
     def close(self) -> None:
         """Dispose the engine on the portal's loop, then stop the portal."""
@@ -213,9 +225,31 @@ class SyncRunRepository(RunRepository):
         return self._portal.call(self._repo.list_by_entity, tenant_id, entity_key)
 
 
+class SyncReviewQueue(ReviewQueue):
+    """Sync facade over the async :class:`PgReviewQueue`, via the portal.
+
+    Same portal-forwarding shape as the other facades: the attribution cascade is a
+    synchronous core API, so the async repository is driven through the blocking
+    portal and this satisfies the synchronous ``ReviewQueue`` ABC.
+    """
+
+    def __init__(self, portal: BlockingPortal, repo: PgReviewQueue) -> None:
+        self._portal = portal
+        self._repo = repo
+
+    @override
+    def enqueue(self, tenant_id: TenantId, item: object) -> None:
+        self._portal.call(self._repo.enqueue, tenant_id, item)
+
+    @override
+    def list_pending(self, tenant_id: TenantId) -> Sequence[object]:
+        return self._portal.call(self._repo.list_pending, tenant_id)
+
+
 __all__ = [
     "StoreBridge",
     "SyncCostEventRepository",
     "SyncOutcomeEventRepository",
+    "SyncReviewQueue",
     "SyncRunRepository",
 ]

@@ -29,15 +29,16 @@ from valuemaxx.capture.otlp.otlp_ingest import span_to_cost_event
 from valuemaxx.capture.selftest import KNOWN_GOOD
 from valuemaxx.core.enums import CaptureGranularity, Provenance
 from valuemaxx.core.errors import AtmError
-from valuemaxx.core.ids import TenantId
+from valuemaxx.core.ids import RunId, TenantId
+from valuemaxx.core.run import Run
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
     from valuemaxx.capabilities import Registry
     from valuemaxx.core.context import Clock
     from valuemaxx.core.pricing import PriceBook
-    from valuemaxx.core.repositories import CostEventRepository
+    from valuemaxx.core.repositories import CostEventRepository, RunRepository
 
 
 class IngestOtlpSpanInput(BaseModel):
@@ -111,6 +112,11 @@ class IngestRuntime:
     pricebook: PriceBook | None
     clock: Clock
     default_provenance: Provenance = Provenance.MEASURED
+    # Optional so an app that only wants raw cost capture stays unchanged. When it IS
+    # supplied, ingesting a span also registers the run it belongs to — without that
+    # row the attribution cascade REFUSES to bind an outcome to the run ("never bind a
+    # ghost"), so cost-per-outcome is permanently null no matter what the caller sends.
+    run_repo: RunRepository | None = None
 
 
 class _IngestHolder:
@@ -131,6 +137,42 @@ _INGEST_HOLDERS: WeakKeyDictionary[Registry, _IngestHolder] = WeakKeyDictionary(
 def _make_ingest_handler(
     holder: _IngestHolder,
 ) -> Callable[[IngestOtlpSpanInput], IngestOtlpSpanOutput]:
+    def _register_run(
+        runtime: IngestRuntime,
+        tenant_id: TenantId,
+        run_id: str,
+        attributes: Mapping[str, object],
+    ) -> None:
+        """Register the run this span belongs to, so an outcome can later bind to it.
+
+        The attribution cascade REVALIDATES every deterministic run id against the run
+        repository and refuses one it cannot find — it will not bind a ghost. Ingesting
+        cost alone never created that row, so every outcome fell through to the advisory
+        tiers and `cost_per_outcome` stayed null even when the caller supplied the exact
+        run id. Registering here closes that gap at the only point that knows a run
+        exists.
+
+        Idempotent by upsert: a run with many attempts re-registers on each span. The
+        first span's timestamp wins as `started_at` only in the sense that the repo
+        upserts the row; we do not pretend to know the true start, and `ended_at` stays
+        None because a cost span cannot tell us the run finished.
+        """
+        run_repo = runtime.run_repo
+        if run_repo is None or run_id == "":
+            return
+        agent = attributes.get("ai_margin.agent_name")
+        run_repo.upsert(
+            tenant_id,
+            Run(
+                tenant_id=tenant_id,
+                id=RunId(run_id),
+                agent_name=str(agent) if agent is not None else None,
+                started_at=runtime.clock.now(),
+                ended_at=None,
+                entity_keys=frozenset(),
+            ),
+        )
+
     def _ingest_otlp_span(request: IngestOtlpSpanInput) -> IngestOtlpSpanOutput:
         # The dedup key is surfaced so a double delivery is visibly idempotent. When a
         # runtime is bound, the span is decoded to a CostEvent and persisted (the repo
@@ -150,6 +192,7 @@ def _make_ingest_handler(
                 default_provenance=runtime.default_provenance,
             )
             runtime.repo.upsert(tenant_id, event)
+            _register_run(runtime, tenant_id, run_id, request.attributes)
         return IngestOtlpSpanOutput(run_id=run_id, attempt_id=attempt_id, accepted=True)
 
     return _ingest_otlp_span

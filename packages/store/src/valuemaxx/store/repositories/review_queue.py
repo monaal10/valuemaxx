@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from pydantic import BaseModel
 from sqlalchemy import select
 from valuemaxx.core.repositories import ReviewQueue
 from valuemaxx.store.repositories._base import BaseRepository, as_row
@@ -34,6 +35,18 @@ def _utc_now() -> datetime:
 def _new_uuid() -> str:
     """The default id generator — a fresh uuid4 hex (overridable for tests)."""
     return uuid4().hex
+
+
+def _as_jsonable(item: object) -> object:
+    """Render a review item into something the ``jsonb`` column can store.
+
+    A pydantic model is dumped in JSON mode (so nested datetimes/UUIDs/Decimals become
+    JSON scalars, not Python objects the encoder would choke on). Anything already
+    JSON-shaped passes through untouched.
+    """
+    if isinstance(item, BaseModel):
+        return item.model_dump(mode="json")
+    return item
 
 
 class PgReviewQueue(BaseRepository):
@@ -58,11 +71,21 @@ class PgReviewQueue(BaseRepository):
         self._new_id = new_id
 
     async def enqueue(self, tenant_id: TenantId, item: object) -> None:
-        """Enqueue a review item (a candidate/likely binding awaiting human review)."""
+        """Enqueue a review item (a candidate/likely binding awaiting human review).
+
+        The ``ReviewQueue`` ABC types ``item`` as ``object`` because the queue is
+        deliberately shape-agnostic, but the column is ``jsonb`` — so what actually
+        arrives (an :class:`~valuemaxx.core.AttributionResult` from the cascade) must
+        be serialized here rather than handed to the driver raw. Passing the model
+        straight through raised ``TypeError: Object of type AttributionResult is not
+        JSON serializable`` from the JSON encoder, which surfaced as a 500 on
+        ``bind_outcome`` for every advisory (candidate/likely) binding — i.e. exactly
+        the bindings the review queue exists to hold.
+        """
         values: dict[str, object] = {
             "id": self._new_id(),
             "tenant_id": tenant_id,
-            "item": item,
+            "item": _as_jsonable(item),
             "enqueued_at": self._now(),
         }
         async with self._sessions.begin() as session:
