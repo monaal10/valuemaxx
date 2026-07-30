@@ -52,7 +52,7 @@
     "yaml": "^2.4.0"
   },
   "peerDependencies": {
-    "typescript": ">=5"
+    "typescript": ">=5 <7"
   },
   "peerDependenciesMeta": {
     "typescript": {

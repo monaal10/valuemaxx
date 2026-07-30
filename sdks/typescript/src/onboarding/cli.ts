@@ -35,12 +35,27 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
 
   // `onboard` needs the TypeScript compiler to parse. Import lazily so a missing peer dep is a
   // friendly hint, not a crash — and so the SDK library itself never pulls typescript.
+  let tsModule: unknown;
   try {
-    await import("typescript");
+    tsModule = await import("typescript");
   } catch {
     process.stderr.write(
       "valuemaxx onboard needs the TypeScript compiler to parse your code, but 'typescript' " +
         "is not installed.\nInstall it (your TS project usually already has it):  npm i -D typescript\n",
+    );
+    return 1;
+  }
+
+  // typescript@7 is the native (Go) compiler: it ships `tsc` but NOT the JS parser API this
+  // scanner uses, so `ts.createSourceFile` is undefined and we'd die with an opaque
+  // "Cannot read properties of undefined (reading 'Latest')". Detect it and say so.
+  const ts = (tsModule as { default?: unknown }).default ?? tsModule;
+  if (typeof (ts as { createSourceFile?: unknown }).createSourceFile !== "function") {
+    const version = (tsModule as { version?: string }).version ?? "unknown";
+    process.stderr.write(
+      `valuemaxx onboard needs the TypeScript JS parser API, but the installed 'typescript' ` +
+        `(${version}) does not expose it.\nTypeScript 7 dropped the bundled JS API; install a 5.x/6.x ` +
+        `alongside it:  npm i -D typescript@^5\n`,
     );
     return 1;
   }
