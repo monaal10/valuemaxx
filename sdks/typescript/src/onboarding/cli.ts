@@ -8,11 +8,29 @@
  * already has it; if it's genuinely absent, we print an install hint rather than a stack trace.
  */
 
+/** Replaced at build time by tsup's `define`; absent when running from source. */
+declare const __VALUEMAXX_VERSION__: string | undefined;
+
 function parseRepo(argv: readonly string[]): string {
   const i = argv.indexOf("--repo");
   if (i !== -1 && i + 1 < argv.length) return argv[i + 1]!;
   return process.cwd();
 }
+
+function parsePort(argv: readonly string[]): number | undefined {
+  const i = argv.indexOf("--port");
+  if (i === -1 || i + 1 >= argv.length) return undefined;
+  const parsed = Number.parseInt(argv[i + 1]!, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+/**
+ * This CLI's version, used to pin the backend image tag so an older CLI never silently
+ * drives a newer backend. Injected at build time by tsup (`define`), falling back to
+ * "latest" when running from source.
+ */
+const CLI_VERSION: string =
+  typeof __VALUEMAXX_VERSION__ === "string" ? __VALUEMAXX_VERSION__ : "latest";
 
 export async function main(argv: readonly string[] = process.argv.slice(2)): Promise<number> {
   const [command, ...rest] = argv;
@@ -21,13 +39,38 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
     process.stdout.write(
       "valuemaxx — AI margin intelligence.\n\n" +
         "Usage:\n" +
-        "  valuemaxx onboard [--repo <dir>]   Scan a repo -> propose outcomes.yaml + a reviewable diff\n",
+        "  valuemaxx onboard [--repo <dir>]   Scan a repo -> propose outcomes.yaml + a reviewable diff\n" +
+        "  valuemaxx up [--port <n>]          Start the backend (container; data persists)\n" +
+        "  valuemaxx view [--port <n>]        Start the backend if needed, then open the dashboard\n" +
+        "  valuemaxx down                     Stop the backend (keeps your data)\n",
     );
     return 0;
   }
 
+  // Backend lifecycle. These shell out to the published backend image so a TS user never
+  // installs Python or types a `docker run` — see backend.ts for why one backend, many
+  // front doors, rather than a second implementation in Node.
+  if (command === "up" || command === "view" || command === "down") {
+    const { startBackend, stopBackend, openBrowser } = await import("./backend.js");
+
+    if (command === "down") {
+      const result = stopBackend();
+      process.stdout.write(result.message);
+      return result.ok ? 0 : 1;
+    }
+
+    const started = startBackend({ port: parsePort(rest), version: CLI_VERSION });
+    process.stdout.write(started.message);
+    if (!started.ok) return 1;
+    if (command === "view") {
+      process.stdout.write(`valuemaxx: opening ${started.url}\n`);
+      openBrowser(started.url);
+    }
+    return 0;
+  }
+
   if (command !== "onboard") {
-    process.stderr.write(`valuemaxx: unknown command '${command}'. Try 'valuemaxx onboard'.\n`);
+    process.stderr.write(`valuemaxx: unknown command '${command}'. Try 'valuemaxx --help'.\n`);
     return 2;
   }
 

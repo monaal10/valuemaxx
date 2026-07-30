@@ -110,3 +110,46 @@ jobs:
           else
             npm publish --access public
           fi
+
+  # 4. Publish the backend container image.
+  #
+  # This is what makes valuemaxx language-agnostic in practice. The backend is ~20k lines
+  # of Python (ingest, store, outcomes, reconciliation, metrics, eval), and a TS user must
+  # never have to install Python to run it — so the SAME FastAPI app `valuemaxx up` serves
+  # ships as an image the npm CLI can `docker run` on the user's behalf. Without this job
+  # the README's `docker run ghcr.io/...` line is a promise the registry cannot keep, and
+  # every non-Python user hits `pip install` as a hard prerequisite.
+  #
+  # Tagged with the release version AND `latest`, so `valuemaxx up` can pin the image to
+  # the CLI's own version (an older CLI must not silently drive a newer backend).
+  publish-image:
+    needs: gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write  # push to GHCR
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Derive the version from the tag
+        id: version
+        run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      # linux/amd64 + linux/arm64: Apple Silicon is the common local-dev machine, and an
+      # amd64-only image would run under emulation there (slow enough to read as broken).
+      - name: Build and push the backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/valuemaxx-backend:${{ steps.version.outputs.value }}
+            ghcr.io/${{ github.repository_owner }}/valuemaxx-backend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

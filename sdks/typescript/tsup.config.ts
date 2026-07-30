@@ -1,4 +1,10 @@
+import { createRequire } from "node:module";
+
 import { defineConfig } from "tsup";
+
+// The CLI pins the backend image to its OWN version, so an older `valuemaxx up` never
+// silently drives a newer backend. Read from the manifest the stamp script already owns.
+const { version } = createRequire(import.meta.url)("./package.json") as { version: string };
 
 /**
  * Dual ESM/CJS build with bundled `.d.ts` declarations.
@@ -33,6 +39,7 @@ export default defineConfig([
     treeshake: true,
     target: "es2022",
     external: ["typescript"],
+    define: { __VALUEMAXX_VERSION__: JSON.stringify(version) },
     outExtension() {
       return { js: ".js" };
     },
