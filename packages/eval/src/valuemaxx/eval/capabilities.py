@@ -160,8 +160,29 @@ def register(registry: Registry) -> None:
         )
 
     def run_eval_funnel_handler(request: RunEvalFunnelInput) -> RunEvalFunnelOutput:
-        # async_job: the surface acknowledges the job; the funnel runs out-of-band.
-        holder.require()  # ensure wired before accepting the job
+        # This used to ONLY acknowledge the job — "the funnel runs out-of-band" — but
+        # nothing ran it out of band, so every submission returned accepted=True, did no
+        # work, and `get_recommendation` stayed `found: false` forever. The async-job
+        # surface already runs the handler on a worker and polls via /jobs/{id}, so the
+        # funnel belongs here.
+        from uuid import UUID
+
+        from valuemaxx.core import LabelSource, ProviderKeyRef, TenantId
+
+        service = holder.require()
+        service.run_eval_funnel(
+            tenant_id=TenantId(UUID(request.tenant_id)),
+            incumbent_model=request.incumbent_model,
+            candidate=ProviderKeyRef(
+                provider=request.candidate_provider,
+                # A REFERENCE, never plaintext: the recommendation has no key field and
+                # nothing here logs or persists it.
+                secret_ref=request.candidate_secret_ref,
+            ),
+            candidate_model=request.candidate_model,
+            # The wire carries a plain string; the funnel needs the enum.
+            label_source=LabelSource(request.label_source),
+        )
         return RunEvalFunnelOutput(
             job_id=f"eval-{request.tenant_id}-{request.candidate_model}", accepted=True
         )
