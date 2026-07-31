@@ -213,6 +213,7 @@ _PAGE = """<!doctype html>
         <button id="ev-run" type="button">Estimate &amp; run</button>
       </div>
       <div id="ev-status" class="note" style="padding-left:0"></div>
+      <div id="ev-savings" class="note" style="padding-left:0"></div>
     </div>
   </section>
   <section>
@@ -360,6 +361,29 @@ document.getElementById("ev-run").addEventListener("click", async () => {
 
   btn.disabled = true;
   status.textContent = "Submitting eval run…";
+
+  // Show what the switch would cost BEFORE the eval finishes: the estimate is pure
+  // arithmetic over traffic already captured, so it needs no provider call and no
+  // waiting. It is always ESTIMATED — list price applied to traffic this candidate
+  // never actually served — and says so.
+  const savings = await call("estimate_switch_cost", {
+    incumbent_model: incumbent,
+    candidate_model: candidate,
+    candidate_provider: provider,
+  });
+  const savingsEl = document.getElementById("ev-savings");
+  if (savings.found) {
+    const pct = Number(savings.pct_change);
+    const verb = pct < 0 ? "cheaper" : "more expensive";
+    savingsEl.innerHTML =
+      "Estimated cost on your own captured traffic: <code>$" + esc(savings.incumbent_usd) +
+      "</code> \u2192 <code>$" + esc(savings.candidate_usd) + "</code> — " +
+      '<span class="' + (pct < 0 ? "ok" : "warn") + '">' + esc(Math.abs(pct).toFixed(1)) +
+      "% " + verb + "</span> across " + esc(savings.event_count) +
+      " event(s). Estimated (list price), not billed.";
+  } else {
+    savingsEl.textContent = "No cost estimate: " + (savings.reason ?? "unavailable") + ".";
+  }
   const res = await call("run_eval_funnel", {
     incumbent_model: incumbent,
     candidate_model: candidate,

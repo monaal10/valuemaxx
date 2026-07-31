@@ -35,6 +35,7 @@ from valuemaxx.api.app import build_app
 from valuemaxx.attribution import AttributionRuntime
 from valuemaxx.attribution import bind_runtime as bind_attribution_runtime
 from valuemaxx.capture import IngestRuntime, bind_ingest_runtime, default_pricebook
+from valuemaxx.capture.pricing import compute_cost_usd
 from valuemaxx.core.enums import Provenance
 from valuemaxx.core.ids import TenantId
 from valuemaxx.eval import EvalService
@@ -162,6 +163,12 @@ def _wire_runtimes(registry: Registry, bridge: StoreBridge, settings: ServerSett
             # The replay corpus: without it the funnel can only compare stored strings
             # instead of re-running real prompts against the candidate.
             raw_record_repo=bridge.raw_records,
+            # "Switch and save X%" needs both halves: the tenant's observed traffic and
+            # a pricebook to reprice it against. `compute_cost_usd` is INJECTED because
+            # eval and capture are contractually independent packages.
+            cost_repo=bridge.cost_events,
+            pricebook=default_pricebook(),
+            price=compute_cost_usd,
         ),
     )
 

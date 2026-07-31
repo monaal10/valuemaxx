@@ -16,6 +16,7 @@ from valuemaxx.eval.capabilities import (
 
 _EXPECTED = {
     "discover_agents",
+    "estimate_switch_cost",
     "import_promptfoo_suite",
     "run_eval_funnel",
     "get_recommendation",
@@ -32,7 +33,7 @@ def _registry() -> Registry:
 # ---------------------------------------------------------------- register
 
 
-def test_register_adds_all_four_capabilities() -> None:
+def test_register_adds_every_capability() -> None:
     """register adds exactly the four eval capabilities (discover/run/get/approve)."""
     names = {spec.name for spec in _registry().all()}
     assert names == _EXPECTED

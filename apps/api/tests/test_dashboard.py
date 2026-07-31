@@ -120,3 +120,24 @@ def test_dashboard_shows_outcomes_and_agents() -> None:
     body = get(_client(), "/").text
     assert "OUTCOMES RECORDED" in body
     assert "SPEND BY AGENT" in body
+
+
+def test_dashboard_shows_what_switching_would_cost() -> None:
+    """The one sentence a user wants: "switch and save X%".
+
+    A recommendation used to say only that a candidate holds parity. Showing the
+    projected cost beside it is what turns "it's as good" into a decision.
+    """
+    body = get(_client(), "/").text
+    assert "estimate_switch_cost" in body
+    assert 'id="ev-savings"' in body
+
+
+def test_the_switch_estimate_is_labelled_estimated() -> None:
+    """It is list price applied to traffic the candidate never served.
+
+    Rendering it as a billed number would be exactly the provenance laundering the
+    honesty axes exist to prevent.
+    """
+    body = get(_client(), "/").text
+    assert "not billed" in body

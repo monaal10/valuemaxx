@@ -35,6 +35,7 @@ from valuemaxx.eval.replay import (
     parse_samples,
 )
 from valuemaxx.eval.report import RecommendationInputs, build_recommendation
+from valuemaxx.eval.savings import SwitchEstimateResult, estimate_switch
 from valuemaxx.eval.stats import Percentiles
 from valuemaxx.eval.types import TaskType
 
@@ -53,8 +54,14 @@ if TYPE_CHECKING:
         EvalDatasetRepository,
         EvalRecommendationRepository,
     )
-    from valuemaxx.core.repositories import OutcomeEventRepository, RawRecordRepository
+    from valuemaxx.core.pricing import PriceBook
+    from valuemaxx.core.repositories import (
+        CostEventRepository,
+        OutcomeEventRepository,
+        RawRecordRepository,
+    )
     from valuemaxx.eval.costgate import ProviderTokenizer
+    from valuemaxx.eval.savings import CostPricer
 from valuemaxx.eval.types import (
     CapturedCall,
     ClusterCandidate,
@@ -88,6 +95,12 @@ class EvalService:
     # host happened to store, which is the difference between evaluating a model and
     # comparing fixtures.
     raw_record_repo: RawRecordRepository | None = None
+    # Cost traffic + pricing, for "what would switching save". Optional so the pure
+    # service stays constructible; without them a switch estimate reports why it cannot
+    # be made rather than returning a zero.
+    cost_repo: CostEventRepository | None = None
+    pricebook: PriceBook | None = None
+    price: CostPricer | None = None
 
     def discover_agents(self, calls: Sequence[CapturedCall]) -> tuple[ClusterCandidate, ...]:
         """Cluster captured calls into agent/prompt clusters (every cluster unconfirmed)."""
@@ -169,6 +182,35 @@ class EvalService:
             runner=cast("CandidateRunner", self.provider),
             candidate_model=candidate_model,
             max_cases=max_cases,
+        )
+
+    def estimate_switch_for(
+        self,
+        tenant_id: TenantId,
+        *,
+        incumbent_model: str,
+        candidate_model: str,
+        candidate_provider: str,
+    ) -> SwitchEstimateResult:
+        """Project the cost of serving this tenant's own traffic on another model.
+
+        Reprices the incumbent's OBSERVED token vectors, so the answer reflects this
+        workload's actual cache/output mix rather than a headline rate ratio.
+        """
+        if self.cost_repo is None or self.pricebook is None or self.price is None:
+            return SwitchEstimateResult(
+                estimate=None,
+                reason="cost repository or pricebook not wired; cannot estimate a switch",
+            )
+        events = list(self.cost_repo.list_in_window(tenant_id, _EPOCH, _FOREVER))
+        return estimate_switch(
+            events,
+            incumbent_model=incumbent_model,
+            candidate_model=candidate_model,
+            candidate_provider=candidate_provider,
+            pricebook=self.pricebook,
+            price=self.price,
+            at=datetime.now(UTC),
         )
 
     def build_case_set_for(self, tenant_id: TenantId) -> CaseSet:

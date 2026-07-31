@@ -20,6 +20,7 @@ no concrete store, and no tiktoken (asserted by ``test_eval_imports_no_surface_o
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
@@ -118,6 +119,32 @@ class ImportPromptfooOutput(BaseModel):
     unsupported: tuple[str, ...]
 
 
+class EstimateSwitchInput(BaseModel):
+    """Request the projected cost of serving today's traffic with a different model."""
+
+    tenant_id: str
+    incumbent_model: str
+    candidate_model: str
+    candidate_provider: str
+
+
+class EstimateSwitchOutput(BaseModel):
+    """The projected switch cost, or the reason there is no honest estimate.
+
+    Every figure is ESTIMATED: list-price arithmetic over traffic the candidate never
+    actually served. It is never a measured or reconciled cost, and a caller must not
+    render it as one.
+    """
+
+    found: bool
+    incumbent_usd: str | None = None
+    candidate_usd: str | None = None
+    """Negative means cheaper. None when the incumbent baseline is zero."""
+    pct_change: str | None = None
+    event_count: int = 0
+    reason: str | None = None
+
+
 class RunEvalFunnelOutput(BaseModel):
     """The async-job acknowledgement: the job id to poll for the recommendation."""
 
@@ -193,6 +220,12 @@ _IMPORT_EXAMPLE = ImportPromptfooInput(
     tenant_id="00000000-0000-0000-0000-000000000000",
     jsonl='{"assert": [{"type": "llm-rubric", "value": "the answer stays on topic"}]}',
 )
+_ESTIMATE_EXAMPLE = EstimateSwitchInput(
+    tenant_id="00000000-0000-0000-0000-000000000000",
+    incumbent_model="claude-opus-4",
+    candidate_model="claude-haiku-4",
+    candidate_provider="anthropic",
+)
 _APPROVE_EXAMPLE = ApproveGateInput(
     tenant_id="00000000-0000-0000-0000-000000000000", phase="smoke", approved=True
 )
@@ -235,6 +268,31 @@ def register(registry: Registry) -> None:
             judge_count=sum(1 for c in suite.criteria if c.judge_required),
             deterministic_count=sum(1 for c in suite.criteria if not c.judge_required),
             unsupported=suite.unsupported,
+        )
+
+    def estimate_switch_handler(request: EstimateSwitchInput) -> EstimateSwitchOutput:
+        from uuid import UUID
+
+        from valuemaxx.core import TenantId
+
+        result = holder.require().estimate_switch_for(
+            TenantId(UUID(request.tenant_id)),
+            incumbent_model=request.incumbent_model,
+            candidate_model=request.candidate_model,
+            candidate_provider=request.candidate_provider,
+        )
+        if result.estimate is None:
+            # No number rather than a zero: "we could not price this" and "$0 saved"
+            # are different facts.
+            return EstimateSwitchOutput(found=False, reason=result.reason)
+        estimate = result.estimate
+        pct = estimate.pct_change
+        return EstimateSwitchOutput(
+            found=True,
+            incumbent_usd=str(estimate.incumbent_usd),
+            candidate_usd=str(estimate.candidate_usd),
+            pct_change=None if pct is None else str(pct.quantize(Decimal("0.1"))),
+            event_count=estimate.event_count,
         )
 
     def run_eval_funnel_handler(request: RunEvalFunnelInput) -> RunEvalFunnelOutput:
@@ -343,6 +401,24 @@ def register(registry: Registry) -> None:
             surfaces=_RR_SURFACES,
             mode=Mode.REQUEST_RESPONSE,
             examples=(_IMPORT_EXAMPLE,),
+        )
+    )
+    registry.register(
+        capability(
+            name="estimate_switch_cost",
+            input_model=EstimateSwitchInput,
+            output_model=EstimateSwitchOutput,
+            handler=estimate_switch_handler,
+            description=(
+                "Project what today's traffic would cost on a different model, by "
+                "repricing the incumbent's OWN observed token vectors against the "
+                "candidate's price card. Always ESTIMATED (list price over traffic the "
+                "candidate never served); returns no number when the model cannot be "
+                "priced, rather than a misleading zero."
+            ),
+            surfaces=_RR_SURFACES,
+            mode=Mode.REQUEST_RESPONSE,
+            examples=(_ESTIMATE_EXAMPLE,),
         )
     )
     registry.register(
