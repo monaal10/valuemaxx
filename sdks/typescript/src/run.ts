@@ -18,7 +18,25 @@ interface RunContext {
   readonly agentName?: string | undefined;
 }
 
-const storage = new AsyncLocalStorage<RunContext>();
+/**
+ * The run store, held on a process-global symbol rather than in module scope.
+ *
+ * This package ships dual ESM+CJS, and a host that mixes `import` and `require` (or
+ * resolves two copies through a lockfile) loads BOTH builds. A module-local
+ * `AsyncLocalStorage` then means `run()` writes to one store while `activeRunId()`
+ * reads another, so the run id silently vanishes: cost captures fine, every outcome
+ * lands unbound, and cost-per-outcome divides by zero with no error anywhere. Sharing
+ * one store across every copy in the process is what makes the binding survive.
+ */
+const STORE_KEY = Symbol.for("valuemaxx.runStore");
+
+type GlobalWithStore = typeof globalThis & {
+  [STORE_KEY]?: AsyncLocalStorage<RunContext>;
+};
+
+const globalRef = globalThis as GlobalWithStore;
+const storage: AsyncLocalStorage<RunContext> =
+  globalRef[STORE_KEY] ?? (globalRef[STORE_KEY] = new AsyncLocalStorage<RunContext>());
 
 /** The active run id bound by an enclosing {@link run}, or `undefined` if none. */
 export function activeRunId(): string | undefined {

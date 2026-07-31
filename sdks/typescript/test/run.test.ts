@@ -75,3 +75,24 @@ describe("agent name on the run scope", () => {
     });
   });
 });
+
+describe("the run store survives dual ESM/CJS loading", () => {
+  // This package ships both formats. A host that mixes `import` and `require` — or
+  // whose lockfile resolves two copies — loads BOTH builds, and a module-local
+  // AsyncLocalStorage then means `run()` writes to one store while `activeRunId()`
+  // reads another. The run id vanishes silently: cost captures fine, every outcome
+  // lands unbound, and cost-per-outcome divides by zero with no error anywhere.
+  it("holds the store on a process-global symbol, not in module scope", () => {
+    const store = (globalThis as Record<symbol, unknown>)[Symbol.for("valuemaxx.runStore")];
+    expect(store).toBeDefined();
+  });
+
+  it("a second copy of the module would read the same ambient run", () => {
+    run("shared-scope", () => {
+      // Whatever holds the global symbol is what any copy resolves to.
+      const store = (globalThis as Record<symbol, unknown>)[Symbol.for("valuemaxx.runStore")];
+      expect(store).toBeDefined();
+      expect(activeRunId()).toBe("shared-scope");
+    });
+  });
+});
