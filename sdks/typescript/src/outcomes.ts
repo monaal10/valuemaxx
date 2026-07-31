@@ -96,10 +96,7 @@ function defaultNewId(): string {
  * call time — that is what earns the `exact` binding tier when the host wrapped its
  * work in `run()`.
  */
-async function recordOutcome(
-  rule: OutcomeRule,
-  config: OutcomeRecorderConfig,
-): Promise<void> {
+async function recordOutcome(rule: OutcomeRule, config: OutcomeRecorderConfig): Promise<void> {
   const doFetch = config.fetchImpl ?? globalThis.fetch;
   const newId = config.newId ?? defaultNewId;
   const now = config.now ?? ((): Date => new Date());

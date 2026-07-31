@@ -63,11 +63,7 @@ export function activeAgentName(): string | undefined {
  */
 export function run<T>(runId: string, fn: () => T): T;
 export function run<T>(runId: string, options: RunOptions, fn: () => T): T;
-export function run<T>(
-  runId: string,
-  optionsOrFn: RunOptions | (() => T),
-  maybeFn?: () => T,
-): T {
+export function run<T>(runId: string, optionsOrFn: RunOptions | (() => T), maybeFn?: () => T): T {
   const fn = typeof optionsOrFn === "function" ? optionsOrFn : maybeFn;
   const options = typeof optionsOrFn === "function" ? undefined : optionsOrFn;
   if (fn === undefined) {

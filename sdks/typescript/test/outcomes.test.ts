@@ -29,9 +29,9 @@ const DOC: OutcomesDocument = {
 
 function okFetch(): { fetchImpl: typeof fetch; calls: unknown[] } {
   const calls: unknown[] = [];
-  const fetchImpl = vi.fn(async (_url: unknown, init: unknown) => {
+  const fetchImpl = vi.fn((_url: unknown, init: unknown) => {
     calls.push(JSON.parse((init as { body: string }).body));
-    return { ok: true, status: 200 } as Response;
+    return Promise.resolve({ ok: true, status: 200 } as Response);
   }) as unknown as typeof fetch;
   return { fetchImpl, calls };
 }
@@ -95,7 +95,7 @@ describe("installOutcomes", () => {
 
   it("does NOT record when an async function rejects", async () => {
     const { fetchImpl, calls } = okFetch();
-    const targets = { markAltCreated: async () => Promise.reject(new Error("nope")) };
+    const targets = { markAltCreated: () => Promise.reject(new Error("nope")) };
     installOutcomes(DOC, targets, { ...CONFIG, fetchImpl });
 
     await expect(targets.markAltCreated()).rejects.toThrow("nope");
@@ -105,7 +105,7 @@ describe("installOutcomes", () => {
 
   it("records an async outcome only after it resolves", async () => {
     const { fetchImpl, calls } = okFetch();
-    const targets = { markAltCreated: async () => "done" };
+    const targets = { markAltCreated: () => Promise.resolve("done") };
     installOutcomes(DOC, targets, { ...CONFIG, fetchImpl });
 
     await targets.markAltCreated();
@@ -115,9 +115,7 @@ describe("installOutcomes", () => {
 
   // Cost instrumentation must never turn a working feature into a broken one.
   it("never breaks the host when the backend is down", async () => {
-    const failing = (async () => {
-      throw new Error("ECONNREFUSED");
-    }) as unknown as typeof fetch;
+    const failing = (() => Promise.reject(new Error("ECONNREFUSED"))) as unknown as typeof fetch;
     const warn = vi.fn();
     const targets = { markAltCreated: () => "still works" };
     installOutcomes(DOC, targets, {
