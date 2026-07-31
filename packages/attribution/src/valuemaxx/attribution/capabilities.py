@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+from weakref import WeakKeyDictionary
 
 from valuemaxx.attribution.cascade import Cascade
 from valuemaxx.capabilities import Mode, Surface, capability
@@ -90,7 +91,14 @@ class _RuntimeHolder:
 
 # One holder per registry instance, keyed by identity (a registry is unhashable-safe
 # here because we key on ``id``; the holder lifetime matches the registry's).
-_HOLDERS: dict[int, _RuntimeHolder] = {}
+# Keyed by the registry OBJECT, weakly — never by ``id()``. CPython recycles memory
+# addresses, so an id-keyed dict lets a garbage-collected registry leave a stale holder
+# behind at the same address: a brand-new registry then looks already-registered, and
+# the "not wired" guard silently stops firing. That is an order-dependent flake by
+# construction (it depends on allocation, so it reproduces in CI and not locally), and
+# it blocked a release. A weak key dies with the registry, so the entry cannot outlive
+# the object it describes.
+_HOLDERS: WeakKeyDictionary[object, _RuntimeHolder] = WeakKeyDictionary()
 
 
 def register(registry: Registry) -> None:
@@ -100,7 +108,7 @@ def register(registry: Registry) -> None:
     capabilities' handlers closing over it. The app calls :func:`bind_runtime` to
     supply the runtime before any handler is invoked.
     """
-    holder = _HOLDERS.setdefault(id(registry), _RuntimeHolder())
+    holder = _HOLDERS.setdefault(registry, _RuntimeHolder())
 
     def bind_outcome_handler(outcome: OutcomeEvent) -> AttributionResult:
         # A caller that already knows the run (the SDK's in-process carry, or an
@@ -157,7 +165,7 @@ def bind_runtime(registry: Registry, runtime: AttributionRuntime) -> None:
     Raises :class:`AttributionNotWiredError` if :func:`register` was never called
     for this registry (there is no holder to bind into).
     """
-    holder = _HOLDERS.get(id(registry))
+    holder = _HOLDERS.get(registry)
     if holder is None:
         raise AttributionNotWiredError(
             "no attribution capabilities registered for this registry; call register() first"

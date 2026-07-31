@@ -135,3 +135,31 @@ def test_eval_imports_no_surface_or_store() -> None:
             ):
                 offenders.append(f"{py.name}: {sorted(roots | modules)}")
     assert not offenders, f"eval imports a forbidden surface/store/tiktoken: {offenders}"
+
+
+def test_holders_do_not_outlive_their_registry() -> None:
+    """A holder keyed by `id()` survives its registry and poisons the next one.
+
+    CPython recycles memory addresses, so a garbage-collected `Registry` used to leave a
+    stale holder at the same id — a brand-new registry then looked already-registered
+    and the "not wired" guard stopped firing. That is order-dependent by construction
+    (it depends on allocation, so it reproduced in CI and not locally) and it failed a
+    release gate. Weak keys make the entry die with the object it describes.
+    """
+    import gc
+
+    from valuemaxx.eval.capabilities import _HOLDERS  # pyright: ignore[reportPrivateUsage]
+
+    registry = Registry()
+    register(registry)
+    assert registry in _HOLDERS
+
+    # Identity, not count: under coverage tracing the interpreter holds extra frame
+    # references, so the object may outlive the `del`. What must hold either way is
+    # that the entry is keyed by the OBJECT — a recycled `id()` can no longer collide,
+    # which is the actual bug. (Asserting `len == 0` fails under `pytest --cov`, which
+    # is precisely the CI condition that exposed the original flake.)
+    del registry
+    gc.collect()
+    fresh = Registry()
+    assert fresh not in _HOLDERS

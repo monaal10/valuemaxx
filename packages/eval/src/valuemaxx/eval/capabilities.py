@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from typing import TYPE_CHECKING
+from weakref import WeakKeyDictionary
 
 from pydantic import BaseModel
 from valuemaxx.capabilities import Mode, Surface, capability
@@ -202,7 +203,14 @@ class _RuntimeHolder:
         return self.service
 
 
-_HOLDERS: dict[int, _RuntimeHolder] = {}
+# Keyed by the registry OBJECT, weakly — never by ``id()``. CPython recycles memory
+# addresses, so an id-keyed dict lets a garbage-collected registry leave a stale holder
+# behind at the same address: a brand-new registry then looks already-registered, and
+# the "not wired" guard silently stops firing. That is an order-dependent flake by
+# construction (it depends on allocation, so it reproduces in CI and not locally), and
+# it blocked a release. A weak key dies with the registry, so the entry cannot outlive
+# the object it describes.
+_HOLDERS: WeakKeyDictionary[object, _RuntimeHolder] = WeakKeyDictionary()
 
 _DISCOVER_EXAMPLE = DiscoverAgentsInput(call_sites=("agent.triage",), prompts=("Classify ticket",))
 _RUN_EXAMPLE = RunEvalFunnelInput(
@@ -238,7 +246,7 @@ def register(registry: Registry) -> None:
     capabilities closing over it. The app calls :func:`bind_runtime` to supply the
     :class:`~valuemaxx.eval.service.EvalService` before any handler is invoked.
     """
-    holder = _HOLDERS.setdefault(id(registry), _RuntimeHolder())
+    holder = _HOLDERS.setdefault(registry, _RuntimeHolder())
 
     def discover_agents_handler(request: DiscoverAgentsInput) -> DiscoverAgentsOutput:
         clusters = holder.require().discover_agents(_calls_from(request))
@@ -477,7 +485,7 @@ def bind_runtime(registry: Registry, service: EvalService) -> None:
     Raises :class:`EvalNotWiredError` if :func:`register` was never called for this
     registry (there is no holder to bind into).
     """
-    holder = _HOLDERS.get(id(registry))
+    holder = _HOLDERS.get(registry)
     if holder is None:
         raise EvalNotWiredError(
             "no eval capabilities registered for this registry; call register() first"
