@@ -12,7 +12,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-import { installOutcomes, type OutcomesDocument } from "../src/outcomes.js";
+import { installOutcomes, type OutcomesDocument, recordOutcomeNow } from "../src/outcomes.js";
 import { run } from "../src/run.js";
 
 const CONFIG = {
@@ -154,5 +154,60 @@ describe("installOutcomes", () => {
     (targets.markAltCreated as () => string)();
     await settle();
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe("recordOutcomeNow", () => {
+  it("records an outcome from a call site that owns no patchable function", async () => {
+    // The monkey-patch path needs a mutable object holding a named function. A
+    // workflow step, a queue consumer, and a chat completion all reach their
+    // "done" moment as a RETURN VALUE inside a closure — there is nothing to
+    // patch, so `installOutcomes` cannot express them at all. Without a direct
+    // call, every such host can bind runs and still never record the outcome
+    // those runs exist to explain, leaving cost-per-outcome null forever.
+    const { fetchImpl, calls } = okFetch();
+
+    await run("build-alt-7", { entityKeys: { alt_id: "alt_7" } }, async () => {
+      await recordOutcomeNow({ name: "alt_created" }, { ...CONFIG, fetchImpl });
+    });
+
+    expect(calls).toHaveLength(1);
+    const body = calls[0] as {
+      name: string;
+      binding: { run_id: string; tier: null };
+      entity_keys: ReadonlyArray<readonly [string, string]>;
+    };
+    expect(body.name).toBe("alt_created");
+    expect(body.binding.run_id).toBe("build-alt-7");
+    // The caller never states a tier — the backend cascade owns it.
+    expect(body.binding.tier).toBeNull();
+    expect(body.entity_keys).toEqual([["alt_id", "alt_7"]]);
+  });
+
+  it("carries the ambient entity keys, so a unit can span several runs", async () => {
+    // Entity keys are what let "cost per candidate" join a build run to a screen
+    // run. They were declared on `run()` and then dropped on the floor here, so
+    // the rollup they exist for was unreachable — and they cannot be backfilled.
+    const { fetchImpl, calls } = okFetch();
+
+    await run("screen-9", { entityKeys: { candidate_id: "c_9", org_id: "o_1" } }, async () => {
+      await recordOutcomeNow({ name: "screened" }, { ...CONFIG, fetchImpl });
+    });
+
+    const body = calls[0] as { entity_keys: ReadonlyArray<readonly [string, string]> };
+    expect(new Map(body.entity_keys)).toEqual(
+      new Map([
+        ["candidate_id", "c_9"],
+        ["org_id", "o_1"],
+      ]),
+    );
+  });
+
+  it("records outside any run, binding no run rather than throwing", async () => {
+    const { fetchImpl, calls } = okFetch();
+    await recordOutcomeNow({ name: "orphan" }, { ...CONFIG, fetchImpl });
+    const body = calls[0] as { binding: { run_id: null }; entity_keys: readonly unknown[] };
+    expect(body.binding.run_id).toBeNull();
+    expect(body.entity_keys).toEqual([]);
   });
 });

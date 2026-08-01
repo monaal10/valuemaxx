@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING
 
 from valuemaxx.core import BindingTier, RollupConfidence, SignalClass
 from valuemaxx.metrics.grammar import Dimension, Measure
-from valuemaxx.metrics.propagation import denominator_outcomes
+from valuemaxx.metrics.propagation import denominator_outcomes, is_billing_grade
 from valuemaxx.metrics.schemas import MetricCell, MetricResult
 
 if TYPE_CHECKING:
@@ -258,7 +258,8 @@ class MetricExecutor:
         cell_outcomes = [
             o for o in outcomes if _matches_key(_outcome_group_key(o, plan.group_by), key)
         ]
-        numerator = _numerator_value(plan.numerator, cell_events, cell_outcomes)
+        numerator_events = _numerator_events(plan, cell_events, cell_outcomes)
+        numerator = _numerator_value(plan.numerator, numerator_events, cell_outcomes)
         breakdown = denominator_outcomes(cell_outcomes)
         denominator = _denominator_value(plan.denominator, cell_events, cell_outcomes, breakdown)
         value = _ratio(numerator, denominator)
@@ -287,6 +288,44 @@ def _matches_key(
         return True
     record = dict(record_key)
     return all(record.get(field) == value for field, value in cell_key if field in record)
+
+
+def _numerator_events(
+    plan: QueryPlan,
+    events: Sequence[CostEvent],
+    outcomes: Sequence[OutcomeEvent],
+) -> Sequence[CostEvent]:
+    """Narrow the numerator to the runs that actually produced the denominator.
+
+    Cost-per-outcome is a UNIT cost: the spend on the runs that succeeded, over the
+    number that succeeded. Dividing the window's ENTIRE spend by the verified count
+    is a portfolio ratio — it silently charges failed and in-flight runs to the
+    successes, and it moves whenever traffic mix changes even if per-unit cost is
+    flat. Only cost-over-verified-outcomes is affected: an attempt/outcome count
+    numerator has no per-run cost to attribute.
+
+    The narrowing needs run ids on both sides. When NO verified outcome carries one
+    (an entity-bound or unbound outcome — advisory by construction), there is
+    nothing to join on, so we return every event rather than an empty set: the
+    honest degrade is the ratio the metric always reported, not a null that reads
+    as "no data" when the real answer is "cannot attribute at this tier".
+    """
+    if plan.numerator is not Measure.TOTAL_COST_USD:
+        return events
+    if plan.denominator is not Measure.VERIFIED_OUTCOME_COUNT:
+        return events
+
+    producing_runs = {
+        outcome.binding.run_id
+        for outcome in outcomes
+        if outcome.binding.run_id is not None
+        and outcome.signal_class is SignalClass.OUTCOME_CONFIRMED
+        and outcome.binding.tier is not None
+        and is_billing_grade(outcome.binding.tier)
+    }
+    if not producing_runs:
+        return events
+    return [event for event in events if event.run_id in producing_runs]
 
 
 def _numerator_value(

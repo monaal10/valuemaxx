@@ -18,11 +18,12 @@
 export { init } from "./init.js";
 export type { ClientTarget, EffectiveConfigEcho, InitOptions, InitResult } from "./init.js";
 
-export { run, activeRunId, activeAgentName, track } from "./run.js";
+export { run, activeRunId, activeAgentName, activeEntityKeys, track } from "./run.js";
 export type { RunOptions } from "./run.js";
 
-export { installOutcomes } from "./outcomes.js";
+export { installOutcomes, recordOutcomeNow } from "./outcomes.js";
 export type {
+  DirectOutcome,
   InstallOutcomesResult,
   OutcomeHandle,
   OutcomeRecorderConfig,

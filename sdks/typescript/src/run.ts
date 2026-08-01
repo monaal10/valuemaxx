@@ -16,6 +16,8 @@ interface RunContext {
   readonly runId: string;
   /** Which agent this run belongs to; stamped on every span so cost rolls up by agent. */
   readonly agentName?: string | undefined;
+  /** Durable business ids this run touched (`{ alt_id: "alt_123" }`). */
+  readonly entityKeys?: Readonly<Record<string, string>> | undefined;
 }
 
 /**
@@ -49,6 +51,17 @@ export function activeAgentName(): string | undefined {
 }
 
 /**
+ * The durable business ids bound by an enclosing {@link run}, or `undefined`.
+ *
+ * These are what let a unit of work span MULTIPLE runs: cost for `alt_123` can be
+ * rolled up across every workflow that touched it, and a delayed outcome can bind back
+ * to the run that produced it even when no run id was carried.
+ */
+export function activeEntityKeys(): Readonly<Record<string, string>> | undefined {
+  return storage.getStore()?.entityKeys;
+}
+
+/**
  * Run `fn` with `runId` bound as the ambient run for the duration of the call.
  *
  * Every LLM call captured inside `fn` (including in awaited async work that
@@ -69,12 +82,20 @@ export function run<T>(runId: string, optionsOrFn: RunOptions | (() => T), maybe
   if (fn === undefined) {
     throw new TypeError("run(runId, [options], fn): fn is required");
   }
-  return storage.run({ runId, agentName: options?.agentName }, fn);
+  return storage.run({ runId, agentName: options?.agentName, entityKeys: options?.entityKeys }, fn);
 }
 
 /** Optional per-run metadata. `agentName` is what cost-by-agent rollups group on. */
 export interface RunOptions {
   readonly agentName?: string | undefined;
+  /**
+   * Durable business ids this run is about — `{ alt_id: "alt_123" }`.
+   *
+   * A run id groups the calls of ONE unit of work; entity keys let a unit span several.
+   * Without them "cost per candidate" across build + screen + schedule is unanswerable,
+   * and they cannot be backfilled — history recorded without them stays unattributable.
+   */
+  readonly entityKeys?: Readonly<Record<string, string>> | undefined;
 }
 
 /** The run-context façade, mirroring Python's `valuemaxx.track`. */
@@ -82,4 +103,5 @@ export const track = {
   run,
   activeRunId,
   activeAgentName,
+  activeEntityKeys,
 } as const;

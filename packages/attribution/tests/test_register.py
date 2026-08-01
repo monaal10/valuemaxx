@@ -116,6 +116,55 @@ def test_bind_outcome_handler_binds_via_cascade_when_wired() -> None:
     assert result.review_required is True
 
 
+def test_caller_supplied_run_id_binds_before_its_cost_spans_arrive() -> None:
+    """An outcome that beats its own cost spans must still bind `exact`.
+
+    Cost spans are BATCHED; an outcome POSTs immediately. So the ordinary ordering
+    is outcome-first, and the run row (created when a span is ingested) does not
+    exist yet. Revalidating against the repo and refusing the id would downgrade a
+    legitimately-exact binding to UNBOUND purely because of export timing — and the
+    binding is never retried, so the outcome stays advisory forever and
+    cost-per-outcome divides by zero. The caller sent a run id it knows is real;
+    registering it on first sight is what makes binding order-independent.
+    """
+    repo = InMemoryRunRepository()  # deliberately EMPTY — no span has landed yet
+    runtime = AttributionRuntime(
+        run_repo=repo, review_queue=InMemoryReviewQueue(), entity_window=timedelta(hours=6)
+    )
+    registry = _registry()
+    bind_runtime(registry, runtime)
+    spec = next(s for s in registry.all() if s.name == "bind_outcome")
+
+    outcome = _outcome().model_copy(
+        update={"binding": OutcomeBinding(run_id=RunId("run-early"), tier=None, bound_by=None)}
+    )
+    result = spec.handler(outcome)
+
+    assert isinstance(result, AttributionResult)
+    assert result.run_id == RunId("run-early")
+    assert result.is_billing_grade is True
+    assert result.review_required is False
+    # And the run now exists, so a later cost span upserts onto the same row.
+    assert repo.get(TENANT_A, RunId("run-early")) is not None
+
+
+def test_no_run_id_supplied_still_falls_through_to_advisory() -> None:
+    """Registering on first sight must not invent a run when none was supplied."""
+    repo = InMemoryRunRepository()
+    runtime = AttributionRuntime(
+        run_repo=repo, review_queue=InMemoryReviewQueue(), entity_window=timedelta(hours=6)
+    )
+    registry = _registry()
+    bind_runtime(registry, runtime)
+    spec = next(s for s in registry.all() if s.name == "bind_outcome")
+
+    result = spec.handler(_outcome())  # binding.run_id is None
+
+    assert isinstance(result, AttributionResult)
+    assert result.is_billing_grade is False
+    assert result.review_required is True
+
+
 def test_bind_persists_review_via_queue_stub() -> None:
     """A reviewable bind is persisted to the tenant-scoped review queue (intra-pkg)."""
     runtime = _runtime()

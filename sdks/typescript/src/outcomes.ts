@@ -24,7 +24,7 @@
  *   decides how much to trust the link.
  */
 
-import { activeRunId } from "./run.js";
+import { activeEntityKeys, activeRunId } from "./run.js";
 
 /** One declarative rule, as rendered into `outcomes.yaml` by `valuemaxx onboard`. */
 export interface OutcomeRule {
@@ -35,6 +35,23 @@ export interface OutcomeRule {
   /** System-mapped signal class; defaults to a confirmed outcome. */
   readonly signal?: string | undefined;
 }
+
+/**
+ * What a DIRECT caller states: just the outcome's name (and optionally its signal).
+ *
+ * Deliberately not `OutcomeRule` — `match_target` names the function whose call means
+ * the outcome happened, and a direct caller IS that call site, so demanding one would
+ * be asking it to describe itself.
+ */
+export interface DirectOutcome {
+  /** The outcome's business name — what a rollup groups by (`alt_created`). */
+  readonly name: string;
+  /** System-mapped signal class; defaults to a confirmed outcome. */
+  readonly signal?: string | undefined;
+}
+
+/** Provenance marker for an outcome recorded by an explicit call, not a wrapped fn. */
+const DIRECT_MATCH_TARGET = "<direct>";
 
 /** The parsed `outcomes.yaml` document. */
 export interface OutcomesDocument {
@@ -113,7 +130,12 @@ async function recordOutcome(rule: OutcomeRule, config: OutcomeRecorderConfig): 
     // The tier is left null on purpose: the backend cascade decides it and
     // revalidates the run id. A caller cannot promote its own outcome to `exact`.
     binding: { run_id: runId ?? null, tier: null, bound_by: null },
-    entity_keys: [] as ReadonlyArray<readonly [string, string]>,
+    // Read from the ambient run scope, NOT invented here. These are what let one
+    // unit span several runs ("cost per candidate" across build + screen), and they
+    // cannot be backfilled — an outcome recorded without them stays unattributable.
+    entity_keys: Object.entries(activeEntityKeys() ?? {}) as ReadonlyArray<
+      readonly [string, string]
+    >,
     correlation_id: null,
     source: "valuemaxx-sdk",
     raw: {},
@@ -127,6 +149,31 @@ async function recordOutcome(rule: OutcomeRule, config: OutcomeRecorderConfig): 
   if (!res.ok) {
     throw new Error(`bind_outcome responded ${res.status}`);
   }
+}
+
+/**
+ * Record one outcome NOW, bound to whatever run is ambient at this moment.
+ *
+ * `installOutcomes` covers the case where "done" is a named function on an object we
+ * can wrap. Plenty of hosts have no such function: a workflow step reaches its
+ * terminal state as a RETURN VALUE inside a closure, a queue consumer acks a message,
+ * a chat turn resolves a completion. Those call sites own nothing patchable, so
+ * without a direct call they could bind runs perfectly and still never record the
+ * outcome those runs exist to explain — leaving cost-per-outcome null forever.
+ *
+ * Same honesty contract as the declarative path: the tier is left null for the
+ * backend cascade to decide, the entity keys come from the ambient run scope rather
+ * than the call site, and the caller cannot promote its own outcome to `exact`.
+ *
+ * Unlike the wrapped path this DOES reject on a failed POST, because a direct caller
+ * has a `try`/`catch` and can decide. Wrap it in one — recording an outcome must
+ * never turn a working feature into a broken one.
+ */
+export async function recordOutcomeNow(
+  outcome: DirectOutcome,
+  config: OutcomeRecorderConfig,
+): Promise<void> {
+  await recordOutcome({ ...outcome, match_target: DIRECT_MATCH_TARGET }, config);
 }
 
 /**
