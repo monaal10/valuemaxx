@@ -191,6 +191,8 @@ def bind_ingest_runtime(registry: Registry, runtime: IngestRuntime) -> None:
 # the consent signal — we never ask for content, we only keep what the host chose to
 # send. Without these, replay has nothing to re-run and the eval funnel can only
 # compare pre-stored strings.
+# Span-attribute prefix carrying a run's business ids (`ai_margin.entity.alt_id`).
+_ENTITY_PREFIX: Final[str] = "ai_margin.entity."
 _PROMPT_KEYS: Final[tuple[str, ...]] = ("ai.prompt", "ai.prompt.messages", "gen_ai.prompt")
 _RESPONSE_KEYS: Final[tuple[str, ...]] = ("ai.response.text", "gen_ai.completion")
 
@@ -261,6 +263,15 @@ def _register_run(
     if run_repo is None or run_id == "":
         return
     agent = attributes.get("ai_margin.agent_name")
+    # Durable business ids the run touched, sent as `ai_margin.entity.<name>`. These are
+    # what let a UNIT OF WORK span several runs — "cost per candidate" across build +
+    # screen + schedule — and what the T4 fallback matches on when no run id was
+    # carried. Registering an empty set (as this did) made both unreachable.
+    entity_keys = frozenset(
+        (key.removeprefix(_ENTITY_PREFIX), str(value))
+        for key, value in attributes.items()
+        if key.startswith(_ENTITY_PREFIX) and value is not None
+    )
     run_repo.upsert(
         tenant_id,
         Run(
@@ -269,7 +280,7 @@ def _register_run(
             agent_name=str(agent) if agent is not None else None,
             started_at=runtime.clock.now(),
             ended_at=None,
-            entity_keys=frozenset(),
+            entity_keys=entity_keys,
         ),
     )
 

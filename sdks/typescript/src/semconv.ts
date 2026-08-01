@@ -56,6 +56,15 @@ export const AI_MARGIN_TENANT_ID = "ai_margin.tenant_id";
  */
 export const AI_MARGIN_AGENT_NAME = "ai_margin.agent_name";
 
+/**
+ * Prefix for a run's durable business ids: `ai_margin.entity.alt_id = "alt_123"`.
+ *
+ * A PREFIX rather than a fixed field because a host names its own units — `alt_id`,
+ * `ticket_id`, `loan_application_id`. Cost can then roll up per business entity across
+ * however many runs touched it.
+ */
+export const AI_MARGIN_ENTITY_PREFIX = "ai_margin.entity.";
+
 /** The cost-provenance honesty axis value (measured / provider_reconciled / ...). */
 export const AI_MARGIN_PROVENANCE = "ai_margin.provenance";
 

@@ -28,8 +28,13 @@ import {
   type SpanProcessor,
 } from "@opentelemetry/sdk-trace-base";
 
-import { AI_MARGIN_AGENT_NAME, AI_MARGIN_RUN_ID, AI_MARGIN_TENANT_ID } from "./semconv.js";
-import { activeAgentName, activeRunId } from "./run.js";
+import {
+  AI_MARGIN_AGENT_NAME,
+  AI_MARGIN_ENTITY_PREFIX,
+  AI_MARGIN_RUN_ID,
+  AI_MARGIN_TENANT_ID,
+} from "./semconv.js";
+import { activeAgentName, activeEntityKeys, activeRunId } from "./run.js";
 import { type BaggageTarget, installRunIdBaggage } from "./baggage.js";
 import { type EffectiveConfig, type InitConfig, resolveConfig } from "./config.js";
 import {
@@ -94,6 +99,14 @@ function runIdStampingProcessor(tenantId: string): SpanProcessor {
       if (runId !== undefined) span.setAttribute(AI_MARGIN_RUN_ID, runId);
       const agentName = activeAgentName();
       if (agentName !== undefined) span.setAttribute(AI_MARGIN_AGENT_NAME, agentName);
+      // Entity keys ride as `ai_margin.entity.<name>` so the backend can register them
+      // on the run WITHOUT a fixed schema — a host names its own business ids.
+      const entityKeys = activeEntityKeys();
+      if (entityKeys !== undefined) {
+        for (const [key, value] of Object.entries(entityKeys)) {
+          span.setAttribute(`${AI_MARGIN_ENTITY_PREFIX}${key}`, value);
+        }
+      }
       span.setAttribute(AI_MARGIN_TENANT_ID, tenantId);
     },
     onEnd() {

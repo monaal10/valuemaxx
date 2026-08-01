@@ -9,12 +9,14 @@ valuemaxx captures the **correct** cost of every LLM call, binds it to the **bus
 
 > **Golden rule:** propose, never assume. Everything you write is reviewable. Never invent an outcome the user didn't confirm. Never weaken the honesty labels.
 
-> **STOP-AND-ASK, TWICE.** This integration has **two** approval gates, and you must
-> stop at both — do not edit a single file before the human answers:
+> **STOP-AND-ASK, THREE TIMES.** This integration has **three** approval gates, and you must
+> stop at every one — do not edit a single file before the human answers:
 >
-> 1. **Before writing capture wiring** (step 1c below) — you present the exact file list
->    and the reason for each; they approve the scope.
-> 2. **Before writing `outcomes.yaml`** (step 3) — they confirm which outcomes are real.
+> 1. **Before writing capture wiring** (step 1c) — you present the exact file list and
+>    the reason for each; they approve the scope.
+> 2. **Before wiring a run boundary** (step 2) — they define what one "unit of work" IS.
+>    No scan can infer this, and getting it wrong silently distorts every cost number.
+> 3. **Before writing `outcomes.yaml`** (step 4) — they confirm which outcomes are real.
 >
 > These are someone else's production LLM call path. An agent that "just wires it up" has
 > made an unreviewed change to how every model call in their app behaves.
@@ -128,10 +130,8 @@ Two carries close the gap, and both are declared at `init()` — you wire nothin
   outbound object (e.g. Stripe `metadata`) whose later webhook echoes it back, binding
   `deterministic`.
 
-Choosing the run boundary in a workflow engine is a judgment call the tool cannot make for
-you: one workflow instance is usually the right unit if you want cost-per-outcome, one step
-if you want cost-per-step. Pick deliberately, state the choice to the user, and keep it
-stable — changing it later re-partitions every historical number.
+Choosing the run boundary is a judgment call the tool cannot make for you — it is step 2,
+and it is a hard gate. Do not guess it here.
 
 **1b. Runtime.** Node >= 20. Needs `node:async_hooks` (AsyncLocalStorage — the in-process
 run-id carry) and `node:crypto`. On Cloudflare Workers/workerd, `nodejs_compat` must be
@@ -175,7 +175,76 @@ signature change across the codebase. Say what you found, and let them re-decide
 Do not start with a proposal and then edit anyway because the change "seemed small". The
 approval is the gate, not a formality you narrate past.
 
-### 2. Discover the outcomes — run the scanner, don't hand-read the repo
+### 2. GATE — agree what a "unit of work" is, before wiring anything
+
+**This is the question everything else depends on, and nothing in the code answers it.**
+Cost is only meaningful per unit — *per alt built*, *per ticket resolved*, *per document
+processed*. A repo scan can find every LLM call; it cannot know which calls belong to the
+same unit. Only the user knows, and they usually have never been asked.
+
+Get it wrong and every downstream number is quietly wrong: ten calls that were really one
+unit read as ten cheap units, or one expensive one. Nothing errors. So ask.
+
+**Open with what you found, not a blank prompt.** The scan already gives you call sites
+and in-scope ids — make the user CORRECT you rather than author from nothing:
+
+> I found LLM calls in 5 places under `src/pipeline/` — `extract`, `classify`,
+> `enrich`, `summarise`, and 3 more in `render`. They look like stages of one
+> bigger operation.
+>
+> When you say "this cost too much" — what is *this*?
+>   a) one whole pipeline run (all ~8 calls together)
+>   b) each stage separately
+>   c) something spanning several runs — per customer, per document
+>   d) something else — describe it
+
+Then resolve the **run id**: what value is identical across every call in one unit, and
+different between units? Look for one that already exists rather than inventing one:
+
+| Shape of codebase | Usually the right id |
+|---|---|
+| Workflow / job engine | the workflow-instance or job id (stable across steps AND workers) |
+| HTTP service | the request id, or a trace id if they already run OTel |
+| Queue consumer | the message id |
+| Agent framework | the invocation/session id the framework already assigns |
+| Script / batch | generate one per invocation |
+
+Ask directly: *"is there an id already in scope at every one of these call sites?"* An
+existing id beats a new one — it survives process and service boundaries, which an
+in-process scope does not.
+
+Then resolve **entity keys** — the durable business ids the unit is about (`alt_id`,
+`ticket_id`, `loan_id`). These are what let a unit span SEVERAL runs later, and they
+**cannot be backfilled**: history recorded without them stays unattributable. Say that
+plainly, because it is the one decision with a deadline.
+
+**Ground the choice in a number before accepting it.** Once capture has run briefly,
+show what the boundary implies — *"with this boundary your last 20 runs averaged
+$0.02 each; a stage boundary would say $0.0025"* — and let them confirm the one that
+matches their intuition. A boundary nobody has sanity-checked is a guess with a
+dollar sign in front of it.
+
+Write the answer to `valuemaxx.yaml` so it is reviewable, diffable and re-runnable:
+
+```yaml
+unit_of_work:
+  name: alt                       # what one unit is called, in their words
+  run_id_source: ctx.workflowInstanceId   # the value identical across the unit
+  entity_keys: [alt_id]           # durable ids the unit is about (optional)
+```
+
+and wire it at the run boundary — one call, not per call site:
+
+```ts
+await run(ctx.workflowInstanceId, { agentName: "build-alt", entityKeys: { alt_id } },
+  async () => { /* every model call inside binds to this unit */ });
+```
+
+**Never pick the boundary yourself.** If the user is unsure, say what each choice would
+mean for their numbers and let them decide — an unreviewed unit is worse than an
+unconfigured one, because it produces confident wrong figures instead of no figures.
+
+### 3. Discover the outcomes — run the scanner, don't hand-read the repo
 
 ```bash
 valuemaxx onboard --repo .      # read-only: scans, proposes, prints a diff. Writes nothing.
@@ -198,18 +267,18 @@ convention. If a proposal is enormous or mostly noise, say so rather than forwar
 If the npm `valuemaxx` binary is missing (`could not determine executable to run`), the
 installed version predates the CLI — upgrade, or run the pipeline from a clone.
 
-### 3. GATE — propose the outcomes and wait (the second approval gate)
+### 4. GATE — propose the outcomes and wait (the third approval gate)
 Present a short summary: *"I found these N outcomes, each run carries this entity ID, these can be bound deterministically and these will be candidate/likely confidence."* Let the human edit/confirm. Then — and only then — write the config.
 
 Keep this list short enough to actually review. Group near-duplicates, lead with the
 outcomes that matter to the business, and state plainly which ones you're unsure about.
 
-### 4. Generate the wiring (hybrid — you choose per outcome)
+### 5. Generate the wiring (hybrid — you choose per outcome)
 - **in-process outcome** (a function/ORM-write in their app) → a declarative rule in `valuemaxx.outcomes.yaml`. The SDK instruments the named function at `init()`; no per-call-site edits.
 - **delayed / external outcome** (a webhook days later) → an explicit captured line in the webhook handler **plus** a `run_id_injection` block so the run_id round-trips and the outcome binds deterministically.
 - **entity-id capture** → one `valuemaxx.run(customer_id=...)`-style line at the run entry, using IDs already in scope.
 
-### 5. Validate, then hand off
+### 6. Validate, then hand off
 Call the valuemaxx MCP `validate_*` tools to confirm each rule produces a well-formed, bindable outcome; optionally dry-run against recent traffic to preview `cost-per-<outcome>`. Then deliver everything as a **reviewable diff / PR** — explicit, version-controlled, nothing silent.
 
 ## What you must NOT do
