@@ -74,7 +74,9 @@ def _cost(run: str, *, usd: str, provider: str = "anthropic", model: str = "opus
     )
 
 
-def _outcome(*, signal_class: SignalClass, tier: BindingTier | None) -> OutcomeEvent:
+def _outcome(
+    *, signal_class: SignalClass, tier: BindingTier | None, run: str | None = None
+) -> OutcomeEvent:
     return OutcomeEvent(
         tenant_id=_TENANT,
         id=OutcomeEventId(f"oe-{uuid4()}"),
@@ -82,7 +84,9 @@ def _outcome(*, signal_class: SignalClass, tier: BindingTier | None) -> OutcomeE
         signal_class=signal_class,
         value=Decimal("1"),
         occurred_at=datetime(2026, 6, 15, tzinfo=UTC),
-        binding=OutcomeBinding(run_id=None, tier=tier, bound_by="t1" if tier else None),
+        binding=OutcomeBinding(
+            run_id=RunId(run) if run else None, tier=tier, bound_by="t1" if tier else None
+        ),
         entity_keys=frozenset(),
         correlation_id=None,
         source="test",
@@ -135,6 +139,54 @@ def test_cost_per_outcome_end_to_end() -> None:
     assert cell.numerator_value == Decimal("6.00")
     assert cell.denominator_value == 2
     assert cell.value == Decimal("3.00")  # 6.00 / 2 verified outcomes
+
+
+def test_cost_per_outcome_counts_only_the_runs_that_produced_an_outcome() -> None:
+    """A run with no verified outcome must not inflate the numerator.
+
+    This is the difference between a UNIT cost and a portfolio ratio. Summing every
+    cost event in the window and dividing by the outcomes that happened answers
+    "what did we spend per success across everything we tried" — which reads as
+    cost-per-outcome on a dashboard but silently charges failed and in-flight runs
+    to the successes. Here run-2 produced nothing, so only run-1's $6 is a unit
+    cost; including run-2 would report $16.
+    """
+    executor, costs, outcomes, _runs = _executor()
+    costs.upsert(_TENANT, _cost("run-1", usd="6.00"))
+    costs.upsert(_TENANT, _cost("run-2", usd="10.00"))  # no outcome — a failure or in-flight
+    outcomes.upsert(
+        _TENANT,
+        _outcome(signal_class=SignalClass.OUTCOME_CONFIRMED, tier=BindingTier.EXACT, run="run-1"),
+    )
+
+    plan = compile_plan_cost_per_outcome()
+    result = executor.run(_TENANT, plan, _WINDOW, outcomes.list_all(_TENANT))
+
+    cell = result.cells[0]
+    assert cell.denominator_value == 1
+    assert cell.numerator_value == Decimal("6.00")
+    assert cell.value == Decimal("6.00")
+
+
+def test_unbound_outcomes_do_not_strand_the_whole_numerator() -> None:
+    """When NO outcome carries a run id, fall back to the window total.
+
+    An unbound outcome is advisory and already excluded from the billing-grade
+    denominator, so filtering the numerator to "runs that produced one" would leave
+    zero cost over zero outcomes and report nothing at all. The honest degrade is
+    the portfolio ratio the metric always used, not a silent null.
+    """
+    executor, costs, outcomes, _runs = _executor()
+    costs.upsert(_TENANT, _cost("run-1", usd="6.00"))
+    outcomes.upsert(
+        _TENANT, _outcome(signal_class=SignalClass.OUTCOME_CONFIRMED, tier=BindingTier.EXACT)
+    )
+
+    plan = compile_plan_cost_per_outcome()
+    result = executor.run(_TENANT, plan, _WINDOW, outcomes.list_all(_TENANT))
+
+    cell = result.cells[0]
+    assert cell.numerator_value == Decimal("6.00")
 
 
 def test_result_carries_both_h7_fields() -> None:

@@ -24,7 +24,7 @@ from weakref import WeakKeyDictionary
 
 from valuemaxx.attribution.cascade import Cascade
 from valuemaxx.capabilities import Mode, Surface, capability
-from valuemaxx.core import AtmError, AttributionResult, OutcomeEvent
+from valuemaxx.core import AtmError, AttributionResult, OutcomeEvent, Run
 from valuemaxx.core.outcome import OutcomeBinding
 
 if TYPE_CHECKING:
@@ -120,6 +120,7 @@ def register(registry: Registry) -> None:
         # every outcome fell through to the advisory tiers no matter what was sent,
         # leaving cost-per-outcome permanently null.
         runtime = holder.require()
+        _ensure_run_exists(runtime, outcome)
         result = runtime.cascade().bind(outcome, ambient_run_id=outcome.binding.run_id)
         _persist(runtime, outcome, result)
         return result
@@ -171,6 +172,47 @@ def bind_runtime(registry: Registry, runtime: AttributionRuntime) -> None:
             "no attribution capabilities registered for this registry; call register() first"
         )
     holder.runtime = runtime
+
+
+def _ensure_run_exists(runtime: AttributionRuntime, outcome: OutcomeEvent) -> None:
+    """Register the caller-supplied run on first sight, so binding is order-independent.
+
+    Cost spans are BATCHED and an outcome POSTs immediately, so the ordinary arrival
+    order is outcome-first: the run row (written when a cost span is ingested) does
+    not exist yet. The cascade revalidates every deterministic run id and refuses one
+    it cannot find — correct against a *dangling* id, but here the id is merely
+    EARLY, and the two are indistinguishable at the repository. Since nothing ever
+    retries a binding, the outcome would stay advisory forever and its cost never
+    join, which is the whole failure this closes.
+
+    Registering here is safe because the caller is asserting the run id it just used,
+    the same assertion the span path makes when it registers a run. The upsert is
+    idempotent, so the later cost span lands on this row and enriches it with the
+    agent name and entity keys the span carries. We claim no more than we know:
+    `agent_name` stays None (an outcome does not know it) and `started_at` is the
+    outcome's own timestamp — the earliest moment we can prove the run existed,
+    never a fabricated clock reading.
+
+    A run id we did NOT get from the caller is not invented: no run id means the
+    cascade falls through to the advisory tiers exactly as before.
+    """
+    run_id = outcome.binding.run_id
+    if run_id is None:
+        return
+    repo = runtime.run_repo
+    if repo.get(outcome.tenant_id, run_id) is not None:
+        return
+    repo.upsert(
+        outcome.tenant_id,
+        Run(
+            tenant_id=outcome.tenant_id,
+            id=run_id,
+            agent_name=None,
+            started_at=outcome.occurred_at,
+            ended_at=None,
+            entity_keys=outcome.entity_keys,
+        ),
+    )
 
 
 def _persist(runtime: AttributionRuntime, outcome: OutcomeEvent, result: AttributionResult) -> None:
