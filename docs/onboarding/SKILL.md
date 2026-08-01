@@ -70,6 +70,33 @@ import valuemaxx.sdk as valuemaxx
 vmx = valuemaxx.init(tenant_id=UUID(...), ingest_key="dev", endpoint="http://127.0.0.1:8000")
 ```
 
+**Language support is not symmetric — check this before promising anything.** Both SDKs
+capture cost; they differ at the run boundary, which is what earns `exact`:
+
+| | TypeScript | Python |
+|---|---|---|
+| `init()` | ✅ camelCase keys | ✅ keyword-only, snake_case (`baggage_targets`, `run_id_injection_specs`) |
+| run boundary | ✅ `run(id, opts, fn)` | ✅ `with track.run(run_id=...)` — a contextmanager, imported from `valuemaxx.sdk.track` (not re-exported at top level) |
+| `agentName` / `entityKeys` | ✅ | ❌ **not supported** — Python `run()` takes `run_id` only |
+| ambient id | `activeRunId()` | `track.active_run_id` (a `ContextVar`) |
+
+```python
+from valuemaxx.sdk import track
+
+with track.run(run_id=str(document_id)):
+    ...  # model calls here bind to this run
+```
+
+Consequence worth stating at the gate: on Python you can bind a run, but you cannot yet
+attach entity keys, so a unit that must span SEVERAL runs (cost per customer across
+build + screen) is not expressible today. Say that rather than implying parity.
+
+**Any other host language** (Go, Ruby, Java) has no SDK. The only route is emitting OTLP
+spans directly to the backend's ingest endpoint. That path is real (`ingest_otlp_span`)
+but its span contract — the attribute names carrying model, tokens, tenant and run id —
+is not specified in this document. Do not improvise it: report it as a gap and treat the
+host as unsupported until the contract is published.
+
 **1a. Pick the capture path — check the host's dependency manifest FIRST.** This is the fork
 agents most often get wrong, and picking wrong means capturing nothing:
 
@@ -78,9 +105,27 @@ agents most often get wrong, and picking wrong means capturing nothing:
 | Raw `openai` / `@anthropic-ai/sdk` client instances | Pass them to `init({clients: [...]})` |
 | **Vercel AI SDK (`ai`, `@ai-sdk/*`) with no raw provider clients** | **`clients` does NOT apply.** Use the tracer (below) |
 | LangChain / LlamaIndex / custom HTTP | Tracer path, or OTLP direct |
+| **BOTH a raw client and the AI SDK** (common) | Both at once — see below |
 
 `clients` wraps the two provider SDKs *by instance*. An AI-SDK-only codebase has no such
-instance to hand it, so the tracer is the ONLY route. The complete TypeScript form:
+instance to hand it, so the tracer is the ONLY route.
+
+**The paths are not exclusive.** `init()` always stands up the tracer, and *additionally*
+patches whatever you pass in `clients`. A repo with a raw `openai` client on one route and
+`generateText` on another wires both in a single call — pass the client instances AND use
+the returned tracer:
+
+```ts
+const vmx = init({ tenantId, ingestKey, endpoint, clients: [{ client: openai, provider: "openai" }] });
+// raw-client routes are now patched automatically; AI-SDK routes still need vmx.tracer
+```
+
+**LangChain/LlamaIndex is under-specified.** The tracer path is a general OTel tracer, but
+this document does not show how to attach one to LangChain's callback system, and there is
+no Python `generateText` equivalent to point at. Treat a LangChain host as needing
+investigation rather than a solved recipe, and say so at the gate instead of guessing.
+
+The complete TypeScript form:
 
 ```ts
 import { init, run } from "valuemaxx";   // single entrypoint; there is no subpath export
@@ -225,7 +270,7 @@ approval is the gate, not a formality you narrate past.
 ### 2. GATE — agree what a "unit of work" is, before wiring anything
 
 **This is the question everything else depends on, and nothing in the code answers it.**
-Cost is only meaningful per unit — *per alt built*, *per ticket resolved*, *per document
+Cost is only meaningful per unit — *per invoice processed*, *per ticket resolved*, *per document
 processed*. A repo scan can find every LLM call; it cannot know which calls belong to the
 same unit. Only the user knows, and they usually have never been asked.
 
@@ -254,7 +299,7 @@ different between units? Look for one that already exists rather than inventing 
 | HTTP service | the request id, or a trace id if they already run OTel |
 | Queue consumer | the message id |
 | Agent framework | the invocation/session id the framework already assigns |
-| Script / batch | generate one per invocation |
+| Script / batch | the ITEM id if the script fans out (see below); generate one per invocation only if the whole script is one unit |
 
 Ask directly: *"is there an id already in scope at every one of these call sites?"* An
 existing id beats a new one — it survives process and service boundaries, which an
@@ -276,12 +321,25 @@ the user, do not pick: treat each attempt as its own unit and let the entity key
 them up later; thread the entity id down to the boundary as the run id; or accept
 per-attempt numbers for now and record the limitation.
 
+**One process can produce MANY units — do not let the process boundary decide.** A nightly
+job that classifies 10,000 documents has 10,000 units, not one: an invocation-scoped id
+would report a single five-figure "cost per nightly run" that answers nothing anybody
+asked. The test is whether the items are independent. If each item is separately
+meaningful — a document, an invoice, a candidate — then the ITEM id is the run id and
+`run()` is called per item, inside the loop. Generate a per-invocation id only when the
+whole script really is one unit (a single report, one summary of everything).
+
+Per-item calls are the intended shape at any volume, and each one is a scope entry, not
+a network call. If a partial rerun can reprocess the same items, note that units are
+identified by that item id — reprocessing the same document is the same unit again, and
+you should tell the user whether they want that deduplicated or counted twice.
+
 **If no id is in scope at all**, say so and stop. Threading one through intermediate
 layers is a signature change across files — exactly the scope growth the wiring gate
 forbids. Offer to leave that surface uncaptured and record it as a known gap; a missing
 surface is honest, a rushed refactor is not.
 
-Then resolve **entity keys** — the durable business ids the unit is about (`alt_id`,
+Then resolve **entity keys** — the durable business ids the unit is about (`invoice_id`,
 `ticket_id`, `loan_id`). These are what let a unit span SEVERAL runs later, and they
 **cannot be backfilled**: history recorded without them stays unattributable. Say that
 plainly, because it is the one decision with a deadline.
@@ -313,8 +371,8 @@ units:
     entity_keys: [ticket_id, account_id]   # durable ids the unit is about (optional)
     surfaces: [triage, draft-reply]        # which call sites roll up here
 
-  - name: doc_indexed                      # a second, unrelated unit
-    run_id_source: job.id
+  - name: doc_indexed                      # a second, unrelated unit — one PER DOCUMENT,
+    run_id_source: document.id             # so the run id is the document, not the job
     entity_keys: [document_id]
     surfaces: [nightly-ingest]
 ```
