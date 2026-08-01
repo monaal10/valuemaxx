@@ -12,11 +12,16 @@ valuemaxx captures the **correct** cost of every LLM call, binds it to the **bus
 > **STOP-AND-ASK, THREE TIMES.** This integration has **three** approval gates, and you must
 > stop at every one — do not edit a single file before the human answers:
 >
-> 1. **Before writing capture wiring** (step 1c) — you present the exact file list and
+> 1. **Before anything** (step 2) — they define what one "unit of work" IS. No scan can
+>    infer this, getting it wrong silently distorts every cost number, and it decides
+>    WHERE capture is wired — so it comes before the wiring, not after.
+> 2. **Before writing capture wiring** (step 1e) — you present the exact file list and
 >    the reason for each; they approve the scope.
-> 2. **Before wiring a run boundary** (step 2) — they define what one "unit of work" IS.
->    No scan can infer this, and getting it wrong silently distorts every cost number.
 > 3. **Before writing `outcomes.yaml`** (step 4) — they confirm which outcomes are real.
+>
+> Steps 1 and 2 are written in install-then-boundary order because you must SEE the call
+> sites to discuss the boundary. Read both before you edit anything, then gate in the
+> order above.
 >
 > These are someone else's production LLM call path. An agent that "just wires it up" has
 > made an unreviewed change to how every model call in their app behaves.
@@ -28,6 +33,26 @@ valuemaxx captures the **correct** cost of every LLM call, binds it to the **bus
 > bug — tell the user what was missing so it can be fixed.
 
 ## The integration, step by step
+
+### 0. Check whether the repo is already partly wired
+
+Do this before anything else — a half-finished integration is more common than a
+greenfield one, and it looks *done* from the outside while producing nothing. Four greps:
+
+```bash
+grep -rn "valuemaxx" package.json pyproject.toml   # is the SDK a dependency, at what version?
+grep -rn "init(" --include=*.ts --include=*.py . | grep -i valuemaxx   # is capture stood up?
+grep -rn "run(" --include=*.ts --include=*.py . | grep -i valuemaxx    # is ANY run boundary wired?
+ls valuemaxx.yaml outcomes.yaml 2>/dev/null                            # were the gates ever completed?
+```
+
+The revealing combination is **`init()` present, `run()` absent, no `valuemaxx.yaml`**:
+capture is live, every call is unbound, and the repo can never reach `exact` tier. It
+means an earlier pass wired the easy half and skipped the gates. Do not treat that as
+"already onboarded" — the unit-of-work gate is still owed, and it is gate 1.
+
+Report what you found before proposing anything, including the installed version versus
+the pinned one. Then run the gates in the normal order; nothing here lets you skip one.
 
 ### 1. Install + capture (zero outcome data yet)
 Add the SDK and one line. This alone gives total + per-model + per-agent cost.
@@ -110,10 +135,23 @@ call site, not just the wrapper — a bypass you miss captures *nothing*, silent
 already has its own tracing wrapper, the bypasses are usually whatever that wrapper had to
 special-case.
 
+**Do model calls inside `run()` bind automatically?** Yes — on both paths. The span
+processor stamps the ambient run id at span *start*, so any model call made inside a
+`run()` scope carries it without per-call-site changes. That is the whole point of the
+run boundary: you wire it once, not at every call. A call made OUTSIDE any `run()` scope
+still captures cost, but binds no run — it is per-model spend, not cost-per-unit.
+
 **Short-lived runtimes (Workers, Lambda).** There is no process exit to flush on. Call
 `vmx.forceFlush()` before the isolate can be frozen (e.g. inside `ctx.waitUntil(...)`), or
 spans may be dropped. On a **streaming** response the spans are emitted as the stream is
 consumed, i.e. *after* the handler returns — flush when the stream settles, not at return.
+
+> **Verify this, do not assume it.** Exposing a `forceFlush` that nothing ever calls is
+> the single most common way an integration ends up capturing zero spans while looking
+> fully wired. Before you call the wiring done, grep for `forceFlush` and confirm there
+> is a real **call site**, not just a definition and a re-export. If the flush handle
+> cannot reach a place with `ctx.waitUntil` in scope, say so at the wiring gate — that
+> is a scope question for the human, not something to leave dangling.
 
 **Distributed hosts (multi-service, workflow engines, queues).** `run()` binds the run id in
 **AsyncLocalStorage**, so it covers one in-process async scope and nothing more. It does NOT
@@ -121,14 +159,23 @@ survive an RPC hop, a queue, or a workflow step resumed from persisted state day
 matters because the run id is what earns the `exact` binding tier — lose it and everything
 downstream degrades to `candidate`/`likely`, which is never billing-grade.
 
-Two carries close the gap, and both are declared at `init()` — you wire nothing per call:
+Two carries close the gap, and both are declared at `init()` — you wire nothing per call.
+In TypeScript they are `baggageTargets` and `runIdInjectionTargets` (the YAML/Python
+spellings are snake_case; the TS config keys are camelCase):
 
-- **Live service→service hop** — `baggage_targets` wraps your outbound HTTP method so the
+- **Live service→service hop** — `baggageTargets` wraps your outbound HTTP method so the
   active run id rides the W3C `baggage` header; the receiving service parses it back and the
-  cascade still binds `exact`.
-- **Delayed / out-of-process outcome** — `run_id_injection` stamps the run id into an
+  cascade still binds `exact`. It wraps an outbound **HTTP** call — a transport that is not
+  HTTP (an RPC service binding, a queue publish) is not covered by it.
+- **Delayed / out-of-process outcome** — `runIdInjectionTargets` stamps the run id into an
   outbound object (e.g. Stripe `metadata`) whose later webhook echoes it back, binding
   `deterministic`.
+
+**Neither carry covers a workflow step resumed from persisted state.** There is no live
+call to wrap and no outbound object to stamp — the run id has to be part of what the
+engine persists. If the host's engine gives every step a durable instance id, use THAT as
+the `run_id_source` and the problem disappears; if it does not, that surface cannot reach
+`exact` and you should say so at the gate rather than let the tier degrade silently.
 
 Choosing the run boundary is a judgment call the tool cannot make for you — it is step 2,
 and it is a hard gate. Do not guess it here.
@@ -213,6 +260,27 @@ Ask directly: *"is there an id already in scope at every one of these call sites
 existing id beats a new one — it survives process and service boundaries, which an
 in-process scope does not.
 
+**Then test the candidate id for uniqueness — do not trust its name.** An id that looks
+right is often not 1:1 with the unit. Two checks, both cheap:
+
+* **Is it stable across the whole unit?** If the user can retry, restart or resume and
+  get a *new* id for the *same* unit of work, that id is wrong — you will report two
+  half-priced units instead of one. Look for the retry path, not the happy path.
+* **Does the schema agree?** A `UNIQUE` constraint tying the id to the business entity
+  proves 1:1; a deliberately non-unique index proves the opposite. This is the fastest
+  disproof available and it beats reading call sites.
+
+When the durable anchor turns out to be an entity id rather than a run id (restarts
+share an `application_id` but not a `session_id`), you have three options — put them to
+the user, do not pick: treat each attempt as its own unit and let the entity key roll
+them up later; thread the entity id down to the boundary as the run id; or accept
+per-attempt numbers for now and record the limitation.
+
+**If no id is in scope at all**, say so and stop. Threading one through intermediate
+layers is a signature change across files — exactly the scope growth the wiring gate
+forbids. Offer to leave that surface uncaptured and record it as a known gap; a missing
+surface is honest, a rushed refactor is not.
+
 Then resolve **entity keys** — the durable business ids the unit is about (`alt_id`,
 `ticket_id`, `loan_id`). These are what let a unit span SEVERAL runs later, and they
 **cannot be backfilled**: history recorded without them stays unattributable. Say that
@@ -224,21 +292,68 @@ $0.02 each; a stage boundary would say $0.0025"* — and let them confirm the on
 matches their intuition. A boundary nobody has sanity-checked is a guess with a
 dollar sign in front of it.
 
+**A codebase may have several units, and most non-trivial ones do.** A repo with a
+workflow engine, a chat surface and a cron job has three different answers, and forcing
+them into one produces a number that describes nothing. `units` is a LIST. Enumerate
+every LLM-using surface you found in step 1, group them by the unit a user would
+recognise, and present the grouping for correction — the grouping is the decision, and
+it is theirs.
+
+Do not propose more units than a person can review in one sitting. If you find a dozen
+surfaces, propose the two or three that carry real spend, and list the rest as
+deliberately uncaptured.
+
 Write the answer to `valuemaxx.yaml` so it is reviewable, diffable and re-runnable:
 
 ```yaml
-unit_of_work:
-  name: alt                       # what one unit is called, in their words
-  run_id_source: ctx.workflowInstanceId   # the value identical across the unit
-  entity_keys: [alt_id]           # durable ids the unit is about (optional)
+# Example only — a support desk with two surfaces. Their nouns, not yours.
+units:
+  - name: ticket_resolved                  # what one unit is called, in their words
+    run_id_source: ctx.workflowInstanceId  # the value identical across the unit
+    entity_keys: [ticket_id, account_id]   # durable ids the unit is about (optional)
+    surfaces: [triage, draft-reply]        # which call sites roll up here
+
+  - name: doc_indexed                      # a second, unrelated unit
+    run_id_source: job.id
+    entity_keys: [document_id]
+    surfaces: [nightly-ingest]
 ```
 
-and wire it at the run boundary — one call, not per call site:
+`run_id_source` is documentation, not executable — it records WHICH value was agreed so
+a later reader can check the wiring still matches. The binding itself is the `run()`
+call. Keep the two in sync by hand; nothing enforces it.
+
+Wire each unit at its own run boundary — one call per unit, not per call site:
 
 ```ts
-await run(ctx.workflowInstanceId, { agentName: "build-alt", entityKeys: { alt_id } },
+// The signature — both forms are real overloads; the options object is optional.
+function run<T>(runId: string, fn: () => T): T;
+function run<T>(runId: string, options: RunOptions, fn: () => T): T;
+
+interface RunOptions {
+  readonly agentName?: string | undefined;
+  readonly entityKeys?: Readonly<Record<string, string>> | undefined;
+}
+```
+
+`run()` returns whatever the callback returns, so it wraps a sync or an async function
+without changing the host's control flow — `await run(id, async () => …)` works because
+the promise is passed straight through, not because `run` is itself async.
+
+```ts
+// <runId> is the agreed run_id_source; <unitName> and the entity keys are theirs.
+await run(runId, { agentName: "<unitName>", entityKeys: { <entity_id>: value } },
   async () => { /* every model call inside binds to this unit */ });
 ```
+
+**`entity_keys` in the YAML are NAMES; `entityKeys` in the call are NAME→VALUE.** The
+config records which keys were agreed; the call supplies that run's actual ids. Keep the
+names identical between the two — nothing enforces it, and a typo produces a key that
+silently never joins to anything. Since entity keys cannot be backfilled, a mismatch is
+permanently costly.
+
+A surface that no unit claims is uncaptured, and that is a legitimate outcome — just
+name it in the file so the gap is deliberate rather than forgotten.
 
 **Never pick the boundary yourself.** If the user is unsure, say what each choice would
 mean for their numbers and let them decide — an unreviewed unit is worse than an

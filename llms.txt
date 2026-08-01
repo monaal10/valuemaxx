@@ -15,6 +15,8 @@
 - allocated_cost_rollup [surfaces=API|MCP|CLI; mode=request_response]: Allocate one run's fully-loaded cost across the three tiers (direct/measured, shared-proportional by declared key, fixed overhead with idle GPU quarantined beside the unit cost). Returns pct_unallocated and both H7 confidence fields; never smears idle capacity into the unit cost.
 - run_metric [surfaces=API|MCP|CLI; mode=request_response]: Validate, compile, and run a user-defined metric (a typed allowlist DSL: filter -> outcome -> join -> measure), returning a result whose every cell carries the conservative confidence (minimum_tier + distribution) and excludes candidate/likely and retracted outcomes from the billing-grade denominator.
 - discover_agents [surfaces=API|MCP|CLI; mode=request_response]: Cluster captured LLM calls into agent/prompt clusters via the deterministic group-by backbone + Drain skeletons. Every cluster is unconfirmed (human-confirm is onboarding).
+- import_promptfoo_suite [surfaces=API|MCP|CLI; mode=request_response]: Import an existing promptfoo suite as eval criteria: llm-rubric assertions become judge-scored criteria (the rubric text used verbatim), contains/not-contains become exact checks. Every unsupported assertion type is returned, never approximated.
+- estimate_switch_cost [surfaces=API|MCP|CLI; mode=request_response]: Project what today's traffic would cost on a different model, by repricing the incumbent's OWN observed token vectors against the candidate's price card. Always ESTIMATED (list price over traffic the candidate never served); returns no number when the model cannot be priced, rather than a misleading zero.
 - run_eval_funnel [surfaces=API|MCP|CLI; mode=async_job]: Run the full eval funnel (discover->dataset->grade->search->cost-gate->recommend) for one candidate against the incumbent. Long-running: returns a job id to poll. Never auto-switches.
 - get_recommendation [surfaces=API|MCP|CLI|NOTIFY; mode=request_response]: Return the latest eval recommendation for an incumbent model (parity, confidence grade, label source) within the tenant scope. Aggregate-only, safe for NOTIFY digests.
 - approve_gate [surfaces=API|MCP|CLI; mode=request_response]: Record a human cost-gate approval for an eval phase (smoke=phase 1, confirmation=phase 2). The estimate is the consent; phase 2 is only reachable after phase 1 is approved.
@@ -53,16 +55,24 @@ Everything you need is here and in `docs/onboarding/SKILL.md`. Do NOT clone or r
 the valuemaxx source to figure out the integration — if something is missing here,
 that is a documentation bug worth reporting, not a reason to go source-diving.
 
-STEP 0 — THE APPROVAL GATE. This integration edits the host's PRODUCTION LLM call
-path. There are two points where you STOP and wait for a human, and you must not
+STEP 0 — THE APPROVAL GATES. This integration edits the host's PRODUCTION LLM call
+path. There are THREE points where you STOP and wait for a human, and you must not
 edit a single file before the first one:
 
-  Gate 1 (before any capture wiring): present the exact list of files you would
+  Gate 1 (before anything): agree what ONE UNIT OF WORK is — the thing they want a
+  cost per. Never pick it yourself. Ask whether an id is already in scope at every
+  model call site, and TEST it: if a retry or restart mints a new id for the same
+  unit, that id is wrong. A codebase may have SEVERAL units (`units` is a list in
+  `valuemaxx.yaml`); enumerate the LLM surfaces and let them group. This comes
+  first because the boundary determines where capture is wired — deciding it after
+  is backwards. Entity keys cannot be backfilled, so this decision has a deadline.
+  Full procedure in `docs/onboarding/SKILL.md`.
+  Gate 2 (before any capture wiring): present the exact list of files you would
   change with one line on why each, which model-call entry points it covers and
   which it does NOT, and anything you had to assume. Then ask which scope they
   want and WAIT. Offer the smallest useful option first — usually the host's one
   LLM wrapper, one file.
-  Gate 2 (before writing outcomes.yaml): present the candidate outcomes and let
+  Gate 3 (before writing outcomes.yaml): present the candidate outcomes and let
   them confirm which are real. See `scaffold_outcome_rule` / `suggest_attribution_rule`,
   which return UNCONFIRMED candidates by design.
 
