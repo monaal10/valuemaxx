@@ -341,6 +341,14 @@ a network call. If a partial rerun can reprocess the same items, note that units
 identified by that item id — reprocessing the same document is the same unit again, and
 you should tell the user whether they want that deduplicated or counted twice.
 
+**Before declaring an id out of scope, check what the call site already loads.** "It is
+not in the session/context object" is not the same as "it is not available": handlers
+routinely fetch a row, a job record, or a document that carries the durable id as a
+plain column, and a parse over the whole row hands it to you for free. Look at what the
+nearest fetch actually returns, not just at the object the framework threads through.
+The difference decides whether the honest boundary costs one field access or a
+signature change across files — so it is worth two minutes before you present options.
+
 **If no id is in scope at all**, say so and stop. Threading one through intermediate
 layers is a signature change across files — exactly the scope growth the wiring gate
 forbids. Offer to leave that surface uncaptured and record it as a known gap; a missing
@@ -459,6 +467,7 @@ outcomes that matter to the business, and state plainly which ones you're unsure
 
 ### 5. Generate the wiring (hybrid — you choose per outcome)
 - **in-process outcome** (a function/ORM-write in their app) → a declarative rule in `valuemaxx.outcomes.yaml`. The SDK instruments the named function at `init()`; no per-call-site edits.
+- **in-process outcome with nothing to patch** → `recordOutcomeNow({ name }, config)`, called at the moment the work succeeds. The declarative path needs a named FUNCTION on an object the SDK can wrap; a workflow step that reaches its terminal state as a RETURN VALUE, a queue consumer that acks a message, or a chat turn that resolves a completion owns no such function. Check this before promising the declarative route — a host can bind runs perfectly and still never record the outcome those runs exist to explain, which reads as "no data" rather than "not wired". It rejects on a failed POST (a direct caller can `try`/`catch`), so wrap it: recording an outcome must never break a working feature.
 - **delayed / external outcome** (a webhook days later) → an explicit captured line in the webhook handler **plus** a `run_id_injection` block so the run_id round-trips and the outcome binds deterministically.
 - **entity-id capture** → one `valuemaxx.run(customer_id=...)`-style line at the run entry, using IDs already in scope.
 
