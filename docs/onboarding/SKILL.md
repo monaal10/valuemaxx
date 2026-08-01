@@ -17,7 +17,10 @@ valuemaxx captures the **correct** cost of every LLM call, binds it to the **bus
 >    WHERE capture is wired — so it comes before the wiring, not after.
 > 2. **Before writing capture wiring** (step 1e) — you present the exact file list and
 >    the reason for each; they approve the scope.
-> 3. **Before writing `outcomes.yaml`** (step 4) — they confirm which outcomes are real.
+> 3. **Before writing `outcomes.yaml`** (step 4) — they confirm which outcomes are real
+>    AND at what GRAIN each is recorded (whole workflow? one step? per item?). The grain
+>    is a separate decision from the unit — picking the convenient call site silently
+>    answers a question they never saw.
 >
 > Steps 1 and 2 are written in install-then-boundary order because you must SEE the call
 > sites to discuss the boundary. Read both before you edit anything, then gate in the
@@ -33,6 +36,28 @@ valuemaxx captures the **correct** cost of every LLM call, binds it to the **bus
 > bug — tell the user what was missing so it can be fixed.
 
 ## The integration, step by step
+
+### 0a. Start from the sentence they said, not from the code
+
+Before scanning anything, write down the user's own words and take them apart. "I want
+cost per alt created" is not one requirement — it is three, and each is a separate
+decision you must not merge:
+
+| From "cost per **alt created**" | The decision | Where it is settled |
+|---|---|---|
+| what one unit IS | the run boundary + its id | gate 1 (step 2) |
+| what counts as **created** | the outcome site + its GRAIN | gate 3 (step 4) |
+| which spend counts toward it | which call sites sit inside the boundary | gate 2 (step 1e) |
+
+They are independent. A workflow-grained unit can carry a step-grained outcome; one run
+can produce several different outcomes. Never infer one from another — deciding the unit
+does NOT decide the outcome site, and an agent that treats them as one question will
+silently pick a grain the user never chose.
+
+Say the interpretation back before you scan: *"you want one number per alt, counted when
+the alt reaches ready — not per sprite, and not per build attempt including failures.
+Correct?"* A misread here invalidates everything downstream, and it costs one sentence
+to check.
 
 ### 0. Check whether the repo is already partly wired
 
@@ -459,20 +484,85 @@ convention. If a proposal is enormous or mostly noise, say so rather than forwar
 If the npm `valuemaxx` binary is missing (`could not determine executable to run`), the
 installed version predates the CLI — upgrade, or run the pipeline from a clone.
 
-### 4. GATE — propose the outcomes and wait (the third approval gate)
+### 4. GATE — propose the outcomes AND their grain, then wait (the third approval gate)
 Present a short summary: *"I found these N outcomes, each run carries this entity ID, these can be bound deterministically and these will be candidate/likely confidence."* Let the human edit/confirm. Then — and only then — write the config.
 
 Keep this list short enough to actually review. Group near-duplicates, lead with the
 outcomes that matter to the business, and state plainly which ones you're unsure about.
 
-### 5. Generate the wiring (hybrid — you choose per outcome)
+**Grain is a separate question from the unit, and it is theirs to answer.** The run
+boundary decides what cost is grouped; the outcome site decides what that group is
+divided by. Both are legitimate at more than one level, and picking the convenient site
+silently answers a question the user never saw:
+
+| Grain | Records when | Answers |
+|---|---|---|
+| whole workflow / job | the run reaches its terminal state | "what does one finished thing cost me?" |
+| a single step / stage | one stage inside the run succeeds | "which stage is the expensive one?" |
+| an item inside a batch | each item is processed | "what does one item cost?" |
+| an external confirmation | a webhook/invoice later confirms it | "what did the outcomes that STUCK cost?" |
+
+These compose — the same runs can carry a workflow-grained outcome AND a step-grained
+one, answering pricing and optimization questions respectively. So ask which they want,
+plural, rather than treating it as a single choice.
+
+Two consequences worth stating plainly when you ask, because they change the number:
+
+* **A coarser grain counts failures.** If the outcome fires only on success but the run
+  boundary spans the whole attempt, failed work stays inside the unit's cost and raises
+  the per-unit number. That is usually correct — failures are a real cost of producing
+  successes — but the user should choose it, not inherit it.
+* **A finer grain multiplies the denominator.** Ten sprites inside one alt make
+  "cost per sprite" ten times smaller than "cost per alt", and neither is wrong. Show
+  both numbers if you can; a grain nobody has seen the arithmetic for is a guess.
+
+Then find the SITE for each confirmed grain and show it: file, function, and the exact
+moment. If the host has no patchable function there, say so and propose
+`recordOutcomeNow` at that moment instead — do not quietly relocate the outcome to
+wherever wiring happens to be easy, because the site IS the grain.
+
+### 5. Generate the wiring (the MECHANISM is yours; the site and grain are theirs)
+
+Gate 3 settled *what* is recorded and *where*. This step is only about which of the
+four mechanisms below reaches that already-agreed site. If you find yourself moving the
+site to suit a mechanism, you are re-deciding gate 3 on the user's behalf — stop and
+re-ask instead.
+
 - **in-process outcome** (a function/ORM-write in their app) → a declarative rule in `valuemaxx.outcomes.yaml`. The SDK instruments the named function at `init()`; no per-call-site edits.
 - **in-process outcome with nothing to patch** → `recordOutcomeNow({ name }, config)`, called at the moment the work succeeds. The declarative path needs a named FUNCTION on an object the SDK can wrap; a workflow step that reaches its terminal state as a RETURN VALUE, a queue consumer that acks a message, or a chat turn that resolves a completion owns no such function. Check this before promising the declarative route — a host can bind runs perfectly and still never record the outcome those runs exist to explain, which reads as "no data" rather than "not wired". It rejects on a failed POST (a direct caller can `try`/`catch`), so wrap it: recording an outcome must never break a working feature.
 - **delayed / external outcome** (a webhook days later) → an explicit captured line in the webhook handler **plus** a `run_id_injection` block so the run_id round-trips and the outcome binds deterministically.
 - **entity-id capture** → one `valuemaxx.run(customer_id=...)`-style line at the run entry, using IDs already in scope.
 
-### 6. Validate, then hand off
-Call the valuemaxx MCP `validate_*` tools to confirm each rule produces a well-formed, bindable outcome; optionally dry-run against recent traffic to preview `cost-per-<outcome>`. Then deliver everything as a **reviewable diff / PR** — explicit, version-controlled, nothing silent.
+### 6. Validate
+Call the valuemaxx MCP `validate_*` tools to confirm each rule produces a well-formed, bindable outcome; optionally dry-run against recent traffic to preview `cost-per-<outcome>`.
+
+Then prove the loop end to end BEFORE you hand it over, because each half looks healthy
+while the other is missing: capture with no outcome renders a null cost-per-outcome that
+reads as "no traffic", and an outcome with no bound run renders the same null for the
+opposite reason. Check all three, and say which you could not check:
+
+1. a cost span reaches the backend (the endpoint is set and a flush actually runs);
+2. an outcome is recorded — grep the repo for a real call site, do not assume the
+   config file implies one;
+3. the two join: the outcome binds at `exact`/`deterministic`, not `UNBOUND`.
+
+If you verified with hand-made requests rather than the host's own code, say so
+explicitly. A number produced by your own curl proves the backend arithmetic and
+nothing about the integration.
+
+### 7. Branch and open a PR
+Never leave the work on whatever branch happened to be checked out. Cut a fresh branch
+from **remote** main (`git fetch` first — not local main, which may be stale or carry
+someone else's work), commit there, push, and open a PR.
+
+Check `git status` before you start: a dirty tree means changes that are not yours, and
+they must not end up in your commit or your branch. If the tree is dirty, say so and ask
+— do not stash it, do not commit around it, do not "clean up" first.
+
+The PR body should state what a reviewer cannot infer from the diff: which unit and
+grain were agreed and why, which surfaces were deliberately left uncaptured, and what
+still has to happen before numbers appear (setting the endpoint/tenant/ingest secrets is
+almost always outstanding, and nothing is emitted until it is done).
 
 ## What you must NOT do
 - **Don't edit a file before the human approved the file list** (gate 1e). Not "just the

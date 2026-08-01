@@ -79,9 +79,19 @@ edit a single file before the first one:
   which it does NOT, and anything you had to assume. Then ask which scope they
   want and WAIT. Offer the smallest useful option first — usually the host's one
   LLM wrapper, one file.
-  Gate 3 (before writing outcomes.yaml): present the candidate outcomes and let
-  them confirm which are real. See `scaffold_outcome_rule` / `suggest_attribution_rule`,
+  Gate 3 (before writing outcomes.yaml): present the candidate outcomes AND the
+  GRAIN each is recorded at — whole workflow, one step inside it, one item of a
+  batch, or an external confirmation. Grain is a SEPARATE decision from the unit
+  of work: the run boundary decides what cost is grouped, the outcome site decides
+  what that group is divided by, and both are legitimate at more than one level.
+  Picking whichever call site is convenient silently answers a question the user
+  never saw. They compose, so ask which they want (plural), and show the arithmetic
+  each grain implies. See `scaffold_outcome_rule` / `suggest_attribution_rule`,
   which return UNCONFIRMED candidates by design.
+
+AFTER the gates: cut a branch from REMOTE main (fetch first), commit, push, open a
+PR. Never leave the work on whatever branch was checked out, and never stash or
+revert a dirty tree to make room — those changes are not yours.
 
 If the scope GROWS mid-change, stop and re-ask — a one-file change that became a
 five-file change is no longer what they approved. Threading a handle from where the
