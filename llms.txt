@@ -63,7 +63,11 @@ edit a single file before the first one:
   cost per. Never pick it yourself. Ask whether an id is already in scope at every
   model call site, and TEST it: if a retry or restart mints a new id for the same
   unit, that id is wrong. A codebase may have SEVERAL units (`units` is a list in
-  `valuemaxx.yaml`); enumerate the LLM surfaces and let them group. This comes
+  `valuemaxx.yaml`); enumerate the LLM surfaces and let them group. ONE PROCESS CAN
+  PRODUCE MANY UNITS — a nightly job classifying 10,000 documents has 10,000 units,
+  not one; when the items are independent the ITEM id is the run id and `run()` goes
+  INSIDE the loop. Generate a per-invocation id only if the whole script is one unit.
+  This comes
   first because the boundary determines where capture is wired — deciding it after
   is backwards. Entity keys cannot be backfilled, so this decision has a deadline.
   Full procedure in `docs/onboarding/SKILL.md`.
@@ -93,7 +97,21 @@ most often get wrong. Check the host's dependency manifest FIRST:
 - Vercel AI SDK (`ai`, `@ai-sdk/*`) with NO raw provider clients  ->  `clients` does
   NOT apply; there is nothing to hand it. Use the TRACER (see the TS form below).
 - LangChain / LlamaIndex / a custom HTTP client  ->  tracer path as above, or OTLP
-  direct; `clients` only wraps the two provider SDKs by name.
+  direct; `clients` only wraps the two provider SDKs by name. NOTE: how to attach a
+  tracer to LangChain's callback system is NOT specified — treat it as needing
+  investigation, not a solved recipe.
+- BOTH a raw client AND the AI SDK (common)  ->  both at once. The paths are not
+  exclusive: `init()` always stands up the tracer and ADDITIONALLY patches whatever
+  you pass in `clients`. One call covers both kinds of route.
+
+LANGUAGE SUPPORT IS NOT SYMMETRIC. TypeScript: `init()` + `run(id, opts, fn)` with
+`agentName`/`entityKeys`. Python: `init()` (keyword-only, snake_case) + a run boundary
+at `valuemaxx.sdk.track.run(run_id=...)` — a contextmanager, NOT re-exported at top
+level — which takes `run_id` ONLY; entity keys are not supported, so a unit spanning
+several runs is not expressible in Python today. Any other language (Go, Ruby, Java)
+has NO SDK: the only route is emitting OTLP spans directly, and that span contract is
+not published here — report it as a gap and treat the host as unsupported rather than
+improvising attribute names.
 
 The complete TypeScript form (single entrypoint; there is no subpath export):
 
@@ -120,8 +138,11 @@ To name the tracer type in your own signatures without adding `@opentelemetry/ap
 `init()`'s CONFIG VALIDATION throws (`InitConfigError`) on a missing/non-http endpoint —
 that is a call-site programming error, deliberately not a silent degrade. Everything
 after validation is fail-open (caught, logged, surfaced on `InitResult.warnings`), so it
-never throws into your call path. To make capture INERT, do not call `init()` at all and
-pass `tracer: undefined` — the AI SDK ignores it.
+never throws into your call path. To make capture INERT, do not call `init()` at all —
+`const vmx = env.VALUEMAXX_ENDPOINT ? init({...}) : undefined;` — and keep SPREADING the
+telemetry option so it simply vanishes when there is no tracer. Do NOT "turn it off" by
+passing `tracer: undefined` explicitly: that fails to compile under
+`exactOptionalPropertyTypes`, which is the whole reason the spread form is used.
 
 Find EVERY model-construction path before editing. "Thread it once through the wrapper"
 assumes a single funnel; real codebases often have a primary wrapper plus bypasses that

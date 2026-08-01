@@ -43,7 +43,8 @@ greenfield one, and it looks *done* from the outside while producing nothing. Fo
 grep -rn "valuemaxx" package.json pyproject.toml   # is the SDK a dependency, at what version?
 grep -rn "init(" --include=*.ts --include=*.py . | grep -i valuemaxx   # is capture stood up?
 grep -rn "run(" --include=*.ts --include=*.py . | grep -i valuemaxx    # is ANY run boundary wired?
-ls valuemaxx.yaml outcomes.yaml 2>/dev/null                            # were the gates ever completed?
+ls valuemaxx.yaml *outcomes.yaml 2>/dev/null   # were the gates ever completed?
+# (the outcome file is `valuemaxx.outcomes.yaml`; the glob also catches a bare outcomes.yaml)
 ```
 
 The revealing combination is **`init()` present, `run()` absent, no `valuemaxx.yaml`**:
@@ -367,7 +368,11 @@ Write the answer to `valuemaxx.yaml` so it is reviewable, diffable and re-runnab
 # Example only — a support desk with two surfaces. Their nouns, not yours.
 units:
   - name: ticket_resolved                  # what one unit is called, in their words
-    run_id_source: ctx.workflowInstanceId  # the value identical across the unit
+    run_id_source: ctx.workflowInstanceId  # the value identical across the unit —
+                                           # note a RETRIED workflow is a new instance,
+                                           # so this counts each attempt separately.
+                                           # Fine if that is what they want; use the
+                                           # entity id instead if retries must roll up.
     entity_keys: [ticket_id, account_id]   # durable ids the unit is about (optional)
     surfaces: [triage, draft-reply]        # which call sites roll up here
 
