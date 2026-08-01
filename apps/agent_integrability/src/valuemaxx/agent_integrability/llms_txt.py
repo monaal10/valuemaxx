@@ -54,7 +54,10 @@ edit a single file before the first one:
   Gate 1 (before anything): agree what ONE UNIT OF WORK is — the thing they want a
   cost per. Never pick it yourself. Ask whether an id is already in scope at every
   model call site, and TEST it: if a retry or restart mints a new id for the same
-  unit, that id is wrong. A codebase may have SEVERAL units (`units` is a list in
+  unit, that id is wrong. Check where the id is MINTED, not where it is read — a
+  derived id (hash/slug/composite) is only as stable as its least stable input, and
+  an id hashed from a `created_at` that a retry rewrites looks permanent at every
+  use site and changes on every restart. A codebase may have SEVERAL units (`units` is a list in
   `valuemaxx.yaml`); enumerate the LLM surfaces and let them group. ONE PROCESS CAN
   PRODUCE MANY UNITS — a nightly job classifying 10,000 documents has 10,000 units,
   not one; when the items are independent the ITEM id is the run id and `run()` goes

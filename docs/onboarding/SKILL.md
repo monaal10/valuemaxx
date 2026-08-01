@@ -315,6 +315,12 @@ right is often not 1:1 with the unit. Two checks, both cheap:
 * **Does the schema agree?** A `UNIQUE` constraint tying the id to the business entity
   proves 1:1; a deliberately non-unique index proves the opposite. This is the fastest
   disproof available and it beats reading call sites.
+* **Where is the id MINTED?** Go to its construction site, not its use sites. A derived
+  id — a hash, a slug, a composite key — is only as stable as its least stable input,
+  and that input is often a mutable timestamp two or three hops away. An id built from
+  a `created_at` that a retry rewrites looks permanent everywhere it is *read* and
+  changes every time the work restarts. Reading the retry route or the state schema
+  will not show you this; only the line that constructs the id will.
 
 When the durable anchor turns out to be an entity id rather than a run id (restarts
 share an `application_id` but not a `session_id`), you have three options — put them to

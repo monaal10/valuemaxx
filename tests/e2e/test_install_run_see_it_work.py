@@ -44,9 +44,16 @@ from fastapi.testclient import TestClient
 from typing_extensions import override
 from valuemaxx.capture import AttemptObservation
 from valuemaxx.capture.otlp import semconv
-from valuemaxx.core.enums import BindingTier, SignalClass
-from valuemaxx.core.ids import OutcomeEventId, RunId, TenantId
+from valuemaxx.core.cost import CostEvent
+from valuemaxx.core.enums import (
+    BindingTier,
+    CaptureGranularity,
+    Provenance,
+    SignalClass,
+)
+from valuemaxx.core.ids import AttemptId, CostEventId, OutcomeEventId, RunId, TenantId
 from valuemaxx.core.outcome import OutcomeBinding, OutcomeEvent
+from valuemaxx.core.provenance import ProvenanceLabel
 from valuemaxx.core.repositories import CostEventRepository
 from valuemaxx.core.run import Run
 from valuemaxx.core.tokens import TokenVector
@@ -65,7 +72,6 @@ if TYPE_CHECKING:
 
     import httpx
     from valuemaxx.capabilities import Registry
-    from valuemaxx.core.cost import CostEvent
     from valuemaxx.server.store_bridge import StoreBridge
 
 
@@ -324,6 +330,122 @@ def test_install_run_see_it_work(client: TestClient, tenant: str) -> None:
     assert cpo_cell["confidence"]["confidence_distribution"][BindingTier.EXACT.value] == 1
 
 
+def test_two_units_report_separate_unit_costs(client: TestClient, tenant: str) -> None:
+    """Two different units in ONE codebase each get their own honest unit cost.
+
+    This is the shape a real repo has: a workflow that spends a lot per unit and a
+    chat surface that spends a little, plus runs that produced nothing at all. Three
+    properties have to hold together for the dashboard to be worth reading, and each
+    used to fail:
+
+    * grouping by ``outcome_name`` yields one cell PER UNIT, so "cost per alt" and
+      "cost per interview chat" are separate numbers rather than one blended average;
+    * a unit's cost is the sum of ALL its model calls (the chat unit spends twice),
+      which is the whole reason a run boundary exists;
+    * a run that produced NO outcome is excluded from the numerator — otherwise the
+      failed run's spend is charged to the successes and the "unit cost" is really a
+      portfolio ratio.
+    """
+    tenant_id = TenantId(UUID(tenant))
+    bridge = _store_bridge(client)
+    registry = _registry(client)
+    at = datetime(2026, 6, 27, 12, 0, tzinfo=UTC)
+
+    def seed_run(run_id: str, outcome: str | None, costs: list[str]) -> None:
+        bridge.runs.upsert(
+            tenant_id,
+            Run(
+                tenant_id=tenant_id,
+                id=RunId(run_id),
+                agent_name=run_id,
+                started_at=at,
+                ended_at=None,
+                entity_keys=frozenset(),
+            ),
+        )
+        for index, usd in enumerate(costs):
+            bridge.cost_events.upsert(
+                tenant_id, _cost_event(tenant_id, run_id, index, Decimal(usd), at)
+            )
+        if outcome is None:
+            return
+        bridge.outcome_events.upsert(
+            tenant_id,
+            OutcomeEvent(
+                tenant_id=tenant_id,
+                id=OutcomeEventId(f"oe-{run_id}"),
+                name=outcome,
+                signal_class=SignalClass.OUTCOME_CONFIRMED,
+                value=Decimal("1"),
+                occurred_at=at,
+                binding=OutcomeBinding(
+                    run_id=RunId(run_id), tier=BindingTier.EXACT, bound_by="attribution"
+                ),
+                entity_keys=frozenset(),
+                correlation_id=None,
+                source="sdk",
+                raw={},
+            ),
+        )
+
+    seed_run("build-alt", "alt_created", ["3.00", "1.50"])  # one unit, TWO model calls
+    seed_run("prescreen", "interview_chat_completed", ["0.20", "0.16"])
+    seed_run("build-alt-failed", None, ["9.99"])  # produced nothing: must not be charged
+
+    _rebind_metrics_with_bound_outcomes(registry, bridge, tenant_id)
+    response = cast("_HttpClient", client).post(
+        "/run_metric",
+        json={
+            "name": "cost_per_outcome",
+            "numerator": "total_cost_usd",
+            "denominator": "verified_outcome_count",
+            "filters": {},
+            "group_by": ["outcome_name"],
+        },
+        headers={"X-API-Key": INGEST_KEY},
+    )
+    assert response.status_code == 200, response.text
+
+    by_name = {
+        dict(cell["group_key"]).get("outcome_name"): cell for cell in response.json()["cells"]
+    }
+    assert Decimal(by_name["alt_created"]["value"]) == Decimal("4.50")
+    assert Decimal(by_name["interview_chat_completed"]["value"]) == Decimal("0.36")
+    for name in ("alt_created", "interview_chat_completed"):
+        assert by_name[name]["denominator_value"] == 1
+        assert by_name[name]["confidence"]["minimum_tier"] == BindingTier.EXACT.value
+
+
+def _cost_event(
+    tenant_id: TenantId, run_id: str, index: int, usd: Decimal, at: datetime
+) -> CostEvent:
+    """A minimal measured cost event for ``run_id`` — the shape ingest would persist."""
+    return CostEvent(
+        tenant_id=tenant_id,
+        id=CostEventId(f"ce-{run_id}-{index}"),
+        run_id=RunId(run_id),
+        attempt_id=AttemptId(f"at-{run_id}-{index}"),
+        provider="anthropic",
+        model="claude-opus-4",
+        tokens=TokenVector(
+            input_uncached=10,
+            cache_read=0,
+            cache_write_5m=0,
+            cache_write_1h=0,
+            output=5,
+            reasoning=0,
+        ),
+        capture_granularity=CaptureGranularity.PER_ATTEMPT,
+        provenance=ProvenanceLabel(provenance=Provenance.MEASURED),
+        cost_usd=usd,
+        is_streaming=False,
+        partial_recovered=False,
+        billing_uncertain_abort=False,
+        provenance_warnings=(),
+        occurred_at=at,
+    )
+
+
 def _store_bridge(client: TestClient) -> StoreBridge:
     """The booted app's live store bridge (set on app.state by the lifespan)."""
     app = client.app
@@ -375,6 +497,38 @@ def _persist_confirmed_outcome(bridge: StoreBridge, tenant_id: TenantId, *, run_
             correlation_id=None,
             source="webhook",
             raw={"amount": 1},
+        ),
+    )
+
+
+def _rebind_metrics_with_bound_outcomes(
+    registry: Registry, bridge: StoreBridge, tenant_id: TenantId
+) -> None:
+    """Re-point run_metric at every outcome in the window, bound ones included.
+
+    Deliberately NOT ``list_unbound``: an outcome that carries its run id is exactly
+    the case cost-per-outcome exists to serve, and the unbound-work-queue listing
+    filters it out by construction. This mirrors the server's own composition, which
+    feeds the metrics runtime from ``list_in_window``.
+    """
+    bind_runtime(
+        registry,
+        MetricRuntime(
+            tenant_id=tenant_id,
+            executor=MetricExecutor(
+                cost_repo=bridge.cost_events,
+                outcome_repo=bridge.outcome_events,
+                run_repo=bridge.runs,
+            ),
+            window=MetricWindow(
+                start=datetime(1970, 1, 1, tzinfo=UTC),
+                end=datetime(9999, 12, 31, tzinfo=UTC),
+            ),
+            outcomes=bridge.outcome_events.list_in_window(
+                tenant_id,
+                datetime(1970, 1, 1, tzinfo=UTC),
+                datetime(9999, 12, 31, tzinfo=UTC),
+            ),
         ),
     )
 
