@@ -1,0 +1,13 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "valuemaxx-gateway",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-05-15",
+	// The gateway is pure fetch/streams — no Node builtins, so no nodejs_compat.
+	"observability": { "enabled": true },
+	"vars": {
+		// Where captured spans and outcomes are reported. Override per environment;
+		// capture is inert if the backend is unreachable (fail-open by design).
+		"VALUEMAXX_BACKEND": "http://127.0.0.1:8000"
+	}
+}
