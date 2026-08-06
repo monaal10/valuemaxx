@@ -19,14 +19,16 @@ act on its own tenant. Nothing without the API surface is projected.
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ValidationError
 from valuemaxx.api.errors import AuthError, JobNotFoundError, WebhookSignatureError
 from valuemaxx.api.webhooks import verify_signature
+from valuemaxx.attribution.capabilities import attribution_request_scope
 from valuemaxx.capabilities import Mode, Surface
 from valuemaxx.capture.capabilities import IngestNotWiredError, ingest_attribute_maps
 from valuemaxx.capture.otlp.collector import otlp_json_to_attribute_maps
@@ -232,6 +234,68 @@ def mount_jobs_route(app: FastAPI, auth: ApiKeyAuthenticator, jobs: JobStore) ->
     app.get("/jobs/{job_id}", name="poll_job")(poll)
 
 
+def mount_outcome_alias_route(
+    app: FastAPI, registry: Registry, auth: ApiKeyAuthenticator
+) -> None:
+    """`POST /outcome` — the one-line outcome call, no SDK required.
+
+    `bind_outcome` takes a full `OutcomeEvent`: ids, timestamps, signal class, binding
+    envelope, honesty fields. That is the right internal contract and the wrong thing
+    to hand a user writing a curl. This alias accepts the four things a caller actually
+    knows — name, and one of run_id / entity keys, plus optional value and signal —
+    and synthesizes the rest, so recording an outcome is one line instead of a schema
+    exercise.
+
+    The tier stays null on the way in: the backend cascade decides it and revalidates
+    the run. A caller can assert what happened, never how much to trust the link.
+    """
+    cap = next((c for c in registry.all() if c.name == "bind_outcome"), None)
+    if cap is None:  # pragma: no cover - registry always carries it
+        return
+
+    async def handler(
+        request: Request,
+        x_api_key: str | None = Header(default=None),
+        baggage: str | None = Header(default=None),
+    ) -> dict[str, object]:
+        tenant_id = _resolve(auth, x_api_key)
+        payload = await _request_payload(request)
+        name = payload.get("name")
+        if not isinstance(name, str) or not name:
+            raise HTTPException(status_code=422, detail="'name' is required")
+
+        run_id = payload.get("run_id")
+        entity = payload.get("entity")
+        entity_keys: list[list[str]] = []
+        if isinstance(entity, dict):
+            entity_raw = cast("dict[str, object]", entity)
+            entity_keys = [[key, str(value)] for key, value in entity_raw.items()]
+        event: dict[str, object] = {
+            "tenant_id": tenant_id,
+            "id": f"oe_{uuid4()}",
+            "name": name,
+            "signal_class": payload.get("signal") or "outcome_confirmed",
+            "value": payload.get("value"),
+            "occurred_at": payload.get("occurred_at")
+            or datetime.now(tz=UTC).isoformat(),
+            "binding": {
+                "run_id": run_id if isinstance(run_id, str) and run_id else None,
+                "tier": None,
+                "bound_by": None,
+            },
+            "entity_keys": entity_keys,
+            "correlation_id": payload.get("correlation_id"),
+            "source": payload.get("source") or "rest",
+            "raw": payload.get("raw") or {},
+        }
+        validated = _validate(cap, event)
+        with attribution_request_scope(baggage=baggage):
+            result = cap.handler(validated)
+        return result.model_dump(mode="json")
+
+    app.post("/outcome", name="outcome_alias")(handler)
+
+
 def mount_capabilities(
     app: FastAPI,
     registry: Registry,
@@ -257,6 +321,7 @@ def mount_capabilities(
     # The OTLP/HTTP collector is a fixed transport route (not a capability projection):
     # the SDK's exporter posts raw OTLP-JSON, which has no capability input model.
     mount_otlp_collector_route(app, registry, auth)
+    mount_outcome_alias_route(app, registry, auth)
 
 
 __all__ = ["mount_capabilities", "mount_jobs_route", "mount_otlp_collector_route"]

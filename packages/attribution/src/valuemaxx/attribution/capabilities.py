@@ -18,16 +18,21 @@ rather than silently no-op.
 
 from __future__ import annotations
 
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from weakref import WeakKeyDictionary
 
+from valuemaxx.attribution.binding.baggage_header import parse_baggage_header
 from valuemaxx.attribution.cascade import Cascade
 from valuemaxx.capabilities import Mode, Surface, capability
-from valuemaxx.core import AtmError, AttributionResult, OutcomeEvent, Run
+from valuemaxx.core import AtmError, AttributionResult, OutcomeEvent, Run, RunId
 from valuemaxx.core.outcome import OutcomeBinding
+from valuemaxx.core.wire import BAGGAGE_RUN_ID_KEY
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+    from contextvars import Token
     from datetime import timedelta
 
     from valuemaxx.capabilities import Registry
@@ -121,7 +126,19 @@ def register(registry: Registry) -> None:
         # leaving cost-per-outcome permanently null.
         runtime = holder.require()
         _ensure_run_exists(runtime, outcome)
-        result = runtime.cascade().bind(outcome, ambient_run_id=outcome.binding.run_id)
+        # Transport-borne signals the OutcomeEvent body cannot carry: a W3C `baggage`
+        # header (T2) and an echoed run id from an external system (T3). Both are set
+        # by the surface via `attribution_request_scope`. They were built, tested, and
+        # wired to nothing — this handler passed only `ambient_run_id`, so a
+        # baggage-carried run id was silently discarded and the outcome fell to the
+        # advisory tiers no matter what the caller sent.
+        carried = _signals()
+        result = runtime.cascade().bind(
+            outcome,
+            ambient_run_id=outcome.binding.run_id,
+            baggage=carried.baggage,
+            echoed_run_id=carried.echoed_run_id,
+        )
         _persist(runtime, outcome, result)
         return result
 
@@ -174,6 +191,70 @@ def bind_runtime(registry: Registry, runtime: AttributionRuntime) -> None:
     holder.runtime = runtime
 
 
+@dataclass(frozen=True, slots=True)
+class _RequestSignals:
+    """Transport-borne attribution signals for one inbound request."""
+
+    baggage: Mapping[str, str] | None = None
+    echoed_run_id: RunId | None = None
+
+
+# `None` rather than a shared `_RequestSignals()` default: a mutable default on a
+# ContextVar is one object across every context, so a future mutable field would
+# bleed between requests. Readers normalize with `_signals()`.
+_REQUEST_SIGNALS: ContextVar[_RequestSignals | None] = ContextVar(
+    "valuemaxx_attribution_signals", default=None
+)
+
+_NO_SIGNALS = _RequestSignals()
+
+
+def _signals() -> _RequestSignals:
+    """The current request's transport signals, or the empty set."""
+    return _REQUEST_SIGNALS.get() or _NO_SIGNALS
+
+
+class attribution_request_scope:  # noqa: N801 - a context manager, reads like one
+    """Supply transport-borne attribution signals for the duration of the block.
+
+    `OutcomeEvent` is the wire body; a `baggage` header and an echoed run id ride the
+    transport instead, so they cannot be fields on it without letting a caller forge
+    them. The surface parses them from the request and scopes them here.
+
+    A malformed baggage header parses to an empty map rather than raising — an ingest
+    path must degrade to the advisory tiers, never 500 on a junk header.
+    """
+
+    __slots__ = ("_signals", "_token")
+
+    def __init__(
+        self, *, baggage: str | None = None, echoed_run_id: RunId | None = None
+    ) -> None:
+        parsed = parse_baggage_header(baggage) if baggage else None
+        self._signals = _RequestSignals(
+            baggage=parsed or None, echoed_run_id=echoed_run_id
+        )
+        self._token: Token[_RequestSignals | None] | None = None
+
+    def __enter__(self) -> None:
+        self._token = _REQUEST_SIGNALS.set(self._signals)
+
+    def __exit__(self, *_exc: object) -> None:
+        if self._token is not None:
+            _REQUEST_SIGNALS.reset(self._token)
+            self._token = None
+
+
+def _carried_run_id(signals: _RequestSignals) -> RunId | None:
+    """The run id a transport signal carried, if any (echo wins over baggage)."""
+    if signals.echoed_run_id is not None:
+        return signals.echoed_run_id
+    if signals.baggage is None:
+        return None
+    value = signals.baggage.get(BAGGAGE_RUN_ID_KEY)
+    return RunId(value) if value else None
+
+
 def _ensure_run_exists(runtime: AttributionRuntime, outcome: OutcomeEvent) -> None:
     """Register the caller-supplied run on first sight, so binding is order-independent.
 
@@ -196,7 +277,13 @@ def _ensure_run_exists(runtime: AttributionRuntime, outcome: OutcomeEvent) -> No
     A run id we did NOT get from the caller is not invented: no run id means the
     cascade falls through to the advisory tiers exactly as before.
     """
-    run_id = outcome.binding.run_id
+    # The body's run id, or the one the transport carried (baggage/echo). Both are
+    # caller assertions of a run that exists, and both hit the same ordering hazard:
+    # cost spans are batched, so the run row may not be written yet and the cascade
+    # would refuse the id as dangling. Registering on first sight makes binding
+    # independent of which arrives first.
+    carried = _signals()
+    run_id = outcome.binding.run_id or _carried_run_id(carried)
     if run_id is None:
         return
     repo = runtime.run_repo
@@ -259,6 +346,7 @@ def _pending_for(runtime: AttributionRuntime, outcome: OutcomeEvent) -> Attribut
 __all__ = [
     "AttributionNotWiredError",
     "AttributionRuntime",
+    "attribution_request_scope",
     "bind_runtime",
     "register",
 ]

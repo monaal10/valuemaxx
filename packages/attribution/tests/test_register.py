@@ -25,7 +25,11 @@ from _attribution_helpers import (
     utc,
 )
 from valuemaxx.attribution import register
-from valuemaxx.attribution.capabilities import AttributionRuntime, bind_runtime
+from valuemaxx.attribution.capabilities import (
+    AttributionRuntime,
+    attribution_request_scope,
+    bind_runtime,
+)
 from valuemaxx.capabilities import Mode, Registry, Surface
 from valuemaxx.core import (
     AtmError,
@@ -37,6 +41,7 @@ from valuemaxx.core import (
     RunId,
     SignalClass,
 )
+from valuemaxx.core.wire import BAGGAGE_RUN_ID_KEY
 
 _OCCURRED = utc(2026, 1, 1, 12, 0)
 
@@ -219,3 +224,48 @@ def test_list_review_queue_returns_pending() -> None:
 def test_unknown_run_id_type_safety() -> None:
     """RunId round-trips as a plain string through the core model (sanity)."""
     assert RunId("x") == "x"
+
+
+def test_baggage_header_binds_the_run_at_exact_tier() -> None:
+    """A W3C `baggage` header carries the run id — the proxy's attribution channel.
+
+    T2 exists so a caller that cannot pass an in-process run id (a different service,
+    or a gateway sitting in front of the provider) can still bind at a billing-grade
+    tier. The parser, the resolver, the wire key, and the cascade parameter were all
+    built and tested — and connected to nothing: `bind_outcome_handler` passed only
+    `ambient_run_id`, so every baggage-carried run id was silently discarded and the
+    outcome fell to the advisory tiers.
+    """
+    repo = InMemoryRunRepository()
+    runtime = AttributionRuntime(
+        run_repo=repo, review_queue=InMemoryReviewQueue(), entity_window=timedelta(hours=6)
+    )
+    registry = _registry()
+    bind_runtime(registry, runtime)
+    spec = next(s for s in registry.all() if s.name == "bind_outcome")
+
+    with attribution_request_scope(baggage=f"{BAGGAGE_RUN_ID_KEY}=run-from-baggage"):
+        result = spec.handler(_outcome())  # binding.run_id is None; baggage supplies it
+
+    assert isinstance(result, AttributionResult)
+    assert result.run_id == RunId("run-from-baggage")
+    assert result.is_billing_grade is True
+    assert result.review_required is False
+
+
+def test_malformed_baggage_falls_through_instead_of_raising() -> None:
+    """A junk header must degrade to the advisory tiers, never 500 the ingest path."""
+    runtime = AttributionRuntime(
+        run_repo=InMemoryRunRepository(),
+        review_queue=InMemoryReviewQueue(),
+        entity_window=timedelta(hours=6),
+    )
+    registry = _registry()
+    bind_runtime(registry, runtime)
+    spec = next(s for s in registry.all() if s.name == "bind_outcome")
+
+    with attribution_request_scope(baggage="=====not-a-header===="):
+        result = spec.handler(_outcome())
+
+    assert isinstance(result, AttributionResult)
+    assert result.is_billing_grade is False

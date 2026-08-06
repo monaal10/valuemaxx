@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+from datetime import timedelta
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -26,12 +27,24 @@ from _api_helpers import (
     route_paths,
 )
 from fastapi.testclient import TestClient
+from typing_extensions import override
 from valuemaxx.agent_integrability.discovery import build_default_registry
 from valuemaxx.api.app import build_app
 from valuemaxx.capabilities import Mode, Surface
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from valuemaxx.capabilities import Registry
+    from valuemaxx.core import Run, RunId, TenantId
+from valuemaxx.attribution.capabilities import (
+    AttributionRuntime,
+)
+from valuemaxx.attribution.capabilities import (
+    bind_runtime as bind_attribution_runtime,
+)
+from valuemaxx.core.repositories import ReviewQueue, RunRepository
+from valuemaxx.core.wire import BAGGAGE_RUN_ID_KEY
 
 _API_KEYS = {"key-a": "tenant-a", "key-b": "tenant-b"}
 _WEBHOOK_SECRET = b"shhh-webhook-secret"
@@ -433,3 +446,95 @@ def test_build_default_app_projects_canonical_registry() -> None:
     paths = route_paths(client.app)
     for cap in registry.for_surface(Surface.API):
         assert f"/{cap.name}" in paths
+
+
+# --- the outcome surface: friendly alias + transport-borne attribution ---------
+
+
+def _outcome_client() -> TestClient:
+    """A client whose attribution runtime is wired (build_app is transport-only)."""
+    registry = build_default_registry()
+    bind_attribution_runtime(
+        registry,
+        AttributionRuntime(
+            run_repo=_InMemoryRuns(),
+            review_queue=_InMemoryQueue(),
+            entity_window=timedelta(hours=24),
+        ),
+    )
+    return TestClient(
+        build_app(registry, api_keys=_UUID_API_KEYS, webhook_secret=_WEBHOOK_SECRET)
+    )
+
+
+class _InMemoryRuns(RunRepository):
+    """Minimal RunRepository for the outcome-surface routes."""
+
+    def __init__(self) -> None:
+        self._rows: dict[tuple[str, str], Run] = {}
+
+    @override
+    def get(self, tenant_id: TenantId, run_id: RunId) -> Run | None:
+        return self._rows.get((str(tenant_id), str(run_id)))
+
+    @override
+    def upsert(self, tenant_id: TenantId, run: Run) -> None:
+        self._rows[(str(tenant_id), str(run.id))] = run
+
+    @override
+    def list_by_entity(
+        self, tenant_id: TenantId, entity_key: tuple[str, str]
+    ) -> Sequence[Run]:
+        return ()
+
+
+class _InMemoryQueue(ReviewQueue):
+    """Minimal ReviewQueue for the outcome-surface routes."""
+
+    def __init__(self) -> None:
+        self.items: list[object] = []
+
+    @override
+    def enqueue(self, tenant_id: TenantId, item: object) -> None:
+        self.items.append(item)
+
+    @override
+    def list_pending(self, tenant_id: TenantId) -> Sequence[object]:
+        return tuple(self.items)
+
+
+def _outcome_body() -> dict[str, object]:
+    return {"name": "alt_created", "run_id": "run-wire-1"}
+
+
+def test_post_outcome_alias_records_an_outcome() -> None:
+    """`POST /outcome` is the one-line outcome call a host makes without an SDK.
+
+    `bind_outcome` takes a full `OutcomeEvent` — every honesty field, ids, timestamps.
+    That is the right internal contract and the wrong thing to ask a user to hand-write
+    in a curl. The alias accepts the four fields a caller actually knows and fills the
+    rest, so "record an outcome" is one line rather than a schema exercise.
+    """
+    client = _outcome_client()
+    res = post(client, "/outcome", json=_outcome_body(), headers={"X-API-Key": "key-uuid"})
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["run_id"] == "run-wire-1"
+    # The TIER is system-owned: a caller cannot promote its own outcome.
+    assert body["tier"] in {"exact", "deterministic", "candidate", "likely", None}
+
+
+def test_post_outcome_binds_a_run_carried_by_the_baggage_header() -> None:
+    """A `baggage` header supplies the run id when the body cannot (the proxy path)."""
+    client = _outcome_client()
+    res = post(
+        client,
+        "/outcome",
+        json={"name": "alt_created"},  # no run_id in the body
+        headers={
+            "X-API-Key": "key-uuid",
+            "baggage": f"{BAGGAGE_RUN_ID_KEY}=run-from-header",
+        },
+    )
+    assert res.status_code == 200, res.text
+    assert res.json()["run_id"] == "run-from-header"
