@@ -31,9 +31,11 @@ from valuemaxx.capabilities import Mode, Surface
 from valuemaxx.capture.capabilities import IngestNotWiredError, ingest_attribute_maps
 from valuemaxx.capture.otlp.collector import otlp_json_to_attribute_maps
 from valuemaxx.core.ids import TenantId
+from valuemaxx.metrics.capabilities import metric_tenant_scope
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+    from contextlib import AbstractContextManager
 
     from fastapi import FastAPI
     from valuemaxx.api.auth import ApiKeyAuthenticator
@@ -88,13 +90,41 @@ def _parse_raw(raw_body: bytes) -> dict[str, object]:
     return _as_dict(parsed)
 
 
+def _tenant_scope(tenant_id: str) -> AbstractContextManager[None] | None:
+    """The per-request metric tenant scope, or None if the tenant is not a UUID.
+
+    Capabilities whose input model has no `tenant_id` field (`MetricDefinition` —
+    the tenant is deliberately never trusted from the body) receive the resolved
+    tenant out-of-band through this scope. Without it the metrics runtime fell back
+    to one tenant chosen at startup and served it to every caller.
+
+    A non-UUID tenant (a self-host key map may use any string) simply gets no scope
+    rather than a 500: the runtime's own fallback still applies, and a malformed
+    tenant must never take down capabilities that do not consult the scope at all.
+    """
+    try:
+        return metric_tenant_scope(TenantId(UUID(tenant_id)))
+    except ValueError:
+        return None
+
+
 def _mount_request_response(app: FastAPI, cap: AnyCapability, auth: ApiKeyAuthenticator) -> None:
     async def handler(
         request: Request, x_api_key: str | None = Header(default=None)
     ) -> dict[str, object]:
         tenant_id = _resolve(auth, x_api_key)
         scoped = _scope(await _request_payload(request), tenant_id, cap)
-        result = cap.handler(_validate(cap, scoped))
+        validated = _validate(cap, scoped)
+        # Capabilities whose input model has no `tenant_id` field (MetricDefinition —
+        # the tenant is deliberately never trusted from the body) get the resolved
+        # tenant out-of-band instead. Without this the metrics runtime fell back to a
+        # tenant chosen at startup and served it to every caller.
+        scope = _tenant_scope(tenant_id)
+        if scope is None:
+            result = cap.handler(validated)
+        else:
+            with scope:
+                result = cap.handler(validated)
         return result.model_dump(mode="json")
 
     app.post(f"/{cap.name}", name=cap.name)(handler)

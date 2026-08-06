@@ -47,7 +47,7 @@ from valuemaxx.eval.providers import (
 )
 from valuemaxx.metrics import MetricExecutor, MetricRuntime, MetricWindow
 from valuemaxx.metrics import bind_runtime as bind_metrics_runtime
-from valuemaxx.server.settings import ServerSettings
+from valuemaxx.server.settings import DEV_TENANT_ID, ServerSettings
 from valuemaxx.server.store_bridge import StoreBridge
 
 if TYPE_CHECKING:
@@ -77,17 +77,9 @@ _WINDOW_END = datetime(9999, 12, 31, tzinfo=UTC)
 # labeled `candidate` regardless, so this bounds a fallback, never a billing-grade link.
 _ENTITY_BINDING_WINDOW = timedelta(hours=24)
 
-
-def _first_tenant(ingest_keys: dict[str, str]) -> TenantId | None:
-    """The tenant the metrics runtime is scoped to (the first configured ingest key).
-
-    The current ``run_metric`` capability binds one tenant scope at startup (the
-    metric input carries no tenant; the tenant is never read from the body). The
-    store query it issues is tenant-scoped, so it returns only that tenant's cost.
-    """
-    for tenant in ingest_keys.values():
-        return TenantId(UUID(tenant))
-    return None
+# The tenant `run_metric` falls back to when no request scope is set (CLI/MCP on a
+# single-tenant self-host). Every HTTP request overrides it via `metric_tenant_scope`.
+_FALLBACK_TENANT = TenantId(UUID(DEV_TENANT_ID))
 
 
 def _wire_runtimes(registry: Registry, bridge: StoreBridge, settings: ServerSettings) -> None:
@@ -172,28 +164,29 @@ def _wire_runtimes(registry: Registry, bridge: StoreBridge, settings: ServerSett
         ),
     )
 
-    tenant = _first_tenant(settings.resolved_ingest_keys())
-    if tenant is not None:
-        executor = MetricExecutor(
-            cost_repo=bridge.cost_events,
-            outcome_repo=bridge.outcome_events,
-            run_repo=bridge.runs,
-        )
-        bind_metrics_runtime(
-            registry,
-            MetricRuntime(
-                tenant_id=tenant,
-                executor=executor,
-                window=MetricWindow(start=_WINDOW_START, end=_WINDOW_END),
-                # Resolved PER REQUEST, not snapshotted at startup. A static tuple
-                # here meant every outcome recorded after boot was invisible to the
-                # denominator, so cost-per-outcome stayed null no matter how cleanly
-                # the outcome bound.
-                outcomes=lambda: bridge.outcome_events.list_in_window(
-                    tenant, _WINDOW_START, _WINDOW_END
-                ),
+    executor = MetricExecutor(
+        cost_repo=bridge.cost_events,
+        outcome_repo=bridge.outcome_events,
+        run_repo=bridge.runs,
+    )
+    bind_metrics_runtime(
+        registry,
+        MetricRuntime(
+            # A fallback only. The HTTP surface sets `metric_tenant_scope` from the
+            # resolved API key on every request, so this value is used only when a
+            # caller reaches the capability out-of-band (CLI/MCP in single-tenant
+            # self-host). Binding one tenant here and serving it to everyone was a
+            # cross-tenant leak, not merely a wrong number.
+            tenant_id=_FALLBACK_TENANT,
+            executor=executor,
+            window=MetricWindow(start=_WINDOW_START, end=_WINDOW_END),
+            # Takes the tenant so the DENOMINATOR follows the request scope too — a
+            # zero-arg provider would close over one tenant and leak the other half.
+            outcomes=lambda tenant: bridge.outcome_events.list_in_window(
+                tenant, _WINDOW_START, _WINDOW_END
             ),
-        )
+        ),
+    )
 
 
 def create_app(settings: ServerSettings | None = None) -> FastAPI:

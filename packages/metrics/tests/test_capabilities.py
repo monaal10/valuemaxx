@@ -24,8 +24,8 @@ from valuemaxx.core import (
     SignalClass,
     TenantId,
 )
-from valuemaxx.metrics import MetricRuntime, register
-from valuemaxx.metrics.capabilities import MetricsNotWiredError
+from valuemaxx.metrics import MetricRuntime, bind_runtime, register
+from valuemaxx.metrics.capabilities import MetricsNotWiredError, metric_tenant_scope
 from valuemaxx.metrics.executor import MetricExecutor, MetricWindow
 from valuemaxx.metrics.schemas import MetricResult
 
@@ -124,3 +124,53 @@ def test_bind_runtime_without_register_raises() -> None:
     registry = Registry()
     with pytest.raises(MetricsNotWiredError):
         bind_runtime(registry, _runtime())
+
+
+def test_request_scoped_tenant_overrides_the_bound_tenant() -> None:
+    """A metric runs for the CALLER's tenant, not the one bound at startup.
+
+    `MetricDefinition` deliberately carries no `tenant_id` — the tenant is never
+    trusted from the request body. That left the runtime holding one tenant chosen
+    at startup, so in any multi-key deployment every tenant's `run_metric` returned
+    the FIRST tenant's cost. A hosted product cannot ship that: it is a cross-tenant
+    data leak, not merely a wrong number.
+    """
+    other = TenantId(uuid4())
+    costs = InMemoryCostEventRepository()
+    outcomes = InMemoryOutcomeEventRepository()
+    outcomes.upsert(_TENANT, _outcome())  # only _TENANT has data
+    registry = Registry()
+    register(registry)
+    bind_runtime(
+        registry,
+        MetricRuntime(
+            tenant_id=_TENANT,
+            executor=MetricExecutor(cost_repo=costs, outcome_repo=outcomes),
+            window=_WINDOW,
+            # The HOSTED wiring: the provider takes the tenant, so the denominator
+            # follows the request scope instead of a tenant closed over at startup.
+            outcomes=lambda t: outcomes.list_all(t),
+        ),
+    )
+    spec = next(s for s in registry.all() if s.name == "run_metric")
+
+    with metric_tenant_scope(other):
+        result = spec.handler(_definition())
+
+    assert isinstance(result, MetricResult)
+    # `other` owns nothing, so the billing-grade denominator must be zero — not
+    # _TENANT's single outcome leaking across the boundary.
+    assert result.cells[0].denominator_value == 0
+
+
+def test_without_a_request_scope_the_bound_tenant_still_applies() -> None:
+    """Self-host keeps working: no scope set => the startup-bound tenant is used."""
+    registry = Registry()
+    register(registry)
+    bind_runtime(registry, _runtime())
+    spec = next(s for s in registry.all() if s.name == "run_metric")
+
+    result = spec.handler(_definition())
+
+    assert isinstance(result, MetricResult)
+    assert result.cells[0].denominator_value == 1
