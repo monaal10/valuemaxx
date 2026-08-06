@@ -140,6 +140,27 @@ OUTCOMES, in order of cost to the host:
 The TIER is always decided server-side. A caller states what happened; it never
 states how much to trust the link.
 
+RUNNING IT. There is no hosted signup yet — the user runs both pieces:
+  docker run -p 8000:8000 ghcr.io/<owner>/valuemaxx-backend:latest
+  cd gateway && bunx wrangler deploy --var VALUEMAXX_BACKEND:https://<backend>
+The key is whatever `VALUEMAXX_INGEST_KEYS` maps ({key: tenant-uuid}); unset, the
+backend serves a single dev key `dev`. Do not write `vmx_live_...` into a host's
+config without telling them where it comes from.
+
+A Worker on *.workers.dev CANNOT fetch a Cloudflare-proxied host — `api.anthropic.com`
+is one, and returns error 1042 before leaving the edge. OpenAI/Gemini/OpenRouter are
+unaffected. Use a custom domain, host the gateway elsewhere, or route Anthropic via
+OpenRouter. `/healthz` proves the worker is up, NOT that upstream is reachable: verify
+with one real call per provider the host uses.
+
+NEVER commit a gateway URL pointing at localhost. It replaces the provider base URL,
+so it is on the REQUEST path — a deployed worker resolving 127.0.0.1 to its own
+isolate breaks every model call, not just telemetry. Ship it empty; set per env.
+
+Detecting an EXISTING gateway integration: the step-0 SDK greps (`init(`, `run(`)
+report "unwired" on a repo that is fully wired through the gateway. Also
+`grep -rn "x-vmx-\|VALUEMAXX_GATEWAY_URL"`.
+
 STEP 1b — the SDK path, for hosts the gateway cannot serve (Bedrock/Vertex request
 signing, an existing OTel collector, or a policy against egress through a proxy).
 Check the host's dependency manifest FIRST:

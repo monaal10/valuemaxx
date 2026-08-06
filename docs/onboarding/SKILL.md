@@ -120,6 +120,38 @@ When the host has no such id, the gateway mints one and echoes it back in the
 adjacent LLM call; an inbound webhook for anything confirmed later. The tier is always
 decided server-side.
 
+**Standing up the gateway and the backend.** Both are yours to run today — there is no
+hosted signup yet, and an agent that assumes one will stall at the first step:
+
+```bash
+docker run -p 8000:8000 -v valuemaxx-data:/home/valuemaxx/data \
+  ghcr.io/<owner>/valuemaxx-backend:latest          # the backend
+cd gateway && bunx wrangler deploy \
+  --var VALUEMAXX_BACKEND:https://<your-backend>    # the gateway
+```
+
+The key is whatever `VALUEMAXX_INGEST_KEYS` maps (a JSON `{key: tenant-uuid}`); with
+none configured the backend serves a single dev key, `dev`. Say this to the user
+rather than writing `vmx_live_...` into their config and leaving them to wonder where
+it comes from.
+
+**A Worker cannot fetch a Cloudflare-proxied host** (`api.anthropic.com` is one) from a
+`*.workers.dev` subdomain — Cloudflare returns error 1042 before the request leaves the
+edge. OpenAI/Gemini/OpenRouter are unaffected. Deploy on a custom domain, run the
+gateway off Cloudflare, or route Anthropic via OpenRouter. Verify with one real call
+per provider the host actually uses; `/healthz` returning 200 proves nothing about
+upstream reachability.
+
+**Detecting an existing gateway integration.** The step-0 greps look for SDK
+signatures (`init(`, `run(`) and will report "unwired" on a repo that is fully wired
+through the gateway. Add `grep -rn "x-vmx-\|VALUEMAXX_GATEWAY_URL"` before concluding
+anything.
+
+**Never commit a gateway URL that points at localhost.** It replaces the provider base
+URL, so it is on the REQUEST path: a deployed worker resolving `127.0.0.1` to its own
+isolate breaks every model call, not just telemetry. Ship the var empty (capture inert,
+calls direct) and set it per environment.
+
 **When the gateway does not fit** — SigV4/OAuth request signing (Bedrock, Vertex), an
 existing OTel collector, or a policy against proxied egress — fall through to the SDK
 path below. It is the compat route now, not the front door.
