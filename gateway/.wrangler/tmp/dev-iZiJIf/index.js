@@ -568,6 +568,9 @@ var src_default = {
     if (url.pathname === "/healthz") {
       return new Response("ok", { status: 200 });
     }
+    if (url.pathname === "/v1/outcome" && request.method === "POST") {
+      return forwardOutcome(request, env);
+    }
     const route = ROUTES.find(
       (r) => url.pathname === r.prefix || url.pathname.startsWith(`${r.prefix}/`)
     );
@@ -597,6 +600,26 @@ var src_default = {
     }
   }
 };
+async function forwardOutcome(request, env) {
+  const key = request.headers.get("x-vmx-key")?.trim();
+  if (!key) {
+    return json({ error: "missing_key", message: "x-vmx-key is required" }, 401);
+  }
+  const body = await request.text();
+  const upstream = await fetch(
+    `${env.VALUEMAXX_BACKEND.replace(/\/+$/, "")}/outcome`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": key },
+      body
+    }
+  );
+  return new Response(upstream.body, {
+    status: upstream.status,
+    headers: { "content-type": "application/json" }
+  });
+}
+__name(forwardOutcome, "forwardOutcome");
 async function proxy(request, upstreamUrl, provider, env, ctx) {
   const intent = readIntent(request.headers, () => crypto.randomUUID());
   const requestBody = request.method === "GET" || request.method === "HEAD" ? void 0 : await request.text();
@@ -772,7 +795,7 @@ var jsonError = /* @__PURE__ */ __name(async (request, env, _ctx, middlewareCtx)
 }, "jsonError");
 var middleware_miniflare3_json_error_default = jsonError;
 
-// .wrangler/tmp/bundle-UueT0i/middleware-insertion-facade.js
+// .wrangler/tmp/bundle-qPk9G4/middleware-insertion-facade.js
 var __INTERNAL_WRANGLER_MIDDLEWARE__ = [
   middleware_ensure_req_body_drained_default,
   middleware_miniflare3_json_error_default
@@ -804,7 +827,7 @@ function __facade_invoke__(request, env, ctx, dispatch, finalMiddleware) {
 }
 __name(__facade_invoke__, "__facade_invoke__");
 
-// .wrangler/tmp/bundle-UueT0i/middleware-loader.entry.ts
+// .wrangler/tmp/bundle-qPk9G4/middleware-loader.entry.ts
 var __Facade_ScheduledController__ = class ___Facade_ScheduledController__ {
   constructor(scheduledTime, cron, noRetry) {
     this.scheduledTime = scheduledTime;

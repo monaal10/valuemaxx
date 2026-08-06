@@ -49,3 +49,24 @@ is recorded as `provider_reconciled` rather than an estimate).
 ```bash
 bunx wrangler deploy --var VALUEMAXX_BACKEND:https://your-backend
 ```
+
+## Known deployment constraint: Cloudflare error 1042
+
+A Worker on a Cloudflare-owned zone cannot `fetch()` a host that is itself behind
+Cloudflare's proxy — the request fails with **error 1042** before it leaves the edge.
+`api.anthropic.com` is such a host, so an Anthropic route deployed to a
+`*.workers.dev` subdomain returns 1042 while OpenAI/Gemini/OpenRouter work normally.
+
+This is an infrastructure property, not a bug in the gateway: the same code proxies
+Anthropic correctly under `wrangler dev` and from any non-Cloudflare host. Options,
+in the order worth trying:
+
+1. **Deploy on a custom domain** (a zone you own) rather than `*.workers.dev` — the
+   restriction is scoped to Cloudflare-owned zones.
+2. **Run the gateway anywhere else** — it is one file of standard `fetch`/streams
+   code with no Workers-specific APIs beyond `waitUntil`; a container or any edge
+   runtime works.
+3. **Route Anthropic through OpenRouter**, which is not Cloudflare-proxied and
+   additionally reports authoritative billed cost.
+
+Verify with `/healthz` (always 200) and one real call per provider you plan to use.

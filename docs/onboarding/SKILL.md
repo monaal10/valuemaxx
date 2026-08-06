@@ -80,7 +80,51 @@ means an earlier pass wired the easy half and skipped the gates. Do not treat th
 Report what you found before proposing anything, including the installed version versus
 the pinned one. Then run the gates in the normal order; nothing here lets you skip one.
 
-### 1. Install + capture (zero outcome data yet)
+### 1. THE GATEWAY — the default path, and the one to try first
+
+Capture happens in a proxy the host points its provider base URL at. No SDK, no
+`init()`, no run boundary, no flush — the request path is unchanged and nothing of
+ours runs inside it.
+
+```python
+client = OpenAI(
+    base_url="https://<gateway>/openai/v1",              # line 1
+    default_headers={"x-vmx-key": "vmx_live_...",        # line 2
+                     "x-vmx-run-id": order_id},          #   ← THEIR durable id
+)
+client.chat.completions.create(...,                       # line 3 (optional)
+    extra_headers={"x-vmx-outcome": "order_fulfilled"})
+```
+
+Routes: `/openai` `/anthropic` `/gemini` `/openrouter`. Every `x-vmx-*` header is
+stripped before forwarding; the provider key passes through and is never stored.
+
+**Headers are the entire contract.** Everything the SDK wanted in code is a string:
+
+| Header | Means |
+|---|---|
+| `x-vmx-key` | the tenant |
+| `x-vmx-run-id` (or `baggage: valuemaxx.run_id=…`) | the unit of work |
+| `x-vmx-agent` | grouping label |
+| `x-vmx-entity-<name>` | durable business ids the unit is about |
+| `x-vmx-outcome` | the outcome this call completes (fires only on 2xx) |
+
+**Teach the host's OWN id as `x-vmx-run-id`.** `order_9182`, not a UUID we mint. It
+groups a unit's calls *and* makes the delayed join free — when a webhook arrives days
+later carrying that id, the outcome binds at `exact` with no window and no inference.
+When the host has no such id, the gateway mints one and echoes it back in the
+`x-vmx-run-id` response header to stamp outward.
+
+**Outcomes, cheapest first:** the `x-vmx-outcome` header (no extra request); a
+`POST <gateway>/v1/outcome` with `{name, run_id | entity}` for a "done" moment with no
+adjacent LLM call; an inbound webhook for anything confirmed later. The tier is always
+decided server-side.
+
+**When the gateway does not fit** — SigV4/OAuth request signing (Bedrock, Vertex), an
+existing OTel collector, or a policy against proxied egress — fall through to the SDK
+path below. It is the compat route now, not the front door.
+
+### 1a. SDK path (compat) — install + capture
 Add the SDK and one line. This alone gives total + per-model + per-agent cost.
 
 ```bash

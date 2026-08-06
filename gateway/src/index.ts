@@ -75,6 +75,14 @@ export default {
       return new Response("ok", { status: 200 });
     }
 
+    // The outcome floor. Most outcomes ride the request that produced them via
+    // `x-vmx-outcome`; a host whose "done" moment has no adjacent LLM call posts
+    // here instead. Routed through the gateway so a host configures ONE base URL
+    // rather than learning the backend's address separately.
+    if (url.pathname === "/v1/outcome" && request.method === "POST") {
+      return forwardOutcome(request, env);
+    }
+
     const route = ROUTES.find(
       (r) => url.pathname === r.prefix || url.pathname.startsWith(`${r.prefix}/`),
     );
@@ -108,6 +116,29 @@ export default {
     }
   },
 } satisfies ExportedHandler<Env>;
+
+async function forwardOutcome(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  const key = request.headers.get("x-vmx-key")?.trim();
+  if (!key) {
+    return json({ error: "missing_key", message: "x-vmx-key is required" }, 401);
+  }
+  const body = await request.text();
+  const upstream = await fetch(
+    `${env.VALUEMAXX_BACKEND.replace(/\/+$/, "")}/outcome`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": key },
+      body,
+    },
+  );
+  return new Response(upstream.body, {
+    status: upstream.status,
+    headers: { "content-type": "application/json" },
+  });
+}
 
 async function proxy(
   request: Request,

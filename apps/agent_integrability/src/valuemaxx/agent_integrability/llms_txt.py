@@ -95,8 +95,46 @@ tree, and never weaken a host safety setting (lockfile policy, supply-chain
 minimum-release-age, a CI gate) to unblock yourself — use a one-off per-command
 override, or tell the user.
 
-STEP 1 — pick the capture path from the host's LLM stack. This is the fork agents
-most often get wrong. Check the host's dependency manifest FIRST:
+STEP 1 — THE GATEWAY IS THE DEFAULT PATH. Do not reach for the SDK first. Capture
+happens in a proxy the host points its provider base URL at, so the integration is
+a config change rather than code in the request path:
+
+    client = OpenAI(
+        base_url="https://<gateway>/openai/v1",              # line 1
+        default_headers={"x-vmx-key": "vmx_live_...",        # line 2
+                         "x-vmx-run-id": order_id})          #   <- THEIR durable id
+    ...
+    client.chat.completions.create(...,                       # line 3, optional:
+        extra_headers={"x-vmx-outcome": "order_fulfilled"})
+
+Routes: /openai /anthropic /gemini /openrouter. Every `x-vmx-*` header is stripped
+before forwarding; the host's provider key passes through and is never stored.
+
+HEADERS ARE THE WHOLE CONTRACT. Everything the SDK asked for in code is a string:
+  x-vmx-key           the tenant
+  x-vmx-run-id        the unit of work (or W3C `baggage: valuemaxx.run_id=...`)
+  x-vmx-agent         grouping label
+  x-vmx-entity-<name> durable business ids the unit is about
+  x-vmx-outcome       the outcome this call completes (recorded only on 2xx)
+
+USE THE HOST'S OWN DURABLE ID as `x-vmx-run-id` (`order_9182`, not a UUID we mint).
+It groups the calls of one unit AND makes a delayed outcome free: when a webhook
+arrives days later carrying that same id, it binds at `exact` with no time window
+and no inference. If the host cannot supply one, the gateway mints one and ECHOES
+it back in the `x-vmx-run-id` response header for the host to stamp outward.
+
+OUTCOMES, in order of cost to the host:
+  1. `x-vmx-outcome` on the call that produces it — zero extra requests.
+  2. `POST <gateway>/v1/outcome` with `{name, run_id | entity}` — one line, for a
+     "done" moment with no adjacent LLM call (a workflow step, a queue ack).
+  3. An inbound webhook (Stripe et al.) — config, no code, and the only path for an
+     outcome confirmed days later.
+The TIER is always decided server-side. A caller states what happened; it never
+states how much to trust the link.
+
+STEP 1b — the SDK path, for hosts the gateway cannot serve (Bedrock/Vertex request
+signing, an existing OTel collector, or a policy against egress through a proxy).
+Check the host's dependency manifest FIRST:
 
 - Raw `openai` / `@anthropic-ai/sdk` client instances  ->  pass them to `init({clients})`.
 - Vercel AI SDK (`ai`, `@ai-sdk/*`) with NO raw provider clients  ->  `clients` does
