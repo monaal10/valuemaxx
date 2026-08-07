@@ -5,286 +5,121 @@
 > **Know what each AI agent actually costs you — correctly — and what it earned, per outcome, with confidence.**
 > For teams that **build** AI agents, not the ones who buy them.
 
-Observability tools (Helicone, Langfuse) tell you what you **spent**. This tells you whether it was **worth it**: it captures *correct, invoice-reconciled* LLM cost per agent run, deterministically binds it to the real business outcome each run produced — including outcomes that arrive days later, out of process — and labels every number with how trustworthy it is. Then it shows you, on your real workload, where a cheaper or faster model holds the same outcome.
+Observability tools (Helicone, Langfuse) tell you what you **spent**. This tells you whether it was **worth it**: it captures *correct* LLM cost per unit of work, binds it to the real business outcome each unit produced — including outcomes that arrive days later, out of process — and labels every number with how trustworthy it is. Then it shows you, on your real workload, where a cheaper model holds the same outcome.
 
 ---
 
-> **For AI agents / crawlers:** machine-readable capability + usage info is in [`llms.txt`](./llms.txt); integration guidance is in [`docs/onboarding/`](./docs/onboarding/) (a Claude Code Skill + ready-to-paste prompts).
+> **For AI agents / crawlers:** machine-readable capability + usage info is in [`llms.txt`](./llms.txt); integration guidance is in [`docs/onboarding/`](./docs/onboarding/) (a Claude Code Skill). Both lead with the same two primitives described below.
 
 ## Why this exists
 
-If you build an AI product (a support agent, an SDR agent, an AI feature), your tokens *are* your cost of goods. Most homegrown cost numbers are wrong by 8–15% (streaming-disconnect undercounts, invisible retries, mis-priced cache tokens). And almost nobody can answer "did this agent run actually make money?" — because the cost lives in your logs and the outcome lives in your product or your CRM.
+If you build an AI product, your tokens *are* your cost of goods. Most homegrown cost numbers are wrong by 8–15% (streaming-disconnect undercounts, invisible retries, mis-priced cache tokens). And almost nobody can answer "did this agent run actually make money?" — because the cost lives in your logs and the outcome lives in your product or your CRM.
 
-This tool closes both gaps, and it's honest about precision the whole way: every figure carries a **provenance** (was it measured, estimated, or reconciled to the invoice?), every cost↔outcome link carries a **binding tier** (exact key, deterministic round-trip, fuzzy match), and every outcome carries a **signal class** (did the action just *happen*, or is the business result *confirmed*?).
+valuemaxx closes both gaps, and it is honest about precision the whole way: every figure carries a **provenance**, every cost↔outcome link a **binding tier**, every outcome a **signal class** — all system-owned. A caller states what happened; it never states how much to trust the link.
 
-## How it works (the short version)
+## How it works — two primitives
 
-1. **`init()` — one line.** A thin SDK (Python *and* TypeScript) captures every LLM call's *correct* cost, off the hot path, and never throws into your app.
-2. **Declare your outcomes once.** A config (`outcomes.yaml`) — which the onboarding agent writes for you by reading your codebase — says what a "resolution" / "deal" / "funded loan" *is* in your system. No per-call tracking code.
-3. **Cost binds to outcome automatically — the SDK does the plumbing.** `init()` installs three carry channels for the active run id, so binding needs no per-call tracking code: **in-process** via execution context (`exact`); **across a live service hop** via W3C baggage the SDK stamps on outbound HTTP (`exact`); and **delayed/out-of-process** via a round-tripped correlation id the SDK stamps on your outbound call (e.g. Stripe metadata) that the webhook echoes back (`deterministic`). Where no id can be carried, it falls back to a *labeled* entity/time match — never a silent mis-bind. Everything is confidence-labeled.
-4. **See your margin, and where to cut it.** Cost-per-outcome and gross-margin rollups; and an eval layer that replays cheaper models against your real workload and recommends switches — with the evidence, never automatically.
+Everything reduces to two things, and both are expressible in curl:
 
----
+**1. Cost flows through the gateway.** An observe-only reverse proxy in front of your LLM provider. Swap your `baseURL`, keep your provider key (it passes through, never stored), and every call's correct cost is captured server-side — streaming, cache tokens, and client-disconnect recovery included. Nothing of ours runs inside your request path, and any gateway failure falls back to a plain passthrough: losing a span is acceptable, losing your request is not.
 
-## Getting started
+**2. Outcomes are one event.** At the moment a business fact becomes true, *some* code of yours is executing with the relevant business id in a variable — the one invariant every architecture shares. Deliver the tuple there:
 
-This walks you from nothing to a real cost-per-outcome number, end to end, against the backend that ships in this repo. Every command below runs as written.
-
-The backend is a real FastAPI app over **SQLite** (no Postgres needed for local dev); migrations run on startup. You boot it with `valuemaxx up`, send it cost spans on the wire, and query the numbers back over HTTP (or the SDK / CLI).
-
-> **One install per language; the same commands.** `pip install valuemaxx` and `npm install valuemaxx` both give you the **SDK** (`init()` capture) **and** the `valuemaxx` command with **`onboard`** + `init` — so `valuemaxx onboard` works identically on either side (only npm vs pip differs). The **backend** (`valuemaxx up` + the query commands) is heavier: it comes with `pip install "valuemaxx[cli]"`, or — the language-neutral, recommended way — you run it as a container (`docker run …`). So a TypeScript project never has to touch Python.
-
-### 0. Install
-
-```bash
-# Python: the SDK (init() capture) + the `valuemaxx` command (onboard / init)
-pip install valuemaxx
+```
+POST <gateway>/v1/outcome
+{ "name": "order_fulfilled", "run_id": order_id, "identifier": evt_id, "value": 129.00 }
 ```
 
-```bash
-# TypeScript / JavaScript: the same — SDK + the `valuemaxx` command (onboard / init)
-npm install valuemaxx
-```
+Everything else — the `x-vmx-outcome` header, inbound webhooks, settle rules, decorators — is a shortcut that emits this same event. The docs never say "for workflow codebases, do X": if your shape matches a shortcut it's one line instead of three, and nothing beyond the tuple is ever required.
 
-Both give you `valuemaxx onboard`. The **backend** (`valuemaxx up` + query commands) is separate — either `pip install "valuemaxx[cli]"`, or run the container (step 1). Working from a clone instead? Prefix `valuemaxx …` with `uv run` (Python) or run the built bin (TS); the commands are identical.
+## Getting started (~5 minutes, ≤3 changed lines)
 
-### 1. Boot the backend
-
-valuemaxx has two pieces: the **SDK** (above — the library you import, per-language) and the **backend** — *one* service that receives the cost your SDK sends, stores it, reconciles it, and answers the metric queries. The backend is the same regardless of your app's language; you run it once and point any SDK (TS or Python) at it. Pick whichever way to run it:
-
-**Docker (recommended — no Python needed; ideal for TS/JS apps):**
+### 0. Run the two pieces
 
 ```bash
-docker run -p 8000:8000 ghcr.io/monaal10/valuemaxx-backend   # (until published: docker build -t valuemaxx-backend . && docker run -p 8000:8000 valuemaxx-backend)
-# serving on http://0.0.0.0:8000 — using dev key "dev" (send header "X-API-Key: dev")
+# the brain: FastAPI over SQLite (Postgres in prod), migrations on startup
+docker run -p 8000:8000 -v vmx-data:/home/valuemaxx/data \
+  ghcr.io/<owner>/valuemaxx-backend:latest
+# or, with Python: pip install "valuemaxx[cli]" && valuemaxx up
+
+# the front door: a Cloudflare Worker (portable fetch/streams code — any edge runtime works)
+cd gateway && bunx wrangler deploy --var VALUEMAXX_BACKEND:https://<your-backend>
 ```
 
-For a persistent Postgres-backed store, `docker compose up` (bundles backend + Postgres; see [`docker-compose.yml`](./docker-compose.yml)).
+Your key is whatever `VALUEMAXX_INGEST_KEYS` maps (`{"<key>": "<tenant-uuid>"}`); with none configured the backend serves a single dev key, `dev`.
 
-**Or, if you have Python — `valuemaxx up`** (same backend, in-process). **Zero config:** it opens an embedded SQLite database (`./valuemaxx.db`), runs migrations, generates a stable local **`dev` ingest key**, and serves:
-
-```bash
-valuemaxx up
-# valuemaxx up: serving on http://127.0.0.1:8000 (db=sqlite+aiosqlite:///./valuemaxx.db)
-# valuemaxx up: no ingest key configured — using dev key "dev" (send header "X-API-Key: dev"). …
-```
-
-Use `X-API-Key: dev` on every request below — that's all the auth you need locally. The `dev` key is **stable across restarts**, so data you persist stays readable.
-
-When you're ready to use your own key(s) — or run multi-tenant — set `VALUEMAXX_INGEST_KEYS` (a JSON map of `key → tenant UUID`); that turns the `dev` fallback off:
-
-```bash
-export VALUEMAXX_INGEST_KEYS='{"my-key": "6f1c3b2a-0000-4a00-8000-000000000001"}'
-```
-
-`--host`, `--port`, and `--db` (or `DATABASE_URL` / `VALUEMAXX_DATABASE_URL`) override the defaults. Point `--db` at a `postgresql+asyncpg://…` URL for a persistent multi-process backend. Leave this running; the rest of the steps talk to it.
-
-**A "tenant" is one isolated account** — for a solo dev or a single-product team that's just *you* (one tenant), and you never type a tenant id: it's resolved from your ingest key, never read from the request body, so a caller can only ever act on its own tenant. You'd use multiple tenants only if you need hard data isolation between separate accounts (e.g. an agent vendor hosting several customers' cost data); your *own* customers are modeled as outcomes/entities inside one tenant, not as tenants.
-
-> **MCP, for free.** The running backend also speaks the **Model Context Protocol** at `POST /mcp` — every capability that declares the MCP surface is a tool. Point your MCP client (Claude Desktop/Code) at `http://127.0.0.1:8000/mcp` (authenticated with your ingest key in the `x-valuemaxx-ingest-key` header) and an agent can call `validate_outcome_rule`, `run_metric`, `cost_breakdown`, … directly. No separate install — it's a URL on the backend you already booted.
-
-### 2. Wire the SDK into your agent
-
-Add one call at your process entrypoint so every LLM call gets correct-cost capture, and wrap each agent run so its cost binds to a run id.
-
-**Python** — `init()` validates your config and stands up capture; `track.run(run_id=…)` binds the ambient run:
+### 1. Swap the base URL — capture begins
 
 ```python
-from uuid import UUID
-import valuemaxx.sdk as valuemaxx
-
-vmx = valuemaxx.init(
-    tenant_id=UUID("6f1c3b2a-0000-4a00-8000-000000000001"),  # your tenant UUID
-    ingest_key="dev",
-    endpoint="http://127.0.0.1:8000",
-)
-print(vmx.effective.endpoint, vmx.capture_granularity, vmx.warnings)
-
-# Bind a run so every captured LLM call inside it shares one run id:
-with valuemaxx.track.run(run_id="checkout-agent-42"):
-    ...  # your agent's LLM calls
-```
-
-`init()` **never throws into your app** (fail-open, H9): a bad literal config raises at the call site, but every instrumentation step thereafter is caught, logged, and surfaced as a warning. `tenant_id` is a real `UUID`. Cost capture instruments the *injected provider client's* transport instance-scoped (so an unrelated `httpx.Client` in your process is never touched); see [`sdks/python`](./sdks/python) for the client/sink wiring the SDK uses to land a captured call as a cost event.
-
-Beyond `track.run` (which carries the run id **in-process**), `init()` also installs the two deterministic *carry* channels so cost binds to outcomes that land elsewhere — you wire nothing per call:
-
-```python
-vmx = valuemaxx.init(
-    tenant_id=UUID("6f1c3b2a-0000-4a00-8000-000000000001"),
-    ingest_key="dev",
-    endpoint="http://127.0.0.1:8000",
-    # T2 — stamp the run id on W3C baggage for outbound HTTP (a live service→service hop):
-    baggage_targets=["httpx.Client.request", "httpx.AsyncClient.request"],
-    # T3 — stamp the run id into an echoing SDK call (round-trips via its later webhook).
-    # These specs come straight from `valuemaxx onboard`'s outcomes.yaml — you don't hand-write them:
-    run_id_injection_specs=onboarded_injection_specs,
+client = OpenAI(
+    base_url="https://<gateway>/openai/v1",
+    default_headers={"x-vmx-key": "vmx_..."},
 )
 ```
 
-Both fail open and are **reported, never silent**: a target that isn't importable at `init()` is named in `vmx.warnings` (so a wrong import order can't quietly disable the round-trip), and with no active run the call passes through untouched. The TypeScript `init()` takes the symmetric `baggageTargets` / `runIdInjectionTargets` options and stamps the **byte-identical** baggage header (pinned by a cross-language parity test).
+Routes: `/openai` · `/anthropic` · `/gemini` · `/openrouter` (whose authoritative billed cost is recorded as `provider_reconciled`, never an estimate). Every `x-vmx-*` header is stripped before forwarding — the provider sees exactly the request you wrote. The dashboard already shows spend by model and agent.
 
-Prefer to have it scaffolded for you? From your repo root:
+### 2. Name your unit of work
+
+```python
+default_headers={..., "x-vmx-run-id": order_id, "x-vmx-agent": "support-bot"}
+```
+
+Use **your own durable business id**, not a minted UUID. All calls sharing it group into one unit, retries roll up instead of double-counting, and the delayed outcome join is free — that id already flows through your Stripe metadata and your CRM because it is yours. (Send nothing and the gateway mints an id, echoing it back in the `x-vmx-run-id` response header for you to stamp outward.) `x-vmx-entity-<name>` headers attach durable ids that let one unit span several runs.
+
+### 3. Deliver the outcome
+
+```python
+# shortcut — the producing call IS the outcome (fires only on 2xx):
+client.chat.completions.create(..., extra_headers={"x-vmx-outcome": "reply_sent"})
+
+# universal form — any language, any framework, no SDK:
+requests.post(f"{GW}/v1/outcome", headers={"x-vmx-key": KEY},
+    json={"name": "order_fulfilled", "run_id": order_id, "identifier": evt_id})
+```
+
+Contract discipline: a duplicate `identifier` is accepted-and-ignored, so at-least-once senders (retries, replays, webhook redelivery) never inflate a denominator; `occurred_at` outside 35 days back / 5 minutes forward is a 422, not a silent clamp; `?strict=true` rejects an event with no join key (default stays permissive — unbound-but-visible beats silently dropped).
+
+### 4. See it
+
+Open `http://<backend>/?key=<your-key>` — spend by model/agent, cost per outcome at its confidence tier, margin when outcomes carry `value`. Or query directly:
 
 ```bash
-valuemaxx init                 # detect your framework, print a reviewable diff (review-only)
-valuemaxx init --apply         # write the (reversible) init() wiring into your entrypoint
-```
-
-**TypeScript** — `init()` builds a real OTLP/HTTP exporter pointed at your endpoint and returns a `tracer`. There are two ways to wire it, depending on how you call models:
-
-*Using the **Vercel AI SDK** (`generateText`/`streamText`) — the common case:* pass the returned `tracer` to `experimental_telemetry`, and every call is captured:
-
-```ts
-import { generateText } from "ai";
-import { init } from "valuemaxx";
-
-const vmx = init({
-  tenantId: "00000000-0000-4000-8000-000000000001", // the dev tenant (from the backend)
-  ingestKey: "dev",
-  endpoint: "http://localhost:8000", // the backend from step 1
-});
-
-await generateText({
-  model /* your @ai-sdk/* model */,
-  prompt: "…",
-  experimental_telemetry: { isEnabled: true, tracer: vmx.tracer },
-});
-```
-
-*Calling the **OpenAI/Anthropic/Google clients directly** instead?* pass them to `init({ clients })` and it instruments them in place — no per-call-site edit:
-
-```ts
-import OpenAI from "openai";
-import { init, run } from "valuemaxx";
-
-const openai = new OpenAI();
-init({ tenantId: "00000000-0000-4000-8000-000000000001", ingestKey: "dev", endpoint: "http://localhost:8000", clients: [{ client: openai, provider: "openai" }] });
-
-await run("checkout-agent-42", async () => {
-  await openai.chat.completions.create({ model: "gpt-4.1", messages: [/* … */] });
-});
-```
-
-Streaming cost is accumulated to **terminal** token values across chunks before the span is emitted (no delta-summing, no cache double-counting). Full options + the wire contract are in [`sdks/typescript/README.md`](./sdks/typescript/README.md).
-
-### 3. Send a cost span to the backend
-
-The SDK ships cost to the backend's **OTLP/HTTP collector** at `POST /v1/traces` — a standard OpenTelemetry trace exporter, authenticated with your ingest key in the `x-valuemaxx-ingest-key` header (the OTLP exporter sends only the key; it doesn't HMAC-sign). The tenant is resolved from the key — never the body. Re-delivering the same `(run_id, attempt_id)` upserts, so it never double-counts.
-
-When you wire `init()` (step 2) the exporter does this automatically. To prove the loop by hand, POST one OTLP span — exactly the wire shape the SDK exporter emits (note OTLP-JSON encodes integer attribute values as strings):
-
-```bash
-curl -s http://127.0.0.1:8000/v1/traces \
-  -H "x-valuemaxx-ingest-key: dev" -H "Content-Type: application/json" \
-  -d '{"resourceSpans":[{"scopeSpans":[{"spans":[{"name":"ai.generateText","attributes":[
-        {"key":"gen_ai.system","value":{"stringValue":"anthropic"}},
-        {"key":"gen_ai.request.model","value":{"stringValue":"claude-opus-4-8"}},
-        {"key":"gen_ai.usage.input_tokens","value":{"intValue":"100"}},
-        {"key":"gen_ai.usage.output_tokens","value":{"intValue":"50"}},
-        {"key":"ai_margin.run_id","value":{"stringValue":"checkout-agent-42"}},
-        {"key":"ai_margin.attempt_id","value":{"stringValue":"attempt-1"}},
-        {"key":"ai_margin.cost_usd","value":{"stringValue":"0.0250"}}
-      ]}]}]}]}'
-# {}  — an empty body is the OTLP success response: the span was accepted and persisted.
-```
-
-### 4. Query your cost
-
-Query the persisted cost back over the HTTP API. `run_metric` is a typed, closed-allowlist DSL (`filter → outcome → join → measure`); the result carries the conservative confidence (`minimum_tier` + distribution) on every cell.
-
-**Total cost (the cost-per-outcome metric):**
-
-```bash
-curl -s http://127.0.0.1:8000/run_metric \
-  -H "X-API-Key: dev" -H "Content-Type: application/json" \
+curl -X POST <backend>/run_metric -H "X-API-Key: <key>" -H "content-type: application/json" \
   -d '{"name":"cost_per_outcome","numerator":"total_cost_usd",
-       "denominator":"verified_outcome_count","filters":{},"group_by":[]}'
-# {"name":"cost_per_outcome","cells":[{"group_key":[],
-#   "numerator_value":"0.0250000000","denominator_value":0,"value":null,
-#   "confidence":{"minimum_tier":"likely","confidence_distribution":{"likely":1}},
-#   ...}],"requires_reemit":false}
+       "denominator":"verified_outcome_count","filters":{},"group_by":["outcome_name"]}'
 ```
 
-The `numerator_value` is the summed cost of every persisted cost event in your tenant scope — exactly what you ingested. `value` (the cost-*per*-outcome ratio) is `null` until outcomes are bound (step 5): the billing-grade denominator is `verified_outcome_count`, which counts only *confirmed* outcomes bound at an exact/deterministic tier, so advisory and retracted outcomes can never inflate it.
+### 5. Right-size your models (later, once you have real data)
 
-**Cost broken down by model** — same call, grouped:
+With cost bound to outcomes over real traffic, `estimate_switch_cost` reprices your *actual observed token mix* against a candidate model — never a headline-rate ratio, never a fabricated zero for a model it cannot price. The eval layer goes further: it replays cheaper candidates against your captured workload and tells you whether one holds the same outcome — with the evidence, and **never switching automatically**. Because eval runs spend your provider tokens, it estimates the cost and gates on explicit approval first (`run_eval_funnel` → `approve_gate` → `get_recommendation`).
 
-```bash
-curl -s http://127.0.0.1:8000/run_metric \
-  -H "X-API-Key: dev" -H "Content-Type: application/json" \
-  -d '{"name":"cost_by_model","numerator":"total_cost_usd",
-       "denominator":"verified_outcome_count","filters":{},"group_by":["model"]}'
-# one cell per model: [["model","claude-opus-4-8"]] -> "0.0250000000"
-```
+## Known deployment constraint
 
-You can also group by `provider`, `agent_name`, `outcome_name`, or `tenant`. (A `total_cost_usd` numerator always requires the `verified_outcome_count` denominator — that's the H8 rule that keeps the cost-per-outcome denominator billing-grade.)
+A Worker on a `*.workers.dev` subdomain cannot `fetch()` a Cloudflare-proxied host — `api.anthropic.com` is one, and fails with error 1042 before the request leaves the edge (OpenAI/Gemini/OpenRouter are unaffected). Deploy the gateway on a custom domain, run it off Cloudflare, or route Anthropic via OpenRouter. Verify with one real call per provider you use; `/healthz` proves the worker booted, not that upstream is reachable. Details in [`gateway/README.md`](./gateway/README.md).
 
-### 5. Declare an outcome
+## What's in this repo
 
-Cost-per-outcome needs to know what an *outcome* is in your system. That's `outcomes.yaml`: a list of rules, each with a `match` (one of `function` / `http` / `orm_save` / `status_transition` / `webhook`) and an optional `when` predicate over a fixed, safe namespace (`args`, `kwargs`, `result`, `data`, `instance`, `event` — never `eval`'d).
+| Path | What it is |
+|---|---|
+| `gateway/` | the capture proxy (TypeScript, Cloudflare Worker shape, portable fetch/streams) |
+| `apps/server`, `apps/api` | the backend: ingest, attribution cascade, metrics, dashboard |
+| `packages/` | the server-side engine: pricing, attribution (T1–T5), metrics DSL, evals, reconciliation, outcomes |
+| `sdks/typescript` | **the capture primitives the gateway is built from** + the compat SDK (below) |
+| `sdks/python` | **the backend's distribution vehicle** (`pip install "valuemaxx[cli]"` → `valuemaxx up`) + the compat SDK (below) |
+| `docs/onboarding/` | the agent-facing integration skill; `llms.txt` is generated |
 
-```yaml
-# outcomes.yaml
-version: 1
-outcomes:
-  # A support ticket is "resolved" when your code transitions its status.
-  - name: ticket_resolved
-    match:
-      status_transition: SupportTicket.status
-      when: result.status == "resolved"
-    signal: outcome_confirmed
+### Are the npm/pip SDKs still needed?
 
-  # A delayed, out-of-process outcome: Stripe confirms the charge via webhook.
-  # `init()` auto-stamps run_id on the outbound call (T3); the webhook echo reads it back.
-  - name: payment_succeeded
-    match:
-      webhook: stripe
-      event: payment_intent.succeeded
-    signal: outcome_confirmed
-    run_id_injection:
-      sdk_call: stripe.PaymentIntent.create
-      inject_into: metadata.atm_run_id
-      webhook_event: payment_intent.succeeded
-      extract_from: data.object.metadata.atm_run_id
-```
+**As the integration front door — no.** The gateway plus the outcome contract replace `init()`, run boundaries, outcome call sites, and flush plumbing. A host changes ≤3 lines and runs none of our code in its request path.
 
-The `run_id_injection` block is **executed, not just documented**: pass these specs to `init(run_id_injection_specs=…)` (step 2) and the SDK wraps `stripe.PaymentIntent.create` so every call inside a `track.run` carries the run id in `metadata.atm_run_id` — copy-on-write, so your own kwargs are never mutated. When Stripe's webhook echoes it back, the outcome binds `deterministic` (billing-grade). If the external system *doesn't* echo metadata (e.g. Salesforce), onboarding omits the block and the outcome falls back to a **labeled** entity-match — never silently mis-bound.
+**As packages — yes, for three narrower jobs:**
 
-Have the onboarding scan write this for you, or validate a hand-written file. `valuemaxx onboard` comes with the base install on **both** languages (`pip install valuemaxx` / `npm install valuemaxx`) and behaves identically — it scans TypeScript *and* Python, proposes `outcomes.yaml`, and prints a reviewable diff (nothing is written; rules stay UNCONFIRMED):
+1. `sdks/typescript` is the gateway's engine. The stream accumulators and usage extractors it imports encode already-paid-for bugs (Anthropic's `message_delta` *overwrites* rather than sums; OpenAI streams usage only when `stream_options.include_usage` is set; Gemini's cached tokens are a subset of the prompt count). A reimplementation would re-earn every one.
+2. `sdks/python` ships the backend itself — `valuemaxx up`, the query CLI — and the Docker image bundles this wheel.
+3. Both remain the **compat capture path** for hosts the gateway cannot serve: SigV4/OAuth-signed providers (Bedrock, Vertex), teams with an existing OTel collector (`POST /v1/traces` accepts standard OTLP), or a policy against proxied egress.
 
-```bash
-# Scan your repo -> propose outcomes.yaml + a reviewable diff. Same on TS and Python.
-valuemaxx onboard --repo .
-
-# Validate / summarize a hand-written outcomes.yaml (rejects any eval/exec predicate)
-TENANT=6f1c3b2a-0000-4a00-8000-000000000001
-Y=$(python3 -c "import json;print(json.dumps(open('outcomes.yaml').read()))")
-valuemaxx validate-outcome-rule --tenant "$TENANT" --json-input "{\"yaml_text\": $Y}"
-# {"error": null, "ok": true, "rule_count": 2}
-valuemaxx list-outcome-rules   --tenant "$TENANT" --json-input "{\"yaml_text\": $Y}"
-# one summary per rule: name, match_kind, signal
-```
-
-The signal class is **system-owned**: a bare function/HTTP write is only `action_attempted`; a status transition, ORM write, or webhook echo can confirm an outcome. You can never make an attempt masquerade as a confirmed result.
-
-### 6. See cost-per-outcome
-
-Once your agent runs with confirmed outcomes bound to their runs (in-process via `track.run`, or out-of-process via the round-tripped `run_id`), the same `run_metric` query returns a real ratio: the `value` field becomes `total_cost ÷ verified_outcome_count`, and every cell still carries its `minimum_tier`. Group by `outcome_name` or `agent_name` to see margin per outcome or per agent.
-
-### 7. Right-size your models (later, once you have real data)
-
-With cost bound to outcomes over some real traffic, the eval layer replays **cheaper candidate models you supply** against your captured workload and tells you whether one holds the same outcome — with the evidence, and **never switching automatically**. Because eval runs spend your provider tokens, it estimates the per-candidate cost and gates on an explicit approval first:
-
-```bash
-valuemaxx run-eval-funnel      # replay your candidates on the captured workload (cost-gated)
-valuemaxx approve-gate         # record the "yes, spend ~$X on this eval" approval
-valuemaxx get-recommendation   # the cheaper-model-holds-your-outcome report
-```
-
-That's the whole loop: **install → run the backend → wire the SDK → run your agent (send cost) → query cost → declare outcomes → cost-per-outcome → right-size the model.**
-
----
+The SDK capture surface (`init()`, client patching, `run()`, baggage/injection carries) is no longer documented as the way in; it exists for the compat path and will slim over time.
 
 ## The honesty model
 
@@ -296,15 +131,15 @@ Three system axes ride every number and never get laundered upward (a rollup alw
 | **Binding tier** | `exact` · `deterministic` · `candidate` · `likely` |
 | **Outcome signal class** | `action_attempted` · `outcome_confirmed` · `outcome_retracted` |
 
-Reconciliation to the invoice is **additive** (a new record, never an overwrite of the estimate); a retracted outcome is **removed from the cost-per-outcome denominator** and the metric re-emitted, never silently left.
+Binding tiers are decided by the server-side cascade, never by the caller; advisory tiers (`candidate`/`likely`) are excluded from billing-grade denominators and land in a review queue. Reconciliation to the invoice is **additive** (a new record, never an overwrite of the estimate); a retracted outcome is **removed from the cost-per-outcome denominator** and the metric re-emitted, never silently left.
 
 ## Self-hosting & data
 
-Runs on a container + Postgres (`postgresql+asyncpg://…`), or embedded SQLite for local dev — `valuemaxx up` defaults to SQLite so it boots with zero configuration. Prompt/response **content is off by default**; it's only retained (self-host only) if you enable it for the eval/replay features, with a configurable TTL and an erasure path. Provider API keys for eval are **never persisted**, and ingest keys / webhook secrets are never logged.
+Runs on a container + Postgres (`postgresql+asyncpg://…`), or embedded SQLite for local dev — `valuemaxx up` boots with zero configuration. Prompt/response **content is off by default**; it is only retained (self-host only) if you enable it for the eval/replay features, with a configurable TTL and an erasure path. Provider API keys pass through the gateway and are **never stored**; ingest keys and webhook secrets are never logged.
 
 ## Integrate with an AI coding agent (Claude Code / Cursor)
 
-This project is built to be wired up **by** a coding agent. `valuemaxx onboard` runs the onboarding pipeline (scan → propose → render → reviewable diff): it scans your codebase, finds where your agent runs and where outcomes are recorded, proposes the `outcomes.yaml`, and prints a reviewable diff. For each *echoing* external write (Stripe, HubSpot…) it also proposes a `run_id_injection` block — the exact spec you hand to `init(run_id_injection_specs=…)` so the SDK auto-stamps the run id on that outbound call and the later webhook binds it `deterministic` (a non-echoing system like Salesforce is instead flagged as a labeled fallback). The scanner and the proposed output are **identical across TypeScript and Python** (one shared rules contract + a golden cross-language parity test). The candidate rules stay **unconfirmed** until you approve the diff. See [`docs/onboarding/`](./docs/onboarding/) for the onboarding prompts and the skill.
+This project is built to be wired up **by** a coding agent. Point it at [`llms.txt`](./llms.txt) — the integration reduces to two shape-free questions the agent answers by reading your code: *where does the business fact become true?* and *what durable id is in scope there?* The onboarding skill in [`docs/onboarding/`](./docs/onboarding/) drives the full flow, including its approval gates (an agent never edits your production LLM path or names your outcomes without you confirming).
 
 ## Contributing
 

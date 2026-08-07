@@ -1,6 +1,8 @@
 # Releasing valuemaxx
 
-valuemaxx ships **two published packages in lockstep**: the Python SDK (PyPI: `valuemaxx`) and the TypeScript SDK (npm: `valuemaxx`). One git tag publishes both at the **same version**. Everything else in the monorepo (`packages/*`, `apps/*`) is internal and never published.
+valuemaxx ships **two published packages in lockstep**: the Python package (PyPI: `valuemaxx` — the backend distribution plus the compat SDK) and the TypeScript package (npm: `valuemaxx` — the capture primitives the gateway is built from, plus the compat SDK). One git tag publishes both at the **same version**, and the same tag publishes the backend image to GHCR. Everything else in the monorepo (`packages/*`, `apps/*`) is internal and never published.
+
+The **gateway** (`gateway/`) is deliberately NOT part of this: it is deployed, not published — `wrangler deploy` from the repo (or any edge runtime), pinned by git sha rather than a package version. It imports the TS package's source directly in-repo, so a release does not gate a gateway deploy and a gateway deploy does not require a release.
 
 ## Why this setup (and not changesets / release-please)
 
