@@ -19,7 +19,7 @@ act on its own tenant. Nothing without the API surface is projected.
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, cast
 from uuid import UUID, uuid4
 
@@ -234,6 +234,39 @@ def mount_jobs_route(app: FastAPI, auth: ApiKeyAuthenticator, jobs: JobStore) ->
     app.get("/jobs/{job_id}", name="poll_job")(poll)
 
 
+# Stripe's meter-event window: late REAL outcomes (a deal closing weeks later) fit
+# inside 35 days; a timestamp from years past or the future is a caller clock bug,
+# and silently accepting it buries the outcome in a metric window nobody queries.
+_OUTCOME_MAX_AGE = timedelta(days=35)
+_OUTCOME_MAX_SKEW = timedelta(minutes=5)
+
+
+def _validated_occurred_at(raw: object) -> str:
+    """The event timestamp to store: validated when supplied, now() otherwise."""
+    if raw is None:
+        return datetime.now(tz=UTC).isoformat()
+    if not isinstance(raw, str):
+        raise HTTPException(status_code=422, detail="occurred_at must be an ISO datetime")
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422, detail="occurred_at must be an ISO datetime"
+        ) from exc
+    if parsed.tzinfo is None:
+        raise HTTPException(status_code=422, detail="occurred_at must be timezone-aware")
+    now = datetime.now(tz=UTC)
+    if parsed < now - _OUTCOME_MAX_AGE or parsed > now + _OUTCOME_MAX_SKEW:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "occurred_at outside the acceptance window "
+                "(35 days back to 5 minutes forward)"
+            ),
+        )
+    return parsed.isoformat()
+
+
 def mount_outcome_alias_route(
     app: FastAPI, registry: Registry, auth: ApiKeyAuthenticator
 ) -> None:
@@ -257,6 +290,7 @@ def mount_outcome_alias_route(
         request: Request,
         x_api_key: str | None = Header(default=None),
         baggage: str | None = Header(default=None),
+        strict: bool = False,
     ) -> dict[str, object]:
         tenant_id = _resolve(auth, x_api_key)
         payload = await _request_payload(request)
@@ -266,18 +300,34 @@ def mount_outcome_alias_route(
 
         run_id = payload.get("run_id")
         entity = payload.get("entity")
+        occurred_at = _validated_occurred_at(payload.get("occurred_at"))
+        if strict and not (isinstance(run_id, str) and run_id) and not entity:
+            # Segment-style discipline, opt-in: an event with neither join key will
+            # never attach to any spend, and this caller asked to be told loudly
+            # rather than record a row that reads as data.
+            raise HTTPException(
+                status_code=422,
+                detail="strict mode: one of run_id or entity is required",
+            )
         entity_keys: list[list[str]] = []
         if isinstance(entity, dict):
             entity_raw = cast("dict[str, object]", entity)
             entity_keys = [[key, str(value)] for key, value in entity_raw.items()]
+        # The caller's `identifier` becomes the event id, so the store's upsert is
+        # the dedup: an at-least-once sender (waitUntil replay, webhook retry) that
+        # repeats an identifier overwrites its own row instead of inflating the
+        # denominator. No identifier keeps today's random id.
+        identifier = payload.get("identifier")
+        event_id = (
+            f"oe_{identifier}" if isinstance(identifier, str) and identifier else f"oe_{uuid4()}"
+        )
         event: dict[str, object] = {
             "tenant_id": tenant_id,
-            "id": f"oe_{uuid4()}",
+            "id": event_id,
             "name": name,
             "signal_class": payload.get("signal") or "outcome_confirmed",
             "value": payload.get("value"),
-            "occurred_at": payload.get("occurred_at")
-            or datetime.now(tz=UTC).isoformat(),
+            "occurred_at": occurred_at,
             "binding": {
                 "run_id": run_id if isinstance(run_id, str) and run_id else None,
                 "tier": None,

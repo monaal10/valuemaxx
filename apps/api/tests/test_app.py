@@ -538,3 +538,65 @@ def test_post_outcome_binds_a_run_carried_by_the_baggage_header() -> None:
     )
     assert res.status_code == 200, res.text
     assert res.json()["run_id"] == "run-from-header"
+
+
+def test_outcome_identifier_makes_retries_idempotent() -> None:
+    """A duplicate `identifier` is accepted and ignored — never a second row.
+
+    The senders this contract serves are at-least-once by construction: a
+    `waitUntil` continuation that replays, a webhook provider that retries, a CI
+    step run twice. Without caller-supplied idempotency every retry inflates the
+    denominator, and cost-per-outcome quietly shrinks. Stripe's meter events
+    solved this with `identifier`; same shape here.
+    """
+    client = _outcome_client()
+    body = {"name": "alt_created", "run_id": "run-idem-1", "identifier": "evt-42"}
+    first = post(client, "/outcome", json=body, headers={"X-API-Key": "key-uuid"})
+    second = post(client, "/outcome", json=body, headers={"X-API-Key": "key-uuid"})
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    # Same identifier -> same outcome id -> the store upserts one row, not two.
+    assert first.json()["outcome_id"] == second.json()["outcome_id"]
+
+
+def test_outcome_timestamps_outside_the_window_are_rejected() -> None:
+    """`occurred_at` far outside the acceptance window is a 422, not a clamp.
+
+    Thirty-five days back / five minutes forward (Stripe's meter window). Late
+    REAL outcomes — a deal closing weeks later — fit comfortably; a timestamp
+    from 2019 or next year is a caller clock bug, and silently accepting it
+    would bury the outcome in a metric window nobody queries.
+    """
+    client = _outcome_client()
+    res = post(
+        client,
+        "/outcome",
+        json={"name": "alt_created", "run_id": "r1", "occurred_at": "2019-01-01T00:00:00Z"},
+        headers={"X-API-Key": "key-uuid"},
+    )
+    assert res.status_code == 422
+    assert "occurred_at" in res.text
+
+
+def test_strict_mode_rejects_an_unjoinable_outcome() -> None:
+    """`?strict=true` refuses an event with neither run_id nor entity.
+
+    Default stays permissive — an unbound outcome is visible and honestly
+    advisory. But a host that wants Segment-style discipline (their tracking API
+    hard-rejects key-less events) can opt in and get a loud 422 instead of a row
+    that will never join to any spend.
+    """
+    client = _outcome_client()
+    res = post(
+        client,
+        "/outcome?strict=true",
+        json={"name": "alt_created"},
+        headers={"X-API-Key": "key-uuid"},
+    )
+    assert res.status_code == 422
+    assert "run_id" in res.text
+
+    permissive = post(
+        client, "/outcome", json={"name": "alt_created"}, headers={"X-API-Key": "key-uuid"}
+    )
+    assert permissive.status_code == 200

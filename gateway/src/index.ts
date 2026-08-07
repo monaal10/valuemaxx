@@ -80,7 +80,7 @@ export default {
     // here instead. Routed through the gateway so a host configures ONE base URL
     // rather than learning the backend's address separately.
     if (url.pathname === "/v1/outcome" && request.method === "POST") {
-      return forwardOutcome(request, env);
+      return forwardOutcome(request, env, url.search);
     }
 
     const route = ROUTES.find(
@@ -120,14 +120,17 @@ export default {
 async function forwardOutcome(
   request: Request,
   env: Env,
+  search: string,
 ): Promise<Response> {
   const key = request.headers.get("x-vmx-key")?.trim();
   if (!key) {
     return json({ error: "missing_key", message: "x-vmx-key is required" }, 401);
   }
   const body = await request.text();
+  // The query string carries contract options (`?strict=true`); dropping it here
+  // silently downgraded strict mode to permissive — found live, not in review.
   const upstream = await fetch(
-    `${env.VALUEMAXX_BACKEND.replace(/\/+$/, "")}/outcome`,
+    `${env.VALUEMAXX_BACKEND.replace(/\/+$/, "")}/outcome${search}`,
     {
       method: "POST",
       headers: { "content-type": "application/json", "x-api-key": key },

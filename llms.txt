@@ -131,14 +131,33 @@ arrives days later carrying that same id, it binds at `exact` with no time windo
 and no inference. If the host cannot supply one, the gateway mints one and ECHOES
 it back in the `x-vmx-run-id` response header for the host to stamp outward.
 
-OUTCOMES, in order of cost to the host:
-  1. `x-vmx-outcome` on the call that produces it — zero extra requests.
-  2. `POST <gateway>/v1/outcome` with `{name, run_id | entity}` — one line, for a
-     "done" moment with no adjacent LLM call (a workflow step, a queue ack).
-  3. An inbound webhook (Stripe et al.) — config, no code, and the only path for an
-     outcome confirmed days later.
-The TIER is always decided server-side. A caller states what happened; it never
-states how much to trust the link.
+THE OUTCOME CONTRACT — one primitive, everything else compiles to it:
+
+    POST <gateway>/v1/outcome
+    { "name": "order_fulfilled", "run_id": order_id }
+    optional: entity {..}, value, occurred_at, identifier, source; ?strict=true
+
+It rests on the one invariant every codebase shares regardless of architecture:
+at the moment a business fact becomes true, some code is executing with the
+relevant business id in a variable. Deliver the tuple then. If it is expressible
+in curl, it is expressible in every language — no SDK, no patchable function, no
+framework knowledge required.
+
+Contract discipline (Stripe/Segment-grade):
+  - `identifier`: caller idempotency key. A duplicate (tenant, identifier) is
+    accepted-and-ignored, so at-least-once senders (waitUntil replays, webhook
+    retries) never inflate the denominator. Always set it when you can.
+  - `occurred_at`: accepted 35 days back to 5 minutes forward; outside that is a
+    422, not a silent clamp. Late REAL outcomes fit; clock bugs surface.
+  - `?strict=true`: rejects an event with neither run_id nor entity. Default is
+    permissive — unbound-but-visible beats silently dropped.
+  - The TIER is always decided server-side. A caller states what happened; it
+    never states how much to trust the link.
+
+SHORTCUTS that emit this same event (use when the host's shape matches; never
+required): `x-vmx-outcome` header on the producing call (fires on 2xx, zero
+extra requests); an inbound webhook (Stripe et al. — config, no code, the path
+for outcomes confirmed days later); settle rules and decorators (planned).
 
 RUNNING IT. There is no hosted signup yet — the user runs both pieces:
   docker run -p 8000:8000 ghcr.io/<owner>/valuemaxx-backend:latest

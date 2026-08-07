@@ -115,10 +115,21 @@ later carrying that id, the outcome binds at `exact` with no window and no infer
 When the host has no such id, the gateway mints one and echoes it back in the
 `x-vmx-run-id` response header to stamp outward.
 
-**Outcomes, cheapest first:** the `x-vmx-outcome` header (no extra request); a
-`POST <gateway>/v1/outcome` with `{name, run_id | entity}` for a "done" moment with no
-adjacent LLM call; an inbound webhook for anything confirmed later. The tier is always
-decided server-side.
+**Outcomes: one contract, many compilers.** The primitive is the event tuple —
+
+```
+POST <gateway>/v1/outcome
+{ "name": "order_fulfilled", "run_id": order_id,
+  "identifier": idempotency_key }        # optional: entity, value, occurred_at
+```
+
+— resting on the invariant every codebase shares: when a business fact becomes true,
+some code is executing with the business id in scope. Deliver the tuple there. Set
+`identifier` when the caller can retry (duplicates are accepted-and-ignored);
+`occurred_at` outside 35d-back/5min-forward is a 422; `?strict=true` rejects an event
+with no join key. Everything else — the `x-vmx-outcome` header (fires on 2xx, zero
+extra requests), inbound webhooks (config, the delayed-outcome path) — is a shortcut
+that emits this same event. The tier is always decided server-side.
 
 **Standing up the gateway and the backend.** Both are yours to run today — there is no
 hosted signup yet, and an agent that assumes one will stall at the first step:
