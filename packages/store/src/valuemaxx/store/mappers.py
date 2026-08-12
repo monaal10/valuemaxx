@@ -73,6 +73,11 @@ def entity_keys_from_json(value: object) -> frozenset[tuple[str, str]]:
     return frozenset(pairs)
 
 
+def _optional_int(raw: object) -> int | None:
+    """An int column that stays None when unset — 0 would mean 'measured as zero'."""
+    return int(raw) if isinstance(raw, (int, float)) and not isinstance(raw, bool) else None
+
+
 def _str_tuple_from_json(value: object) -> tuple[str, ...]:
     """Rebuild a tuple[str, ...] from a JSON list."""
     return tuple(str(item) for item in _as_json_list(value))
@@ -90,6 +95,9 @@ def run_to_row(tenant_id: TenantId, model: Run) -> dict[str, object]:
         "started_at": model.started_at,
         "ended_at": model.ended_at,
         "entity_keys": entity_keys_to_json(model.entity_keys),
+        "experiment": model.experiment,
+        "variant": model.variant,
+        "app": model.app,
     }
 
 
@@ -102,6 +110,9 @@ def row_to_run(row: Mapping[str, object]) -> Run:
         started_at=_as_dt(row["started_at"]),
         ended_at=_as_opt_dt(row["ended_at"]),
         entity_keys=entity_keys_from_json(row["entity_keys"]),
+        experiment=_as_opt_str(row.get("experiment")),
+        variant=_as_opt_str(row.get("variant")),
+        app=_as_opt_str(row.get("app")),
     )
 
 
@@ -134,6 +145,7 @@ def cost_event_to_row(tenant_id: TenantId, model: CostEvent) -> dict[str, object
         "partial_recovered": model.partial_recovered,
         "billing_uncertain_abort": model.billing_uncertain_abort,
         "provenance_warnings": list(model.provenance_warnings),
+        "latency_ms": model.latency_ms,
         "occurred_at": model.occurred_at,
     }
 
@@ -166,6 +178,7 @@ def row_to_cost_event(row: Mapping[str, object]) -> CostEvent:
         partial_recovered=_as_bool(row["partial_recovered"]),
         billing_uncertain_abort=_as_bool(row["billing_uncertain_abort"]),
         provenance_warnings=_str_tuple_from_json(row["provenance_warnings"]),
+        latency_ms=_optional_int(row.get("latency_ms")),
         occurred_at=_as_dt(row["occurred_at"]),
     )
 

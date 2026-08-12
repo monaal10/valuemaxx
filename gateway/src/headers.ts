@@ -10,6 +10,9 @@
  * - `x-vmx-agent`      which agent to group it under
  * - `x-vmx-entity-*`   durable business ids the unit is about
  * - `x-vmx-outcome`    the business outcome this call completes
+ * - `x-vmx-experiment` / `x-vmx-variant` / `x-vmx-app`  which arm of which comparison
+ *   this call belongs to. No engine reads them yet; they are captured now because a
+ *   variant stamp cannot be added to traffic after the fact.
  *
  * Every `x-vmx-*` header is STRIPPED before the request is forwarded upstream: the
  * provider must see exactly the request the host wrote, or the gateway has changed
@@ -23,6 +26,9 @@ export const H_RUN_ID = "x-vmx-run-id";
 export const H_AGENT = "x-vmx-agent";
 export const H_OUTCOME = "x-vmx-outcome";
 export const H_ENTITY_PREFIX = "x-vmx-entity-";
+export const H_EXPERIMENT = "x-vmx-experiment";
+export const H_VARIANT = "x-vmx-variant";
+export const H_APP = "x-vmx-app";
 /** W3C baggage — the standard alias for `x-vmx-run-id`, so existing tracing works. */
 export const H_BAGGAGE = "baggage";
 /** The run id is echoed back so a host can stamp it into an external system later. */
@@ -42,6 +48,11 @@ export interface CaptureIntent {
   /** `x-vmx-entity-foo-bar: 1` → `{ foo_bar: "1" }` — hyphens map to underscores. */
   readonly entityKeys: Readonly<Record<string, string>>;
   readonly outcome: string | undefined;
+  /** Which comparison this call is an arm of. Recorded, not yet acted on. */
+  readonly experiment: string | undefined;
+  readonly variant: string | undefined;
+  /** Which of the host's apps/surfaces made the call — one tenant, several products. */
+  readonly app: string | undefined;
 }
 
 /**
@@ -75,6 +86,9 @@ export function readIntent(
     agentName: headers.get(H_AGENT)?.trim() || undefined,
     entityKeys,
     outcome: headers.get(H_OUTCOME)?.trim() || undefined,
+    experiment: headers.get(H_EXPERIMENT)?.trim() || undefined,
+    variant: headers.get(H_VARIANT)?.trim() || undefined,
+    app: headers.get(H_APP)?.trim() || undefined,
   };
 }
 

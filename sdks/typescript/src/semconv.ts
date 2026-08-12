@@ -75,6 +75,18 @@ export const AI_MARGIN_CAPTURE_GRANULARITY = "ai_margin.capture_granularity";
 export const AI_MARGIN_COST_USD = "ai_margin.cost_usd";
 
 /** Whether the attempt was a streaming response. */
+export const AI_MARGIN_LATENCY_MS = "ai_margin.latency_ms";
+/** Wall time for one attempt, to the last byte of a stream (not to headers). */
+
+export const AI_MARGIN_EXPERIMENT = "ai_margin.experiment";
+/** Which comparison this call is an arm of. Captured before any engine reads it. */
+
+export const AI_MARGIN_VARIANT = "ai_margin.variant";
+/** Which arm of that comparison. */
+
+export const AI_MARGIN_APP = "ai_margin.app";
+/** Which of the tenant's apps/surfaces made the call. */
+
 export const AI_MARGIN_IS_STREAMING = "ai_margin.is_streaming";
 
 /** Whether usage was only partially recovered (cancelled / missing include_usage). */
@@ -103,6 +115,10 @@ export const ALL_KEYS: readonly string[] = Object.freeze(
     AI_MARGIN_PROVENANCE,
     AI_MARGIN_CAPTURE_GRANULARITY,
     AI_MARGIN_COST_USD,
+    AI_MARGIN_LATENCY_MS,
+    AI_MARGIN_EXPERIMENT,
+    AI_MARGIN_VARIANT,
+    AI_MARGIN_APP,
     AI_MARGIN_IS_STREAMING,
     AI_MARGIN_PARTIAL_RECOVERED,
   ].sort(),

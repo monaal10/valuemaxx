@@ -205,6 +205,7 @@ def create_app(settings: ServerSettings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         bridge = StoreBridge.open(resolved.database_url)
         app.state.store_bridge = bridge
+        app.state.aliases = bridge.aliases
         _wire_runtimes(registry, bridge, resolved)
         try:
             yield

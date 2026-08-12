@@ -281,8 +281,17 @@ def _register_run(
             started_at=runtime.clock.now(),
             ended_at=None,
             entity_keys=entity_keys,
+            experiment=_opt_str_attr(attributes, "ai_margin.experiment"),
+            variant=_opt_str_attr(attributes, "ai_margin.variant"),
+            app=_opt_str_attr(attributes, "ai_margin.app"),
         ),
     )
+
+
+def _opt_str_attr(attributes: Mapping[str, object], key: str) -> str | None:
+    """A span attribute as a string, or None when absent/empty."""
+    raw = attributes.get(key)
+    return str(raw) if raw is not None and str(raw) != "" else None
 
 
 def ingest_attribute_maps(

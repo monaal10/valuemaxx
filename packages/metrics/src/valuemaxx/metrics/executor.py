@@ -31,6 +31,7 @@ from decimal import ROUND_HALF_EVEN, Decimal
 from typing import TYPE_CHECKING
 
 from valuemaxx.core import BindingTier, RollupConfidence, SignalClass
+from valuemaxx.core.alias import EntityAlias, resolve_aliases
 from valuemaxx.metrics.grammar import Dimension, Measure
 from valuemaxx.metrics.propagation import (
     denominator_outcomes,
@@ -165,8 +166,14 @@ class MetricExecutor:
         plan: QueryPlan,
         window: MetricWindow,
         outcomes: Sequence[OutcomeEvent],
+        aliases: Sequence[EntityAlias] = (),
     ) -> MetricResult:
         """Run ``plan`` over ``window`` for ``tenant_id``; return the metric result.
+
+        ``aliases`` re-join traffic captured under a key the entity did not yet have
+        (an anonymous session that later became a known lead). They are applied at
+        query time rather than by rewriting stored spans, so a span keeps recording
+        what the caller actually sent.
 
         Reads cost events from the injected repo within the window, applies the
         plan filters, partitions both costs and outcomes by the plan's group_by
@@ -182,7 +189,7 @@ class MetricExecutor:
         tenant_value = str(tenant_id)
         group_keys = self._group_keys(plan, events, outcomes, agent_by_run, tenant_value)
 
-        share_by_run = _attribution_shares(plan, outcomes, self._run_repo, tenant_id)
+        share_by_run = _attribution_shares(plan, outcomes, self._run_repo, tenant_id, aliases)
 
         cells: list[MetricCell] = []
         requires_reemit = False
@@ -195,6 +202,7 @@ class MetricExecutor:
                 agent_by_run,
                 tenant_value,
                 tenant_id,
+                aliases,
                 share_by_run,
             )
             if cell.retracted_excluded_count > 0:
@@ -265,6 +273,7 @@ class MetricExecutor:
         agent_by_run: Mapping[RunId, str],
         tenant_value: str,
         tenant_id: TenantId,
+        aliases: Sequence[EntityAlias],
         share_by_run: Mapping[RunId, Decimal],
     ) -> MetricCell:
         cell_events = [
@@ -276,7 +285,7 @@ class MetricExecutor:
             o for o in outcomes if _matches_key(_outcome_group_key(o, plan.group_by), key)
         ]
         numerator_events = _numerator_events(
-            plan, cell_events, cell_outcomes, self._run_repo, tenant_id
+            plan, cell_events, cell_outcomes, self._run_repo, tenant_id, aliases
         )
         numerator = _numerator_value(plan.numerator, numerator_events, cell_outcomes, share_by_run)
         breakdown = denominator_outcomes(cell_outcomes)
@@ -292,6 +301,7 @@ class MetricExecutor:
             confidence=confidence,
             advisory_excluded_count=breakdown.advisory_excluded_count,
             retracted_excluded_count=breakdown.retracted_excluded_count,
+            shared_attribution_count=sum(1 for e in numerator_events if e.run_id in share_by_run),
             causal_evidence=causal,
         )
 
@@ -317,6 +327,7 @@ def _numerator_events(
     outcomes: Sequence[OutcomeEvent],
     run_repo: RunRepository | None,
     tenant_id: TenantId,
+    aliases: Sequence[EntityAlias] = (),
 ) -> Sequence[CostEvent]:
     """Narrow the numerator to the runs that actually produced the denominator.
 
@@ -351,7 +362,7 @@ def _numerator_events(
     # carry the same entity key — so resolve them rather than falling back to the whole
     # window, which would charge every unrelated run to the successes.
     producing_runs |= _runs_for_entities(
-        run_repo, tenant_id, (o for o in counted if o.binding.run_id is None)
+        run_repo, tenant_id, (o for o in counted if o.binding.run_id is None), aliases
     )
     if not producing_runs:
         return events
@@ -363,6 +374,7 @@ def _attribution_shares(
     outcomes: Sequence[OutcomeEvent],
     run_repo: RunRepository | None,
     tenant_id: TenantId,
+    aliases: Sequence[EntityAlias] = (),
 ) -> dict[RunId, Decimal]:
     """Each producing run's share of its own cost: 1/(outcomes it produced).
 
@@ -388,7 +400,7 @@ def _attribution_shares(
         if outcome.binding.run_id is not None:
             counts[outcome.binding.run_id] += 1
             continue
-        for run_id in _runs_for_entities(run_repo, tenant_id, [outcome]):
+        for run_id in _runs_for_entities(run_repo, tenant_id, [outcome], aliases):
             counts[run_id] += 1
     return {run_id: Decimal(1) / Decimal(n) for run_id, n in counts.items() if n > 1}
 
@@ -397,6 +409,7 @@ def _runs_for_entities(
     run_repo: RunRepository | None,
     tenant_id: TenantId,
     outcomes: Iterable[OutcomeEvent],
+    aliases: Sequence[EntityAlias] = (),
 ) -> set[RunId]:
     """Run ids reachable from the entity keys of outcomes that carry no run id.
 
@@ -408,7 +421,11 @@ def _runs_for_entities(
     resolved: set[RunId] = set()
     for outcome in outcomes:
         for entity_key in outcome.entity_keys:
-            resolved.update(run.id for run in run_repo.list_by_entity(tenant_id, entity_key))
+            # An outcome names the entity as it is known NOW; the runs may have been
+            # captured under an earlier key. Resolve the closure so the anonymous
+            # half of the story is not orphaned.
+            for key in resolve_aliases(entity_key, aliases):
+                resolved.update(run.id for run in run_repo.list_by_entity(tenant_id, key))
     return resolved
 
 

@@ -36,6 +36,7 @@ from valuemaxx.core import (
     TenantId,
     TokenVector,
 )
+from valuemaxx.core.alias import EntityAlias
 from valuemaxx.metrics.compiler import compile_plan
 from valuemaxx.metrics.executor import MetricExecutor, MetricWindow
 from valuemaxx.metrics.grammar import Dimension
@@ -684,3 +685,116 @@ def test_cell_reports_its_causal_evidence() -> None:
     result = executor.run(_TENANT, plan, _WINDOW, outcomes.list_all(_TENANT))
 
     assert result.cells[0].causal_evidence is CausalEvidence.OBSERVATIONAL
+
+
+def test_a_shared_run_is_flagged_as_overlapping_not_silently_divided() -> None:
+    """A run producing two outcomes splits its cost — and SAYS that it did.
+
+    The split itself is right: without it the run's full cost lands in both cells and
+    the columns sum past the provider invoice. But a divided number that looks like a
+    measured one is the dishonesty the honesty axes exist to prevent — a buyer reading
+    "$2.50 per alt" deserves to know it is half of a run shared with an interview.
+    """
+    executor, costs, outcomes, runs = _executor()
+    runs.upsert(_TENANT, _run("run-shared", agent_name="builder"))
+    costs.upsert(_TENANT, _cost("run-shared", usd="5.00"))
+    for name in ("alt_created", "interview_taken"):
+        outcomes.upsert(
+            _TENANT,
+            _outcome(
+                signal_class=SignalClass.OUTCOME_CONFIRMED,
+                tier=BindingTier.EXACT,
+                run="run-shared",
+                name=name,
+            ),
+        )
+
+    plan = compile_plan_cost_per_outcome(group_by=[Dimension.OUTCOME_NAME])
+    result = executor.run(_TENANT, plan, _WINDOW, outcomes.list_all(_TENANT))
+
+    assert len(result.cells) == 2
+    for cell in result.cells:
+        # Half of $5.00 — the columns reconcile against the invoice.
+        assert cell.numerator_value == Decimal("2.50")
+        # ...and the cell admits the number is a split, not a measurement.
+        assert cell.shared_attribution_count == 1
+
+    unshared = compile_plan_cost_per_outcome()
+    solo = executor.run(_TENANT, unshared, _WINDOW, outcomes.list_all(_TENANT))
+    assert solo.cells[0].shared_attribution_count == 1
+
+
+def test_an_alias_re_joins_cost_spent_under_an_anonymous_key() -> None:
+    """The A4 payoff: traffic captured before the entity was known still costs out.
+
+    A session spends real money answering questions while anonymous. It becomes a
+    known lead later, and the outcome — booked days after — names only the lead. With
+    no alias the anonymous spend is orphaned: the run is invisible to the entity
+    lookup, so the numerator falls back to the window total. The alias makes the two
+    keys one entity at QUERY time, without rewriting the span that recorded what the
+    caller actually sent.
+    """
+    executor, costs, outcomes, runs = _executor()
+    session = ("session_id", "abc")
+    lead = ("lead_id", "8172")
+    runs.upsert(
+        _TENANT,
+        Run(
+            tenant_id=_TENANT,
+            id=RunId("run-anon"),
+            agent_name="sdr",
+            started_at=datetime(2026, 6, 15, tzinfo=UTC),
+            ended_at=None,
+            entity_keys=frozenset({session}),
+        ),
+    )
+    runs.upsert(_TENANT, _run("run-unrelated", agent_name="sdr"))
+    costs.upsert(_TENANT, _cost("run-anon", usd="4.00"))
+    costs.upsert(_TENANT, _cost("run-unrelated", usd="96.00"))
+    outcomes.upsert(
+        _TENANT,
+        _outcome(
+            signal_class=SignalClass.OUTCOME_CONFIRMED,
+            tier=BindingTier.DETERMINISTIC,
+            entity_keys=frozenset({lead}),
+        ),
+    )
+
+    plan = compile_plan_cost_per_outcome()
+    aliases = [EntityAlias(source=session, target=lead)]
+    result = executor.run(_TENANT, plan, _WINDOW, outcomes.list_all(_TENANT), aliases=aliases)
+
+    # $4.00 — the anonymous session's spend — not $100.00.
+    assert result.cells[0].numerator_value == Decimal("4.00")
+
+
+def test_without_an_alias_the_anonymous_spend_stays_unjoined() -> None:
+    """The same shape with no alias must NOT silently claim the join."""
+    executor, costs, outcomes, runs = _executor()
+    runs.upsert(
+        _TENANT,
+        Run(
+            tenant_id=_TENANT,
+            id=RunId("run-anon"),
+            agent_name="sdr",
+            started_at=datetime(2026, 6, 15, tzinfo=UTC),
+            ended_at=None,
+            entity_keys=frozenset({("session_id", "abc")}),
+        ),
+    )
+    costs.upsert(_TENANT, _cost("run-anon", usd="4.00"))
+    outcomes.upsert(
+        _TENANT,
+        _outcome(
+            signal_class=SignalClass.OUTCOME_CONFIRMED,
+            tier=BindingTier.DETERMINISTIC,
+            entity_keys=frozenset({("lead_id", "8172")}),
+        ),
+    )
+
+    plan = compile_plan_cost_per_outcome()
+    result = executor.run(_TENANT, plan, _WINDOW, outcomes.list_all(_TENANT))
+
+    # Nothing resolved, so the honest degrade is the window total — never a
+    # confident join we did not earn.
+    assert result.cells[0].numerator_value == Decimal("4.00")

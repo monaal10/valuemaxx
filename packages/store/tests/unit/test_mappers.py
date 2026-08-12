@@ -175,3 +175,38 @@ def test_reconciliation_record_roundtrips() -> None:
     )
     row = mappers.reconciliation_record_to_row(tenant, model)
     assert mappers.row_to_reconciliation_record(row) == model
+
+
+def test_cost_event_latency_roundtrips_including_absent() -> None:
+    """Latency survives persistence, and "not measured" stays distinct from 0ms."""
+    tenant = _tenant()
+    base = {
+        "tenant_id": tenant,
+        "id": CostEventId("ce-lat"),
+        "run_id": RunId("run-1"),
+        "attempt_id": AttemptId("att-1"),
+        "provider": "anthropic",
+        "model": "claude-opus-4",
+        "tokens": TokenVector(
+            input_uncached=1,
+            cache_read=0,
+            cache_write_5m=0,
+            cache_write_1h=0,
+            output=1,
+            reasoning=0,
+        ),
+        "capture_granularity": CaptureGranularity.PER_ATTEMPT,
+        "provenance": ProvenanceLabel(provenance=Provenance.MEASURED),
+        "cost_usd": Decimal("0.01"),
+        "is_streaming": False,
+        "partial_recovered": False,
+        "billing_uncertain_abort": False,
+        "provenance_warnings": (),
+        "occurred_at": datetime(2026, 6, 27, 12, 1, tzinfo=UTC),
+    }
+    measured = CostEvent(**base, latency_ms=1450)
+    assert mappers.row_to_cost_event(mappers.cost_event_to_row(tenant, measured)) == measured
+
+    unmeasured = CostEvent(**base)
+    restored = mappers.row_to_cost_event(mappers.cost_event_to_row(tenant, unmeasured))
+    assert restored.latency_ms is None

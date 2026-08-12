@@ -13,7 +13,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -43,6 +43,7 @@ from valuemaxx.attribution.capabilities import (
 from valuemaxx.attribution.capabilities import (
     bind_runtime as bind_attribution_runtime,
 )
+from valuemaxx.core.alias import EntityAlias
 from valuemaxx.core.repositories import ReviewQueue, RunRepository
 from valuemaxx.core.wire import BAGGAGE_RUN_ID_KEY
 
@@ -596,3 +597,89 @@ def test_strict_mode_rejects_an_unjoinable_outcome() -> None:
         client, "/outcome", json={"name": "alt_created"}, headers={"X-API-Key": "key-uuid"}
     )
     assert permissive.status_code == 200
+
+
+class _RecordingAliases:
+    """Captures what the alias route wrote, without a database."""
+
+    def __init__(self) -> None:
+        self.appended: list[tuple[str, EntityAlias]] = []
+
+    async def append(self, tenant_id: str, alias: EntityAlias, now: datetime) -> None:
+        self.appended.append((tenant_id, alias))
+
+
+def _alias_client(aliases: object) -> TestClient:
+    app = build_app(
+        build_default_registry(), api_keys=_UUID_API_KEYS, webhook_secret=_WEBHOOK_SECRET
+    )
+    app.state.aliases = aliases
+    return TestClient(app)
+
+
+def test_post_v1_alias_records_an_identity_edge() -> None:
+    """`POST /v1/alias` is how anonymous traffic re-joins after the entity is known.
+
+    A session spends real money while unknown; it becomes a lead later. Without this
+    the earlier spans are orphaned — the money was spent, the outcome happened, and
+    nothing joins them because the keys differ.
+    """
+    aliases = _RecordingAliases()
+    res = post(
+        _alias_client(aliases),
+        "/v1/alias",
+        json={"from": {"session_id": "abc"}, "to": {"lead_id": "8172"}},
+        headers={"X-API-Key": "key-uuid"},
+    )
+
+    assert res.status_code == 200, res.text
+    assert res.json()["status"] == "recorded"
+    assert [a for _tenant, a in aliases.appended] == [
+        EntityAlias(source=("session_id", "abc"), target=("lead_id", "8172"))
+    ]
+
+
+def test_alias_rejects_a_multi_key_side() -> None:
+    """Two keys on one side would assert every cross-pairing between them.
+
+    That is a much larger claim than the caller wrote, and silently over-merging two
+    customers' entities is worse than refusing the request.
+    """
+    aliases = _RecordingAliases()
+    res = post(
+        _alias_client(aliases),
+        "/v1/alias",
+        json={"from": {"session_id": "abc", "other": "x"}, "to": {"lead_id": "8172"}},
+        headers={"X-API-Key": "key-uuid"},
+    )
+
+    assert res.status_code == 422
+    assert aliases.appended == []
+
+
+def test_alias_ignores_a_self_edge() -> None:
+    """A key aliased to itself is a claim that says nothing — accepted, not stored."""
+    aliases = _RecordingAliases()
+    res = post(
+        _alias_client(aliases),
+        "/v1/alias",
+        json={"from": {"lead_id": "8172"}, "to": {"lead_id": "8172"}},
+        headers={"X-API-Key": "key-uuid"},
+    )
+
+    assert res.status_code == 200, res.text
+    assert res.json()["status"] == "ignored"
+    assert aliases.appended == []
+
+
+def test_alias_requires_authentication() -> None:
+    """An unauthenticated caller must not be able to merge a tenant's entities."""
+    aliases = _RecordingAliases()
+    res = post(
+        _alias_client(aliases),
+        "/v1/alias",
+        json={"from": {"session_id": "abc"}, "to": {"lead_id": "8172"}},
+    )
+
+    assert res.status_code in {401, 403}
+    assert aliases.appended == []

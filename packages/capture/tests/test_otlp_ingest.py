@@ -150,3 +150,27 @@ def test_otlp_ingest_references_only_semconv_constants() -> None:
         and (node.value.startswith("gen_ai.") or node.value.startswith("ai_margin."))
     ]
     assert offenders == [], f"otlp_ingest re-types wire-key literals: {offenders}"
+
+
+def test_latency_decodes_and_is_absent_rather_than_zero() -> None:
+    """A producer that measured latency keeps it; one that did not says None.
+
+    Zero would be indistinguishable from an instantaneous call, and latency is the
+    second half of a model-switch decision ("cheaper AND faster") — so the missing
+    case has to stay visibly missing.
+    """
+    measured = span_to_cost_event(
+        _span_attrs(**{semconv.AI_MARGIN_LATENCY_MS: 1450}),
+        tenant_id=_TENANT,
+        pricebook=_pricebook(),
+        clock=_FixedClock(),
+    )
+    assert measured.latency_ms == 1450
+
+    unmeasured = span_to_cost_event(
+        _span_attrs(),
+        tenant_id=_TENANT,
+        pricebook=_pricebook(),
+        clock=_FixedClock(),
+    )
+    assert unmeasured.latency_ms is None

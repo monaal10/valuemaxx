@@ -214,3 +214,38 @@ describe("header contract", () => {
     expect(out.get("host")).toBeNull();
   });
 });
+
+describe("experiment fields", () => {
+  it("reads experiment, variant and app from headers", () => {
+    // These carry no engine yet. They are read now because they cannot be
+    // retrofitted: traffic that ran without a variant stamp can never be told
+    // apart afterwards, so any comparison over history depends on stamping it
+    // before the history is made.
+    const intent = readIntent(
+      new Headers({
+        "x-vmx-key": "k",
+        "x-vmx-experiment": "haiku-vs-opus",
+        "x-vmx-variant": "haiku",
+        "x-vmx-app": "support",
+      }),
+      () => "minted",
+    );
+
+    expect(intent.experiment).toBe("haiku-vs-opus");
+    expect(intent.variant).toBe("haiku");
+    expect(intent.app).toBe("support");
+  });
+
+  it("leaves them undefined when unsent, and strips them upstream", () => {
+    const intent = readIntent(new Headers({ "x-vmx-key": "k" }), () => "m");
+    expect(intent.experiment).toBeUndefined();
+    expect(intent.variant).toBeUndefined();
+    expect(intent.app).toBeUndefined();
+
+    const out = forwardableHeaders(
+      new Headers({ "x-vmx-experiment": "e", authorization: "Bearer sk-1" }),
+    );
+    expect(out.get("x-vmx-experiment")).toBeNull();
+    expect(out.get("authorization")).toBe("Bearer sk-1");
+  });
+});

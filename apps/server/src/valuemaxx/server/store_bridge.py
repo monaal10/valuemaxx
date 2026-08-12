@@ -36,6 +36,7 @@ from valuemaxx.store.engine import create_engine, create_sessionmaker
 from valuemaxx.store.migrations_api import upgrade_to_head
 from valuemaxx.store.repositories import (
     PgCostEventRepository,
+    PgEntityAliasRepository,
     PgEvalDatasetRepository,
     PgEvalRecommendationRepository,
     PgOutcomeEventRepository,
@@ -82,6 +83,7 @@ class StoreBridge:
         self._cost_events = PgCostEventRepository(sessions)
         self._outcome_events = PgOutcomeEventRepository(sessions)
         self._runs = PgRunRepository(sessions)
+        self._aliases = PgEntityAliasRepository(sessions)
         self._review_queue = PgReviewQueue(sessions)
         self._raw_records = PgRawRecordRepository(sessions)
         self._eval_datasets = PgEvalDatasetRepository(sessions)
@@ -125,6 +127,17 @@ class StoreBridge:
         ``Run.agent_name`` when a metric groups cost by ``agent_name``.
         """
         return SyncRunRepository(self._portal, self._runs)
+
+    @property
+    def aliases(self) -> PgEntityAliasRepository:
+        """The ASYNC alias repository, unwrapped.
+
+        Every other accessor here hands back a sync facade because its caller is
+        sync capability-handler code. The alias route is an async FastAPI handler
+        running on the request loop, so it awaits this directly — routing it through
+        the blocking portal would park a request thread for no reason.
+        """
+        return self._aliases
 
     @property
     def review_queue(self) -> SyncReviewQueue:

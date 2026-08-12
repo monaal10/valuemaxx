@@ -11,6 +11,7 @@ and the JSON-Schema/registry projection have one authoritative list.
 
 from __future__ import annotations
 
+from valuemaxx.core.alias import EntityAlias, EntityKey, resolve_aliases
 from valuemaxx.core.allocation import AllocatedLine, AllocatedRollup
 from valuemaxx.core.attribution import AttributionCandidate, AttributionResult
 from valuemaxx.core.base import StrictModel, TenantScopedModel
@@ -124,6 +125,8 @@ __all__ = [
     "CostGatePhase",
     "DriftAlert",
     "Embedder",
+    "EntityAlias",
+    "EntityKey",
     "EvalCase",
     "EvalDataset",
     "EvalDatasetRepository",
@@ -172,5 +175,6 @@ __all__ = [
     "WebhookResult",
     "active_run_id",
     "compose_label",
+    "resolve_aliases",
     "run_in_context",
 ]

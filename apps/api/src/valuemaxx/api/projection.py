@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Protocol, cast
 from uuid import UUID, uuid4
 
 from fastapi import Header, HTTPException, Request
@@ -32,17 +32,30 @@ from valuemaxx.attribution.capabilities import attribution_request_scope
 from valuemaxx.capabilities import Mode, Surface
 from valuemaxx.capture.capabilities import IngestNotWiredError, ingest_attribute_maps
 from valuemaxx.capture.otlp.collector import otlp_json_to_attribute_maps
+from valuemaxx.core.alias import EntityAlias
 from valuemaxx.core.ids import TenantId
 from valuemaxx.metrics.capabilities import metric_tenant_scope
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
     from contextlib import AbstractContextManager
 
     from fastapi import FastAPI
     from valuemaxx.api.auth import ApiKeyAuthenticator
     from valuemaxx.api.jobs import JobStore
     from valuemaxx.capabilities import AnyCapability, Registry
+
+    NowFn = Callable[[], datetime]
+
+    class EntityAliasWriter(Protocol):
+        """The one method the alias route needs from the store.
+
+        Narrower than the repository on purpose: the route records a claim and never
+        reads the closure back, so depending on the full repo would overstate what
+        this surface can do.
+        """
+
+        async def append(self, tenant_id: str, alias: EntityAlias, now: datetime) -> None: ...
 
 
 def _resolve(auth: ApiKeyAuthenticator, api_key: str | None) -> str:
@@ -341,6 +354,64 @@ def mount_outcome_alias_route(app: FastAPI, registry: Registry, auth: ApiKeyAuth
     app.post("/outcome", name="outcome_alias")(handler)
 
 
+def mount_entity_alias_route(app: FastAPI, auth: ApiKeyAuthenticator, now: NowFn) -> None:
+    """`POST /v1/alias` — two entity keys are the same entity.
+
+    The hole this closes: a session that spends real money while anonymous and only
+    becomes a known lead afterwards. Every span it produced carries the anonymous key,
+    so an outcome naming the lead joins none of them, and the spend is orphaned.
+
+    Aliases apply at QUERY time; nothing stored is rewritten. A span keeps recording
+    what the caller actually sent, and a claim that arrives months later still re-joins
+    the history it refers to.
+    """
+
+    async def handler(
+        request: Request,
+        x_api_key: str | None = Header(default=None),
+    ) -> dict[str, object]:
+        tenant_id = _resolve(auth, x_api_key)
+        # Resolved per request: the store opens during lifespan, after routes mount.
+        aliases = cast("EntityAliasWriter | None", getattr(request.app.state, "aliases", None))
+        if aliases is None:
+            raise HTTPException(status_code=503, detail="alias store is not wired")
+        payload = await _request_payload(request)
+        source = _entity_key(payload.get("from"), "from")
+        target = _entity_key(payload.get("to"), "to")
+        if source == target:
+            # Not an error worth failing a retry over, but recording a self-edge
+            # would add a claim that says nothing.
+            return {"status": "ignored", "reason": "from and to are the same key"}
+        await aliases.append(tenant_id, EntityAlias(source=source, target=target), now())
+        return {"status": "recorded", "from": list(source), "to": list(target)}
+
+    app.post("/v1/alias", name="entity_alias")(handler)
+
+
+def _entity_key(raw: object, field: str) -> tuple[str, str]:
+    """Read a `{type: value}` object as one entity key.
+
+    Exactly one pair: an alias is a claim about ONE identity. Accepting several would
+    silently assert every cross-pairing between them, which is a much larger claim
+    than the caller wrote.
+    """
+    if not isinstance(raw, dict):
+        raise HTTPException(
+            status_code=422,
+            detail=f"'{field}' must be an object with exactly one entity key",
+        )
+    pairs = cast("dict[str, object]", raw)
+    if len(pairs) != 1:
+        raise HTTPException(
+            status_code=422,
+            detail=f"'{field}' must be an object with exactly one entity key",
+        )
+    key, value = next(iter(pairs.items()))
+    if not key or value is None or str(value) == "":
+        raise HTTPException(status_code=422, detail=f"'{field}' has an empty entity key")
+    return (key, str(value))
+
+
 def mount_capabilities(
     app: FastAPI,
     registry: Registry,
@@ -367,6 +438,12 @@ def mount_capabilities(
     # the SDK's exporter posts raw OTLP-JSON, which has no capability input model.
     mount_otlp_collector_route(app, registry, auth)
     mount_outcome_alias_route(app, registry, auth)
+    mount_entity_alias_route(app, auth, lambda: datetime.now(UTC))
 
 
-__all__ = ["mount_capabilities", "mount_jobs_route", "mount_otlp_collector_route"]
+__all__ = [
+    "mount_capabilities",
+    "mount_entity_alias_route",
+    "mount_jobs_route",
+    "mount_otlp_collector_route",
+]

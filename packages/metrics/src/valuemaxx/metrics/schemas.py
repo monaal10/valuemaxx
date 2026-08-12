@@ -39,6 +39,13 @@ class MetricCell(StrictModel):
             denominator because their binding is advisory (candidate/likely/unbound).
         retracted_excluded_count: retracted outcomes excluded from the denominator
             and counted for the annotated re-emit (§3.1 H8).
+        shared_attribution_count: how many of this cell's producing runs also produced
+            a DIFFERENT outcome, so their cost was split rather than measured. Zero
+            means every number here is a whole run's cost. Non-zero is not an error —
+            the split is what keeps the columns reconciling against the provider
+            invoice — but a divided figure that renders identically to a measured one
+            is exactly the dishonesty the other axes exist to prevent, so the cell
+            carries the ambiguity instead of absorbing it.
         causal_evidence: the conservative causal-evidence axis over the contributing
             outcomes — observational unless EVERY member was earned by an experiment
             (§3.1 H7 on the causal axis).
@@ -51,6 +58,7 @@ class MetricCell(StrictModel):
     confidence: RollupConfidence
     advisory_excluded_count: int
     retracted_excluded_count: int
+    shared_attribution_count: int = 0
     causal_evidence: CausalEvidence = CausalEvidence.OBSERVATIONAL
 
 

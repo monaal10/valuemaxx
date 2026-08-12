@@ -35,6 +35,10 @@ class CostEvent(TenantScopedModel):
     billing_uncertain_abort: bool
     provenance_warnings: tuple[str, ...]
     occurred_at: datetime
+    # None when the producer did not measure it. A fabricated 0 would read as
+    # instantaneous, and only the proxy that made the call ever sees this clock —
+    # there is no later stage that could backfill it.
+    latency_ms: int | None = None
 
     @property
     def idempotency_key(self) -> tuple[RunId, AttemptId]:

@@ -47,6 +47,18 @@ AI_MARGIN_CACHE_WRITE_1H = "ai_margin.usage.cache_write_1h_tokens"
 AI_MARGIN_REASONING = "ai_margin.usage.reasoning_tokens"
 """Reasoning tokens — derived (thinking-block count), embedded within output."""
 
+AI_MARGIN_LATENCY_MS = "ai_margin.latency_ms"
+"""Wall-clock duration of one attempt, in milliseconds, as the proxy measured it."""
+
+AI_MARGIN_EXPERIMENT = "ai_margin.experiment"
+"""Which comparison a call is an arm of. Captured before any engine reads it."""
+
+AI_MARGIN_VARIANT = "ai_margin.variant"
+"""Which arm of that comparison."""
+
+AI_MARGIN_APP = "ai_margin.app"
+"""Which of the tenant's apps/surfaces made the call."""
+
 AI_MARGIN_RUN_ID = "ai_margin.run_id"
 """The agent run id this attempt belongs to."""
 
@@ -106,18 +118,22 @@ def generate_semconv_fixture(path: Path) -> None:
 
 
 __all__ = [
+    "AI_MARGIN_APP",
     "AI_MARGIN_ATTEMPT_ID",
     "AI_MARGIN_CACHE_READ",
     "AI_MARGIN_CACHE_WRITE_1H",
     "AI_MARGIN_CACHE_WRITE_5M",
     "AI_MARGIN_CAPTURE_GRANULARITY",
     "AI_MARGIN_COST_USD",
+    "AI_MARGIN_EXPERIMENT",
     "AI_MARGIN_IS_STREAMING",
+    "AI_MARGIN_LATENCY_MS",
     "AI_MARGIN_PARTIAL_RECOVERED",
     "AI_MARGIN_PROVENANCE",
     "AI_MARGIN_REASONING",
     "AI_MARGIN_RUN_ID",
     "AI_MARGIN_TENANT_ID",
+    "AI_MARGIN_VARIANT",
     "ALL_KEYS",
     "GEN_AI_REQUEST_MODEL",
     "GEN_AI_SYSTEM",

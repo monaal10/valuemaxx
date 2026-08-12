@@ -19,7 +19,7 @@ export async function reportSpan(
   backend: string,
   intent: CaptureIntent,
   observation: AttemptObservation,
-  opts: { inlineCostUsd?: number } = {},
+  opts: { inlineCostUsd?: number; latencyMs?: number } = {},
 ): Promise<void> {
   const { tokens } = observation;
   const attributes: Record<string, string | number | boolean> = {
@@ -41,6 +41,20 @@ export async function reportSpan(
 
   if (intent.agentName) {
     attributes[semconv.AI_MARGIN_AGENT_NAME] = intent.agentName;
+  }
+  if (opts.latencyMs !== undefined) {
+    attributes[semconv.AI_MARGIN_LATENCY_MS] = opts.latencyMs;
+  }
+  // Recorded with no engine reading them: a variant stamp is impossible to add to
+  // traffic after it has already run, so history has to carry it from the start.
+  if (intent.experiment) {
+    attributes[semconv.AI_MARGIN_EXPERIMENT] = intent.experiment;
+  }
+  if (intent.variant) {
+    attributes[semconv.AI_MARGIN_VARIANT] = intent.variant;
+  }
+  if (intent.app) {
+    attributes[semconv.AI_MARGIN_APP] = intent.app;
   }
   for (const [name, value] of Object.entries(intent.entityKeys)) {
     attributes[`${semconv.AI_MARGIN_ENTITY_PREFIX}${name}`] = value;

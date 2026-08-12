@@ -11,6 +11,7 @@ from __future__ import annotations
 from valuemaxx.store.repositories.allocation import PgAllocationRepository
 from valuemaxx.store.repositories.attribution import PgAttributionResultRepository
 from valuemaxx.store.repositories.cost_event import PgCostEventRepository
+from valuemaxx.store.repositories.entity_alias import PgEntityAliasRepository
 from valuemaxx.store.repositories.eval_dataset import PgEvalDatasetRepository
 from valuemaxx.store.repositories.eval_recommendation import PgEvalRecommendationRepository
 from valuemaxx.store.repositories.outcome_event import PgOutcomeEventRepository
@@ -23,6 +24,7 @@ __all__ = [
     "PgAllocationRepository",
     "PgAttributionResultRepository",
     "PgCostEventRepository",
+    "PgEntityAliasRepository",
     "PgEvalDatasetRepository",
     "PgEvalRecommendationRepository",
     "PgOutcomeEventRepository",

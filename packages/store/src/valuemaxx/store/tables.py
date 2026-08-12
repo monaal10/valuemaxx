@@ -69,7 +69,36 @@ run = Table(
     Column("ended_at", DateTime(timezone=True), nullable=True),
     # entity_keys is a JSON list of [type, value] pairs (a frozenset of tuples in core).
     Column("entity_keys", jsonb(), nullable=False),
+    # nullable: most traffic is not an arm of anything.
+    Column("experiment", String(), nullable=True),
+    Column("variant", String(), nullable=True),
+    Column("app", String(), nullable=True),
     Index("ix_valuemaxx_run_tenant", "tenant_id"),
+)
+
+
+entity_alias = Table(
+    "valuemaxx_entity_alias",
+    metadata,
+    Column("id", String(), primary_key=True),
+    _tenant_id_column(),
+    # Entity keys are (type, value) pairs; stored split so either side is indexable.
+    Column("source_type", String(), nullable=False),
+    Column("source_value", String(), nullable=False),
+    Column("target_type", String(), nullable=False),
+    Column("target_value", String(), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    # An alias asserted twice is the same claim, not a second one — at-least-once
+    # senders must not multiply the closure they are resolved against.
+    UniqueConstraint(
+        "tenant_id",
+        "source_type",
+        "source_value",
+        "target_type",
+        "target_value",
+        name="uq_valuemaxx_entity_alias_edge",
+    ),
+    Index("ix_valuemaxx_entity_alias_tenant", "tenant_id"),
 )
 
 
@@ -100,6 +129,8 @@ cost_event = Table(
     Column("billing_uncertain_abort", Boolean(), nullable=False),
     Column("provenance_warnings", jsonb(), nullable=False),
     Column("occurred_at", DateTime(timezone=True), nullable=False),
+    # nullable: a producer that did not measure the attempt says nothing rather than 0ms.
+    Column("latency_ms", Integer(), nullable=True),
     # the idempotency key (M7) — at-least-once ingest never double-counts.
     UniqueConstraint(
         "tenant_id",

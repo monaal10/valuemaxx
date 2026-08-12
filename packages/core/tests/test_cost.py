@@ -84,3 +84,18 @@ def test_cost_event_is_frozen() -> None:
     ev = _event()
     with pytest.raises(ValidationError):
         ev.provider = "openai"  # frozen
+
+
+def test_cost_event_carries_latency() -> None:
+    """Latency rides the cost event because the gateway is the only place it is known.
+
+    The proxy measures wall time per attempt and currently discards it. Without it
+    on the event there is no way to say "this model is cheaper AND faster" — the
+    second half of every real model-switch decision — and it cannot be backfilled,
+    because nothing else in the pipeline ever saw the clock.
+
+    Optional: a span ingested from a producer that did not measure it says None
+    rather than a fabricated zero, which would read as instantaneous.
+    """
+    assert _event(latency_ms=1450).latency_ms == 1450
+    assert _event().latency_ms is None

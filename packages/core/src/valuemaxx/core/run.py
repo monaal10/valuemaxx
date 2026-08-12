@@ -16,6 +16,13 @@ class Run(TenantScopedModel):
     started_at: datetime
     ended_at: datetime | None
     entity_keys: frozenset[tuple[str, str]]
+    # Captured with no engine reading them yet. A variant stamp cannot be applied to
+    # traffic retroactively, so the fields have to exist before the history they
+    # describe is made. None is the honest default — most traffic is not an arm of
+    # anything, and defaulting otherwise would invent experiments.
+    experiment: str | None = None
+    variant: str | None = None
+    app: str | None = None
 
 
 __all__ = ["Run"]

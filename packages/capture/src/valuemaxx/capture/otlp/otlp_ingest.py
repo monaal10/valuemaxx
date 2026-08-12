@@ -44,6 +44,21 @@ def _int_attr(attrs: Mapping[str, object], key: str) -> int:
     return 0
 
 
+def _optional_int_attr(attrs: Mapping[str, object], key: str) -> int | None:
+    """An int attribute that is absent rather than zero when the producer omitted it.
+
+    ``_int_attr`` defaults to 0, which is right for token counts (none used) and
+    wrong for latency (0ms reads as instantaneous rather than unmeasured).
+    """
+    raw = attrs.get(key)
+    if isinstance(raw, bool) or not isinstance(raw, (int, float, str)):
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
 def _str_attr(attrs: Mapping[str, object], key: str, *, default: str = "") -> str:
     value = attrs.get(key)
     return value if isinstance(value, str) else default
@@ -157,6 +172,7 @@ def span_to_cost_event(
         billing_uncertain_abort=cost_usd is None,
         provenance_warnings=warnings,
         occurred_at=clock.now(),
+        latency_ms=_optional_int_attr(attrs, semconv.AI_MARGIN_LATENCY_MS),
     )
 
 

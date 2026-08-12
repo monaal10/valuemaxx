@@ -161,6 +161,7 @@ async function proxy(
       : await request.text();
   const requestedModel = readModel(requestBody);
 
+  const startedAt = Date.now();
   const upstream = await fetch(
     new Request(upstreamUrl, {
       method: request.method,
@@ -190,6 +191,7 @@ async function proxy(
       intent,
       env,
       status: upstream.status,
+      startedAt,
     }),
   );
 
@@ -224,19 +226,33 @@ async function capture(args: {
   intent: CaptureIntent;
   env: Env;
   status: number;
+  startedAt: number;
 }): Promise<void> {
-  const { stream, isStream, provider, model, includeUsage, intent, env, status } =
-    args;
+  const {
+    stream,
+    isStream,
+    provider,
+    model,
+    includeUsage,
+    intent,
+    env,
+    status,
+    startedAt,
+  } = args;
   try {
     const observation = isStream
       ? await readStreaming(stream, provider, model, includeUsage)
       : await readNonStreaming(stream, provider, model);
 
     if (observation) {
+      // Measured here rather than at the response, so a stream is timed to its LAST
+      // byte. Timing a 30s generation to its headers would report ~200ms and make
+      // every streaming model look equally fast.
       await reportSpan(env.VALUEMAXX_BACKEND, intent, observation.observation, {
         ...(observation.inlineCostUsd === undefined
           ? {}
           : { inlineCostUsd: observation.inlineCostUsd }),
+        latencyMs: Date.now() - startedAt,
       });
     }
 
