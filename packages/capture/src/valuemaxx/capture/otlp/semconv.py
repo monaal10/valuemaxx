@@ -101,6 +101,10 @@ ALL_KEYS: frozenset[str] = frozenset(
         AI_MARGIN_COST_USD,
         AI_MARGIN_IS_STREAMING,
         AI_MARGIN_PARTIAL_RECOVERED,
+        AI_MARGIN_LATENCY_MS,
+        AI_MARGIN_EXPERIMENT,
+        AI_MARGIN_VARIANT,
+        AI_MARGIN_APP,
     }
 )
 """The authoritative set of every OTLP key the capture path uses."""
