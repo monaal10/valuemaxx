@@ -837,3 +837,238 @@ def test_a_shared_run_is_not_halved_when_both_outcomes_land_in_one_cell() -> Non
     assert cell.numerator_value == Decimal("5.00")
     # Still flagged: the per-outcome figure below is a shared run's cost.
     assert cell.shared_attribution_count == 1
+
+
+# --- adversarial audit (Phase C) --------------------------------------------
+# Each of these is an attempt to make the metric state something untrue. Per the
+# repo's ratchet rule every dishonesty class found becomes a permanent guard, so
+# these stay as tests rather than as a one-off audit report.
+
+
+def test_a_caller_cannot_promote_its_own_outcome_into_the_denominator() -> None:
+    """A candidate-tier outcome must never count, however it is labelled.
+
+    The whole billing-grade distinction collapses if a caller can assert its way in:
+    cost per outcome would silently include guesses, and the number would drop
+    exactly when attribution got WEAKER — the most flattering possible lie.
+    """
+    executor, costs, outcomes, runs = _executor()
+    runs.upsert(_TENANT, _run("run-1", agent_name="bot"))
+    costs.upsert(_TENANT, _cost("run-1", usd="9.00"))
+    outcomes.upsert(
+        _TENANT,
+        _outcome(
+            signal_class=SignalClass.OUTCOME_CONFIRMED,
+            tier=BindingTier.CANDIDATE,
+            run="run-1",
+        ),
+    )
+
+    result = executor.run(
+        _TENANT, compile_plan_cost_per_outcome(), _WINDOW, outcomes.list_all(_TENANT)
+    )
+
+    cell = result.cells[0]
+    assert cell.denominator_value == 0
+    # No denominator means NO ratio — never a fabricated one.
+    assert cell.value is None
+    assert cell.advisory_excluded_count == 1
+
+
+def test_a_retracted_outcome_cannot_keep_inflating_the_denominator() -> None:
+    """A refunded deal must leave the denominator, and say the metric needs re-emitting.
+
+    Otherwise every retraction permanently improves the reported unit cost: the spend
+    stays, the outcome silently stays counted, and cost-per-outcome looks better the
+    more customers churn.
+    """
+    executor, costs, outcomes, runs = _executor()
+    runs.upsert(_TENANT, _run("run-1", agent_name="bot"))
+    costs.upsert(_TENANT, _cost("run-1", usd="4.00"))
+    outcomes.upsert(
+        _TENANT,
+        _outcome(
+            signal_class=SignalClass.OUTCOME_RETRACTED,
+            tier=BindingTier.EXACT,
+            run="run-1",
+        ),
+    )
+
+    result = executor.run(
+        _TENANT, compile_plan_cost_per_outcome(), _WINDOW, outcomes.list_all(_TENANT)
+    )
+
+    assert result.cells[0].denominator_value == 0
+    assert result.cells[0].retracted_excluded_count == 1
+    assert result.requires_reemit is True
+
+
+def test_an_alias_cannot_merge_two_different_entities_spend() -> None:
+    """Aliasing must not become a way to pull unrelated cost into a unit.
+
+    The closure is the one place where a caller-supplied claim widens what counts as
+    "this entity's spend". If an unrelated key resolved through it, a customer could
+    make any outcome look arbitrarily cheap by asserting enough aliases.
+    """
+    executor, costs, outcomes, runs = _executor()
+    lead, stranger = ("lead_id", "8172"), ("lead_id", "9999")
+    for run_id, key, usd in (("run-lead", lead, "2.00"), ("run-stranger", stranger, "98.00")):
+        runs.upsert(
+            _TENANT,
+            Run(
+                tenant_id=_TENANT,
+                id=RunId(run_id),
+                agent_name="sdr",
+                started_at=datetime(2026, 6, 15, tzinfo=UTC),
+                ended_at=None,
+                entity_keys=frozenset({key}),
+            ),
+        )
+        costs.upsert(_TENANT, _cost(run_id, usd=usd))
+    outcomes.upsert(
+        _TENANT,
+        _outcome(
+            signal_class=SignalClass.OUTCOME_CONFIRMED,
+            tier=BindingTier.DETERMINISTIC,
+            entity_keys=frozenset({lead}),
+        ),
+    )
+
+    # An alias between two OTHER keys must not drag the stranger's run in.
+    unrelated = [EntityAlias(source=("session_id", "s1"), target=("session_id", "s2"))]
+    result = executor.run(
+        _TENANT,
+        compile_plan_cost_per_outcome(),
+        _WINDOW,
+        outcomes.list_all(_TENANT),
+        aliases=unrelated,
+    )
+
+    assert result.cells[0].numerator_value == Decimal("2.00")
+
+
+def test_an_alias_cycle_cannot_hang_or_inflate_a_metric() -> None:
+    """Mutually-asserted aliases must terminate and must not multiply the join.
+
+    The closure walk is the one unbounded loop in the query path, and it walks
+    caller-supplied data. A cycle that hung would take the dashboard down; a cycle
+    that re-counted a run per traversal would inflate the numerator without any
+    invalid input ever being rejected.
+    """
+    executor, costs, outcomes, runs = _executor()
+    a, b = ("session_id", "a"), ("lead_id", "b")
+    runs.upsert(
+        _TENANT,
+        Run(
+            tenant_id=_TENANT,
+            id=RunId("run-a"),
+            agent_name="sdr",
+            started_at=datetime(2026, 6, 15, tzinfo=UTC),
+            ended_at=None,
+            entity_keys=frozenset({a}),
+        ),
+    )
+    costs.upsert(_TENANT, _cost("run-a", usd="7.00"))
+    outcomes.upsert(
+        _TENANT,
+        _outcome(
+            signal_class=SignalClass.OUTCOME_CONFIRMED,
+            tier=BindingTier.DETERMINISTIC,
+            entity_keys=frozenset({b}),
+        ),
+    )
+
+    cyclic = [
+        EntityAlias(source=a, target=b),
+        EntityAlias(source=b, target=a),
+        EntityAlias(source=a, target=b),  # asserted twice for good measure
+    ]
+    result = executor.run(
+        _TENANT,
+        compile_plan_cost_per_outcome(),
+        _WINDOW,
+        outcomes.list_all(_TENANT),
+        aliases=cyclic,
+    )
+
+    # Counted ONCE despite three edges and a cycle.
+    assert result.cells[0].numerator_value == Decimal("7.00")
+
+
+def test_an_entity_resolving_to_many_runs_counts_each_run_once() -> None:
+    """Several runs working one lead sum once each — never once per outcome key.
+
+    The entity path resolves runs per outcome; a naive implementation that appended
+    instead of unioning would count a run again for every entity key an outcome
+    carries, quietly multiplying the numerator by the width of the key set.
+    """
+    executor, costs, outcomes, runs = _executor()
+    lead, email = ("lead_id", "8172"), ("email", "a@b.c")
+    for run_id in ("run-1", "run-2"):
+        runs.upsert(
+            _TENANT,
+            Run(
+                tenant_id=_TENANT,
+                id=RunId(run_id),
+                agent_name="sdr",
+                started_at=datetime(2026, 6, 15, tzinfo=UTC),
+                ended_at=None,
+                entity_keys=frozenset({lead, email}),
+            ),
+        )
+        costs.upsert(_TENANT, _cost(run_id, usd="1.50"))
+    outcomes.upsert(
+        _TENANT,
+        _outcome(
+            signal_class=SignalClass.OUTCOME_CONFIRMED,
+            tier=BindingTier.DETERMINISTIC,
+            entity_keys=frozenset({lead, email}),
+        ),
+    )
+
+    result = executor.run(
+        _TENANT, compile_plan_cost_per_outcome(), _WINDOW, outcomes.list_all(_TENANT)
+    )
+
+    # $3.00 total, not $6.00 (two runs x two matching keys).
+    assert result.cells[0].numerator_value == Decimal("3.00")
+
+
+def test_another_tenants_runs_are_never_reachable_through_an_entity() -> None:
+    """Entity resolution must not cross the tenant boundary.
+
+    Entity keys are caller-chosen strings, so two customers can easily both use
+    `lead_id=1`. If the entity path reached across tenants, one customer's outcome
+    would attribute another customer's spend — a cost error and a data leak in the
+    same query.
+    """
+    executor, costs, outcomes, runs = _executor()
+    other = TenantId(uuid4())
+    lead = ("lead_id", "1")
+    for tenant, run_id in ((_TENANT, "mine"), (other, "theirs")):
+        runs.upsert(
+            tenant,
+            Run(
+                tenant_id=tenant,
+                id=RunId(run_id),
+                agent_name="sdr",
+                started_at=datetime(2026, 6, 15, tzinfo=UTC),
+                ended_at=None,
+                entity_keys=frozenset({lead}),
+            ),
+        )
+    costs.upsert(_TENANT, _cost("mine", usd="2.00"))
+    outcomes.upsert(
+        _TENANT,
+        _outcome(
+            signal_class=SignalClass.OUTCOME_CONFIRMED,
+            tier=BindingTier.DETERMINISTIC,
+            entity_keys=frozenset({lead}),
+        ),
+    )
+
+    result = executor.run(
+        _TENANT, compile_plan_cost_per_outcome(), _WINDOW, outcomes.list_all(_TENANT)
+    )
+
+    assert result.cells[0].numerator_value == Decimal("2.00")
