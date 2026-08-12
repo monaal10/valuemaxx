@@ -218,7 +218,7 @@ def test_the_page_exposes_competing_attributions_for_one_outcome() -> None:
 
 
 def test_cost_is_decomposable_by_agent_and_model() -> None:
-    """"Which part of achieving this outcome is expensive" must be answerable.
+    """ "Which part of achieving this outcome is expensive" must be answerable.
 
     Cost per outcome grouped by agent and by model is the bridge to optimization:
     a single blended figure says a unit costs $0.10 but never which step to attack.

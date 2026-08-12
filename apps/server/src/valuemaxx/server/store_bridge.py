@@ -52,6 +52,7 @@ if TYPE_CHECKING:
     from types import TracebackType
 
     from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
+    from valuemaxx.core.alias import EntityAlias
     from valuemaxx.core.cost import CostEvent
     from valuemaxx.core.eval.models import EvalDataset, EvalRecommendation
     from valuemaxx.core.ids import OutcomeEventId, RunId, TenantId
@@ -127,6 +128,15 @@ class StoreBridge:
         ``Run.agent_name`` when a metric groups cost by ``agent_name``.
         """
         return SyncRunRepository(self._portal, self._runs)
+
+    def list_aliases(self, tenant_id: TenantId) -> Sequence[EntityAlias]:
+        """Every alias in the tenant, read synchronously through the portal.
+
+        The metrics executor is sync and takes aliases as a plain sequence, so the
+        composition root needs a sync read even though `aliases` itself is async
+        for the request-loop route.
+        """
+        return self._portal.call(self._aliases.list_all, tenant_id)
 
     @property
     def aliases(self) -> PgEntityAliasRepository:

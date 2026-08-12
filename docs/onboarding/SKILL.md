@@ -90,11 +90,17 @@ ours runs inside it.
 client = OpenAI(
     base_url="https://<gateway>/openai/v1",              # line 1
     default_headers={"x-vmx-key": "vmx_live_...",        # line 2
-                     "x-vmx-run-id": order_id},          #   ← THEIR durable id
+                     "x-vmx-agent": "support-bot"},      #   only UNCHANGING values
 )
-client.chat.completions.create(...,                       # line 3 (optional)
-    extra_headers={"x-vmx-outcome": "order_fulfilled"})
+client.chat.completions.create(...,                       # line 3
+    extra_headers={"x-vmx-run-id": order_id,              #   ← THEIR durable id, PER CALL
+                   "x-vmx-outcome": "order_fulfilled"})   #   (outcome header optional)
 ```
+
+The run id sits on the REQUEST, not the client. A long-lived client with
+`x-vmx-run-id` in `default_headers` stamps every unit with the first one's id and
+silently collapses them into a single giant unit — nothing errors, the numbers are
+just wrong. Put it on the client only when that client serves exactly one unit.
 
 Routes: `/openai` `/anthropic` `/gemini` `/openrouter`. Append whatever path the SDK
 already appends: an OpenAI client wants `<gateway>/openai/v1`, an Anthropic client

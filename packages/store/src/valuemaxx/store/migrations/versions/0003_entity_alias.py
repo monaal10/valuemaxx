@@ -42,7 +42,9 @@ def upgrade() -> None:
     op.create_table(
         _TABLE,
         sa.Column("id", sa.String(), primary_key=True),
-        sa.Column("tenant_id", sa.String(), nullable=False),
+        # UUID, matching every other table's tenant_id — a String column here would
+        # accept the value and then mismatch every tenant-scoped join.
+        sa.Column("tenant_id", sa.Uuid(), nullable=False),
         sa.Column("source_type", sa.String(), nullable=False),
         sa.Column("source_value", sa.String(), nullable=False),
         sa.Column("target_type", sa.String(), nullable=False),

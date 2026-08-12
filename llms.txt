@@ -121,10 +121,16 @@ a config change rather than code in the request path:
     client = OpenAI(
         base_url="https://<gateway>/openai/v1",              # line 1
         default_headers={"x-vmx-key": "vmx_live_...",        # line 2
-                         "x-vmx-run-id": order_id})          #   <- THEIR durable id
+                         "x-vmx-agent": "support-bot"})      #   only UNCHANGING values
     ...
-    client.chat.completions.create(...,                       # line 3, optional:
-        extra_headers={"x-vmx-outcome": "order_fulfilled"})
+    client.chat.completions.create(...,                       # line 3
+        extra_headers={"x-vmx-run-id": order_id,              #   <- THEIR durable id,
+                       "x-vmx-outcome": "order_fulfilled"})   #      PER CALL (optional)
+
+The run id is per REQUEST because it changes per unit; putting it in
+`default_headers` on a long-lived client stamps every unit with the first one's id
+and collapses them into one. Nothing errors — the numbers are just wrong. Only put
+it on the client when that client serves exactly one unit of work.
 
 Routes: /openai /anthropic /gemini /openrouter. Append whatever path the SDK
 already appends — the gateway forwards everything after the route prefix verbatim,
@@ -232,6 +238,25 @@ so the unit cost silently excludes the anonymous half of the story.
     recording what the caller actually sent, and an alias asserted months later
     still re-joins the history it names. Post it whenever you learn it.
   - Asserting the same edge twice is one claim, not two.
+
+  THE ALIAS MATCHES ON ENTITY KEYS, so the anonymous side must have carried one.
+  This is the half that is easy to miss: posting the alias does nothing if the
+  early calls never attached the key it names. End to end, all three steps:
+
+    1. the anonymous call — attach the key you DO have (hyphens become
+       underscores, so this header is what `{"session_id": ...}` matches):
+         x-vmx-entity-session-id: abc
+         x-vmx-run-id: abc              (a session is its own unit for now)
+
+    2. the moment the identity is known — post the edge:
+         POST <gateway>/v1/alias  {"from":{"session_id":"abc"},"to":{"lead_id":"8172"}}
+
+    3. the outcome, days later, naming only the lead — no alias mentioned:
+         POST <gateway>/v1/outcome {"name":"meeting_booked","entity":{"lead_id":"8172"}}
+
+  Step 3 now costs out the spend from step 1, because step 2 made the two keys
+  one entity at query time. Skip step 1 and there is nothing to re-join: the
+  alias is a claim ABOUT entity keys, not a way to invent one after the fact.
 
 RUNNING IT. There is no hosted signup yet — the user runs both pieces:
   docker run -p 8000:8000 ghcr.io/monaal10/valuemaxx-backend:latest

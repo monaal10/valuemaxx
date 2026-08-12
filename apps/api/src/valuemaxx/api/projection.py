@@ -55,7 +55,7 @@ if TYPE_CHECKING:
         this surface can do.
         """
 
-        async def append(self, tenant_id: str, alias: EntityAlias, now: datetime) -> None: ...
+        async def append(self, tenant_id: TenantId, alias: EntityAlias, now: datetime) -> None: ...
 
 
 def _resolve(auth: ApiKeyAuthenticator, api_key: str | None) -> str:
@@ -382,7 +382,13 @@ def mount_entity_alias_route(app: FastAPI, auth: ApiKeyAuthenticator, now: NowFn
             # Not an error worth failing a retry over, but recording a self-edge
             # would add a claim that says nothing.
             return {"status": "ignored", "reason": "from and to are the same key"}
-        await aliases.append(tenant_id, EntityAlias(source=source, target=target), now())
+        # `tenant_id` is a UUID column, not a string: the resolver returns text and the
+        # store rejects it. Converted here, as every other tenant-scoped route does.
+        try:
+            scoped = TenantId(UUID(tenant_id))
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="tenant is not a UUID") from exc
+        await aliases.append(scoped, EntityAlias(source=source, target=target), now())
         return {"status": "recorded", "from": list(source), "to": list(target)}
 
     app.post("/v1/alias", name="entity_alias")(handler)

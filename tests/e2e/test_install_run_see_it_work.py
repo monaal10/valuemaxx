@@ -44,6 +44,7 @@ from fastapi.testclient import TestClient
 from typing_extensions import override
 from valuemaxx.capture import AttemptObservation
 from valuemaxx.capture.otlp import semconv
+from valuemaxx.core import MetricDefinition
 from valuemaxx.core.cost import CostEvent
 from valuemaxx.core.enums import (
     BindingTier,
@@ -63,6 +64,7 @@ from valuemaxx.metrics import (
     MetricWindow,
     bind_runtime,
 )
+from valuemaxx.metrics.compiler import compile_plan
 from valuemaxx.sdk import init, track
 from valuemaxx.server.app import create_app
 from valuemaxx.server.settings import ServerSettings
@@ -619,9 +621,7 @@ def test_a_delayed_entity_bound_outcome_costs_out_over_the_wire(
             signal_class=SignalClass.OUTCOME_CONFIRMED,
             value=None,
             occurred_at=worked_at + timedelta(days=3),
-            binding=OutcomeBinding(
-                run_id=None, tier=BindingTier.DETERMINISTIC, bound_by="webhook"
-            ),
+            binding=OutcomeBinding(run_id=None, tier=BindingTier.DETERMINISTIC, bound_by="webhook"),
             entity_keys=frozenset({lead}),
             correlation_id=None,
             source="webhook",
@@ -697,3 +697,88 @@ def test_one_run_producing_two_outcomes_is_flagged_not_double_counted(
     assert Decimal(str(cell["numerator_value"])) == Decimal("5.00")
     # ...and the cell admits the cost behind it is shared, not measured per-outcome.
     assert cell["shared_attribution_count"] >= 1
+
+
+def test_the_documented_alias_walkthrough_actually_costs_out(
+    client: TestClient, tenant: str
+) -> None:
+    """The three-step alias example in llms.txt, executed exactly as written.
+
+    Docs that are merely plausible are worse than missing ones, because a reader
+    trusts them. This runs the published walkthrough — anonymous call carrying
+    `x-vmx-entity-session-id`, the alias post, then an outcome naming only the lead
+    — and asserts the anonymous spend is what comes back.
+    """
+    tenant_id = TenantId(UUID(tenant))
+    bridge = _store_bridge(client)
+    at = datetime(2026, 6, 27, 12, 0, tzinfo=UTC)
+
+    # STEP 1: the anonymous call. `x-vmx-entity-session-id` becomes `session_id`.
+    bridge.runs.upsert(
+        tenant_id,
+        Run(
+            tenant_id=tenant_id,
+            id=RunId("abc"),
+            agent_name="chat",
+            started_at=at,
+            ended_at=None,
+            entity_keys=frozenset({("session_id", "abc")}),
+        ),
+    )
+    bridge.cost_events.upsert(tenant_id, _cost_event(tenant_id, "abc", 0, Decimal("6.00"), at))
+
+    # STEP 2: the identity becomes known — post the edge over the real route.
+    posted = cast("_HttpClient", client).post(
+        "/v1/alias",
+        json={"from": {"session_id": "abc"}, "to": {"lead_id": "8172"}},
+        headers={"X-API-Key": INGEST_KEY},
+    )
+    assert posted.status_code == 200, posted.text
+
+    # STEP 3: the outcome, naming ONLY the lead.
+    bridge.outcome_events.upsert(
+        tenant_id,
+        OutcomeEvent(
+            tenant_id=tenant_id,
+            id=OutcomeEventId("oe-meeting-doc"),
+            name="meeting_booked",
+            signal_class=SignalClass.OUTCOME_CONFIRMED,
+            value=None,
+            occurred_at=at + timedelta(days=3),
+            binding=OutcomeBinding(run_id=None, tier=BindingTier.DETERMINISTIC, bound_by="webhook"),
+            entity_keys=frozenset({("lead_id", "8172")}),
+            correlation_id=None,
+            source="rest",
+            raw={},
+        ),
+    )
+
+    aliases = list(bridge.list_aliases(tenant_id))
+    assert aliases, "the posted alias must be readable back from the store"
+    executor = MetricExecutor(
+        cost_repo=bridge.cost_events,
+        outcome_repo=bridge.outcome_events,
+        run_repo=bridge.runs,
+    )
+    metric = executor.run(
+        tenant_id,
+        compile_plan(
+            MetricDefinition(
+                name="cost_per_outcome",
+                numerator="total_cost_usd",
+                denominator="verified_outcome_count",
+                filters={},
+                group_by=(),
+            )
+        ),
+        MetricWindow(
+            start=datetime(1970, 1, 1, tzinfo=UTC), end=datetime(9999, 12, 31, tzinfo=UTC)
+        ),
+        bridge.outcome_events.list_in_window(
+            tenant_id, datetime(1970, 1, 1, tzinfo=UTC), datetime(9999, 12, 31, tzinfo=UTC)
+        ),
+        aliases=aliases,
+    )
+
+    # The anonymous session's $6.00, reached only through the alias.
+    assert metric.cells[0].numerator_value == Decimal("6.00")
