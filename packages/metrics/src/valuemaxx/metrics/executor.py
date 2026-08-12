@@ -190,6 +190,7 @@ class MetricExecutor:
         group_keys = self._group_keys(plan, events, outcomes, agent_by_run, tenant_value)
 
         share_by_run = _attribution_shares(plan, outcomes, self._run_repo, tenant_id, aliases)
+        overlapping = _outcomes_per_run(plan, outcomes, self._run_repo, tenant_id, aliases)
 
         cells: list[MetricCell] = []
         requires_reemit = False
@@ -204,6 +205,7 @@ class MetricExecutor:
                 tenant_id,
                 aliases,
                 share_by_run,
+                overlapping,
             )
             if cell.retracted_excluded_count > 0:
                 requires_reemit = True
@@ -275,6 +277,7 @@ class MetricExecutor:
         tenant_id: TenantId,
         aliases: Sequence[EntityAlias],
         share_by_run: Mapping[RunId, Decimal],
+        overlapping: Mapping[RunId, int],
     ) -> MetricCell:
         cell_events = [
             e
@@ -301,7 +304,10 @@ class MetricExecutor:
             confidence=confidence,
             advisory_excluded_count=breakdown.advisory_excluded_count,
             retracted_excluded_count=breakdown.retracted_excluded_count,
-            shared_attribution_count=sum(1 for e in numerator_events if e.run_id in share_by_run),
+            # Read from `overlapping`, not `share_by_run`: the split is suppressed for
+            # an ungrouped metric (where it would delete half the invoice), but the
+            # ambiguity it signals is just as real there and must stay visible.
+            shared_attribution_count=sum(1 for e in numerator_events if e.run_id in overlapping),
             causal_evidence=causal,
         )
 
@@ -386,6 +392,35 @@ def _attribution_shares(
     cost evenly across the outcomes it produced; the columns then reconcile.
 
     Runs with a single outcome get share 1 and are unaffected.
+
+    The split applies ONLY when the metric groups by outcome_name, because that is
+    the only shape where one run's cost reaches more than one cell. Ungrouped, both
+    outcomes land in a single cell where the run's cost already appears exactly once
+    — halving it there deletes half the invoice. Under-reporting is the worse
+    direction: overshooting the provider bill is caught the first time anyone
+    reconciles, while undershooting looks like good news and is believed.
+    """
+    if Dimension.OUTCOME_NAME.value not in plan.group_by:
+        return {}
+    return {
+        run_id: Decimal(1) / Decimal(n)
+        for run_id, n in _outcomes_per_run(plan, outcomes, run_repo, tenant_id, aliases).items()
+    }
+
+
+def _outcomes_per_run(
+    plan: QueryPlan,
+    outcomes: Sequence[OutcomeEvent],
+    run_repo: RunRepository | None,
+    tenant_id: TenantId,
+    aliases: Sequence[EntityAlias] = (),
+) -> dict[RunId, int]:
+    """Runs that produced MORE THAN ONE billing-grade outcome, and how many.
+
+    Separate from the share because the two answer different questions. The share is
+    an arithmetic correction applied only where a run's cost spans several cells; this
+    is the fact that the run is shared at all, which stays true — and must stay
+    visible — in every shape of the metric.
     """
     if plan.numerator is not Measure.TOTAL_COST_USD:
         return {}
@@ -402,7 +437,7 @@ def _attribution_shares(
             continue
         for run_id in _runs_for_entities(run_repo, tenant_id, [outcome], aliases):
             counts[run_id] += 1
-    return {run_id: Decimal(1) / Decimal(n) for run_id, n in counts.items() if n > 1}
+    return {run_id: n for run_id, n in counts.items() if n > 1}
 
 
 def _runs_for_entities(

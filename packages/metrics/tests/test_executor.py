@@ -798,3 +798,42 @@ def test_without_an_alias_the_anonymous_spend_stays_unjoined() -> None:
     # Nothing resolved, so the honest degrade is the window total — never a
     # confident join we did not earn.
     assert result.cells[0].numerator_value == Decimal("4.00")
+
+
+def test_a_shared_run_is_not_halved_when_both_outcomes_land_in_one_cell() -> None:
+    """The split prevents double-counting ACROSS cells; within one cell there is none.
+
+    Splitting a shared run's cost exists so that grouping by outcome_name does not
+    charge the same $5.00 to both the alt_created and interview_taken columns —
+    together they would sum past the provider invoice. An UNGROUPED metric puts both
+    outcomes in a single cell, where the run's cost appears exactly once, so applying
+    the share there under-reports real spend by half: $2.50 of a $5.00 invoice simply
+    vanishes.
+
+    Under-reporting is the more dangerous direction. Summing past the invoice is
+    caught immediately by a buyer reconciling against their provider bill; summing
+    UNDER it looks like good news and is believed.
+    """
+    executor, costs, outcomes, runs = _executor()
+    runs.upsert(_TENANT, _run("run-shared", agent_name="builder"))
+    costs.upsert(_TENANT, _cost("run-shared", usd="5.00"))
+    for name in ("alt_created", "interview_taken"):
+        outcomes.upsert(
+            _TENANT,
+            _outcome(
+                signal_class=SignalClass.OUTCOME_CONFIRMED,
+                tier=BindingTier.EXACT,
+                run="run-shared",
+                name=name,
+            ),
+        )
+
+    plan = compile_plan_cost_per_outcome()
+    result = executor.run(_TENANT, plan, _WINDOW, outcomes.list_all(_TENANT))
+
+    cell = result.cells[0]
+    assert cell.denominator_value == 2
+    # The whole invoice, counted once.
+    assert cell.numerator_value == Decimal("5.00")
+    # Still flagged: the per-outcome figure below is a shared run's cost.
+    assert cell.shared_attribution_count == 1

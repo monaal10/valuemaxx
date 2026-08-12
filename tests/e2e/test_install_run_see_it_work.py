@@ -33,7 +33,7 @@ proven to work as a user experiences it.
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
@@ -559,3 +559,141 @@ def _rebind_metrics_with_store_outcomes(
             outcomes=bridge.outcome_events.list_unbound(tenant_id),
         ),
     )
+
+
+def test_a_delayed_entity_bound_outcome_costs_out_over_the_wire(
+    client: TestClient, tenant: str
+) -> None:
+    """The SDR story, end to end: spend today, an outcome days later naming only a lead.
+
+    This is the exact path Phase A's A1 fixed and the one the product exists for. A
+    CRM confirms a meeting days after the work, and it carries `lead_id` — never the
+    run id, which the CRM has never heard of. Before A1 this fell through to the
+    whole window's spend, so "cost per meeting" was portfolio spend divided by
+    meetings: every unrelated and failed run charged to the successes.
+
+    Everything here is real — booted app, real store, metric fetched over HTTP.
+    """
+    tenant_id = TenantId(UUID(tenant))
+    bridge = _store_bridge(client)
+    lead = ("lead_id", "8172")
+    worked_at = datetime(2026, 6, 27, 12, 0, tzinfo=UTC)
+
+    # The run that actually worked this lead, and an unrelated run in the same window.
+    bridge.runs.upsert(
+        tenant_id,
+        Run(
+            tenant_id=tenant_id,
+            id=RunId("run-lead"),
+            agent_name="sdr",
+            started_at=worked_at,
+            ended_at=None,
+            entity_keys=frozenset({lead}),
+        ),
+    )
+    bridge.runs.upsert(
+        tenant_id,
+        Run(
+            tenant_id=tenant_id,
+            id=RunId("run-other"),
+            agent_name="sdr",
+            started_at=worked_at,
+            ended_at=None,
+            entity_keys=frozenset({("lead_id", "9999")}),
+        ),
+    )
+    bridge.cost_events.upsert(
+        tenant_id, _cost_event(tenant_id, "run-lead", 0, Decimal("3.00"), worked_at)
+    )
+    bridge.cost_events.upsert(
+        tenant_id, _cost_event(tenant_id, "run-other", 0, Decimal("97.00"), worked_at)
+    )
+
+    # Days later the CRM confirms the meeting, carrying ONLY the lead id.
+    bridge.outcome_events.upsert(
+        tenant_id,
+        OutcomeEvent(
+            tenant_id=tenant_id,
+            id=OutcomeEventId("oe-meeting-1"),
+            name="meeting_booked",
+            signal_class=SignalClass.OUTCOME_CONFIRMED,
+            value=None,
+            occurred_at=worked_at + timedelta(days=3),
+            binding=OutcomeBinding(
+                run_id=None, tier=BindingTier.DETERMINISTIC, bound_by="webhook"
+            ),
+            entity_keys=frozenset({lead}),
+            correlation_id=None,
+            source="webhook",
+            raw={},
+        ),
+    )
+    _rebind_metrics_with_bound_outcomes(_registry(client), bridge, tenant_id)
+
+    res = _run_cost_per_outcome_metric(client, api_key=INGEST_KEY)
+
+    assert res.status_code == 200, res.text
+    cell = res.json()["cells"][0]
+    assert cell["denominator_value"] == 1
+    # $3.00 — the lead's own run. NOT $100.00, the window total.
+    assert Decimal(str(cell["numerator_value"])) == Decimal("3.00")
+
+
+def test_one_run_producing_two_outcomes_is_flagged_not_double_counted(
+    client: TestClient, tenant: str
+) -> None:
+    """The overlap case: a shared run's cost splits, and the cell SAYS it was split.
+
+    One run both finalises an alt and completes an interview. Charging its full cost
+    to each outcome would make the columns sum past the provider invoice — the first
+    thing a buyer checks. Splitting silently is the other failure: a divided figure
+    that renders identically to a measured one.
+    """
+    tenant_id = TenantId(UUID(tenant))
+    bridge = _store_bridge(client)
+    at = datetime(2026, 6, 27, 12, 0, tzinfo=UTC)
+
+    bridge.runs.upsert(
+        tenant_id,
+        Run(
+            tenant_id=tenant_id,
+            id=RunId("run-shared"),
+            agent_name="builder",
+            started_at=at,
+            ended_at=None,
+            entity_keys=frozenset(),
+        ),
+    )
+    bridge.cost_events.upsert(
+        tenant_id, _cost_event(tenant_id, "run-shared", 0, Decimal("5.00"), at)
+    )
+    for index, name in enumerate(("alt_created", "interview_taken")):
+        bridge.outcome_events.upsert(
+            tenant_id,
+            OutcomeEvent(
+                tenant_id=tenant_id,
+                id=OutcomeEventId(f"oe-shared-{index}"),
+                name=name,
+                signal_class=SignalClass.OUTCOME_CONFIRMED,
+                value=None,
+                occurred_at=at,
+                binding=OutcomeBinding(
+                    run_id=RunId("run-shared"), tier=BindingTier.EXACT, bound_by="proxy-header"
+                ),
+                entity_keys=frozenset(),
+                correlation_id=None,
+                source="gateway",
+                raw={},
+            ),
+        )
+    _rebind_metrics_with_bound_outcomes(_registry(client), bridge, tenant_id)
+
+    res = _run_cost_per_outcome_metric(client, api_key=INGEST_KEY)
+
+    assert res.status_code == 200, res.text
+    cell = res.json()["cells"][0]
+    assert cell["denominator_value"] == 2
+    # The whole $5.00 over both outcomes — the invoice reconciles.
+    assert Decimal(str(cell["numerator_value"])) == Decimal("5.00")
+    # ...and the cell admits the cost behind it is shared, not measured per-outcome.
+    assert cell["shared_attribution_count"] >= 1
