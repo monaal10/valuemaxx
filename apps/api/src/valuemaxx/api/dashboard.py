@@ -164,13 +164,25 @@ _PAGE = """<!doctype html>
 </header>
 <main>
   <section><h2>CAPTURE HEALTH</h2><div id="health" class="body">checking&hellip;</div></section>
-  <section><h2>SPEND BY MODEL</h2><div id="by-model">loading&hellip;</div></section>
-  <section><h2>SPEND BY AGENT</h2><div id="by-agent">loading&hellip;</div></section>
   <section>
     <h2>COST PER OUTCOME</h2><div id="cpo">loading&hellip;</div>
     <div class="note">
       Billing-grade only: advisory (candidate/likely) and retracted outcomes are
       excluded from the denominator, so this number is never inflated by a guess.
+      Each row carries how much to trust it: <b>min tier</b> is the weakest binding
+      behind the figure, <b>evidence</b> says whether the link was observed or
+      inferred, and <b>split</b> counts runs whose cost is shared with a different
+      outcome. A split figure is arithmetic, not a measurement.
+    </div>
+  </section>
+  <section>
+    <h2>UNATTRIBUTED SPEND</h2><div id="unattributed" class="body">loading&hellip;</div>
+    <div class="note">
+      Money spent on runs that joined to no billing-grade outcome. It is shown rather
+      than dropped: a number that quietly omits it looks more complete than it is.
+      This is usually work that genuinely produced nothing, or an outcome whose join
+      key never arrived &mdash; the second kind is fixable with an outcome call or an
+      alias.
     </div>
   </section>
   <section>
@@ -181,6 +193,8 @@ _PAGE = """<!doctype html>
       at an exact/deterministic tier.
     </div>
   </section>
+  <section><h2>SPEND BY MODEL</h2><div id="by-model">loading&hellip;</div></section>
+  <section><h2>SPEND BY AGENT</h2><div id="by-agent">loading&hellip;</div></section>
   <section>
     <h2>TRY A CHEAPER MODEL</h2>
     <div class="body">
@@ -252,6 +266,78 @@ function tierTag(tier) {
   return '<span class="tag ' + esc(t) + '">' + esc(t) + "</span>";
 }
 
+// A numeric cell: the value escaped, or an em-dash when absent. Passing the entity
+// through esc() would print a literal "&amp;mdash;" — absent must LOOK absent.
+const num = (v) => (v === null || v === undefined ? "&mdash;" : esc(v));
+
+// Was the link between spend and outcome WATCHED, or inferred from a window? An
+// inferred join can be right and still must never render as an observed one.
+function evidenceTag(evidence) {
+  if (!evidence) return "";
+  const e = String(evidence).toLowerCase().replace(/^causalevidence\\./, "");
+  const cls = e === "observational" ? "warn" : "ok";
+  return '<span class="tag ' + cls + '">' + esc(e) + "</span>";
+}
+
+// How many of this cell's runs also produced a DIFFERENT outcome, so their cost was
+// divided rather than measured. The split keeps columns reconciling against the
+// provider invoice; saying nothing would let arithmetic pass as measurement.
+function splitTag(count) {
+  const n = Number(count || 0);
+  if (!n) return '<span class="sub">&mdash;</span>';
+  return '<span class="tag warn">' + esc(n) + " shared</span>";
+}
+
+// Confirmed outcomes kept OUT of the denominator because their binding is advisory.
+// A high count means the real cost per outcome is lower than shown, and the fix is a
+// better join key rather than a wider window.
+function excludedTag(count) {
+  const n = Number(count || 0);
+  if (!n) return '<span class="sub">&mdash;</span>';
+  return '<span class="tag candidate">' + esc(n) + " advisory</span>";
+}
+
+// Spend that reached no billing-grade outcome, stated as a COUNT of unattributed
+// attempts rather than a dollar figure.
+//
+// The honest limit, spelled out because hiding it would be the exact failure this
+// panel exists to prevent: every cost measure in the grammar narrows to attributed
+// runs, so no capability reports total window spend, and a dollar amount here would
+// have to be invented. Attempts and outcomes are both real counts, so the SHARE of
+// work that produced nothing bindable is reportable; its cost is not, yet.
+function renderUnattributed(el, cpo, volume) {
+  if (!cpo || cpo.__error || !volume || volume.__error) {
+    el.innerHTML = '<p class="empty">Not available.</p>';
+    return;
+  }
+  const cells = volume.cells || [];
+  if (cells.length === 0) {
+    el.innerHTML = '<p class="empty">No attempts captured yet.</p>';
+    return;
+  }
+  const attempts = cells.reduce((n, c) => n + Number(c.denominator_value || 0), 0);
+  const bound = (cpo.cells || []).reduce((n, c) => n + Number(c.denominator_value || 0), 0);
+  const advisory = (cpo.cells || [])
+    .reduce((n, c) => n + Number(c.advisory_excluded_count || 0), 0);
+  if (!attempts) {
+    el.innerHTML = '<p class="empty">No attempts captured yet.</p>';
+    return;
+  }
+  const unbound = Math.max(0, attempts - bound);
+  const pct = Math.round((unbound / attempts) * 100);
+  el.innerHTML =
+    "<p><b>" + esc(unbound) + "</b> of <b>" + esc(attempts) +
+    "</b> captured attempts (" + esc(pct) + "%) reached no billing-grade outcome." +
+    (advisory
+      ? " <b>" + esc(advisory) + "</b> confirmed outcome(s) were excluded as advisory " +
+        "&mdash; those have a join that is real but not trusted, which a better join " +
+        "key or an alias would promote."
+      : "") +
+    '</p><p class="sub">Shown as a share of attempts, not dollars: every cost measure ' +
+    "narrows to attributed runs, so a dollar figure here would be invented rather " +
+    "than measured.</p>";
+}
+
 function renderMetric(el, result, valueLabel) {
   if (!result || result.__error) {
     el.innerHTML = '<p class="empty">Not available (' +
@@ -270,13 +356,18 @@ function renderMetric(el, result, valueLabel) {
     const value = c.value === null || c.value === undefined ? "&mdash;" : esc(c.value);
     const conf = c.confidence || {};
     return "<tr><td>" + esc(group) + '</td><td class="num">' + value +
-      '</td><td class="num">' + esc(c.numerator_value ?? "&mdash;") +
-      '</td><td class="num">' + esc(c.denominator_value ?? "&mdash;") +
-      "</td><td>" + tierTag(conf.minimum_tier) + "</td></tr>";
+      // Escape the VALUE, not the dash: esc("&mdash;") yields a literal "&amp;mdash;".
+      '</td><td class="num">' + num(c.numerator_value) +
+      '</td><td class="num">' + num(c.denominator_value) +
+      "</td><td>" + tierTag(conf.minimum_tier) +
+      "</td><td>" + evidenceTag(c.causal_evidence) +
+      "</td><td>" + splitTag(c.shared_attribution_count) +
+      "</td><td>" + excludedTag(c.advisory_excluded_count) + "</td></tr>";
   }).join("");
   el.innerHTML = "<table><thead><tr><th>group</th><th class='num'>" +
     esc(valueLabel) + "</th><th class='num'>cost (USD)</th><th class='num'>n</th>" +
-    "<th>min tier</th></tr></thead><tbody>" + rows + "</tbody></table>";
+    "<th>min tier</th><th>evidence</th><th>split</th><th>excluded</th>" +
+    "</tr></thead><tbody>" + rows + "</tbody></table>";
 }
 
 async function load() {
@@ -298,14 +389,15 @@ async function load() {
         : "");
   }
 
+  const cpo = await call("run_metric", COST_PER_OUTCOME);
+  const volume = await call("run_metric", OUTCOME_VOLUME);
+  renderMetric(document.getElementById("cpo"), cpo, "cost / outcome");
+  renderUnattributed(document.getElementById("unattributed"), cpo, volume);
+  renderMetric(document.getElementById("outcomes"), volume, "outcomes / attempt");
   renderMetric(document.getElementById("by-model"),
     await call("run_metric", SPEND_BY_MODEL), "cost / outcome");
   renderMetric(document.getElementById("by-agent"),
     await call("run_metric", SPEND_BY_AGENT), "cost / outcome");
-  renderMetric(document.getElementById("cpo"),
-    await call("run_metric", COST_PER_OUTCOME), "cost / outcome");
-  renderMetric(document.getElementById("outcomes"),
-    await call("run_metric", OUTCOME_VOLUME), "outcomes / attempt");
 
   // get_recommendation is per-incumbent-model, so ask about the models we actually saw.
   const byModel = await call("run_metric", SPEND_BY_MODEL);

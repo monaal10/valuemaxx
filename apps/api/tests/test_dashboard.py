@@ -141,3 +141,61 @@ def test_the_switch_estimate_is_labelled_estimated() -> None:
     """
     body = get(_client(), "/").text
     assert "not billed" in body
+
+
+def test_the_page_leads_with_outcomes_not_spend() -> None:
+    """Cost-per-outcome must appear ABOVE spend-by-model on the page.
+
+    Ordering is the positioning. A page whose first table is provider spend reads as
+    a cost dashboard — the commoditized half that Helicone and Langfuse already show
+    — and buries the one number nobody else has. The differentiator has to be the
+    thing a stranger sees first.
+    """
+    body = get(_client(), "/").text
+
+    assert body.index("COST PER OUTCOME") < body.index("SPEND BY MODEL")
+    assert body.index("COST PER OUTCOME") < body.index("SPEND BY AGENT")
+
+
+def test_every_honesty_field_the_executor_returns_is_rendered() -> None:
+    """A cell carries four honesty signals; the page must not silently drop three.
+
+    `minimum_tier` was already rendered. The other three are exactly what Phase A
+    added or surfaced, and each answers a question a buyer asks about the headline
+    number: was this OBSERVED or inferred (causal_evidence), is this cost split with
+    another outcome (shared_attribution_count), and what was excluded from the
+    denominator to get here (advisory_excluded_count). Computing them and then
+    dropping them at the last step forfeits the whole differentiator.
+    """
+    body = get(_client(), "/").text
+
+    for field in ("causal_evidence", "shared_attribution_count", "advisory_excluded_count"):
+        assert field in body, f"dashboard never reads {field}"
+
+
+def test_unattributed_spend_is_a_visible_row_not_an_omission() -> None:
+    """A user who sees "7% unattributed, here's why" trusts the other 93%.
+
+    Quietly dropping the spend that joined to no outcome makes every remaining number
+    look more complete than it is — the failure mode the tier system exists to
+    prevent, reintroduced at the render layer.
+    """
+    body = get(_client(), "/").text
+
+    assert "unattributed" in body.lower()
+
+
+def test_an_absent_number_is_never_escaped_into_literal_text() -> None:
+    """A missing cost must render as an em-dash, not the characters "&amp;mdash;".
+
+    `esc("&mdash;")` escapes the ampersand, so the fallback for an absent value was
+    printed to the page verbatim. It is cosmetic until you remember what the blank
+    means: "no data yet" is a different fact from zero, and a cell that renders
+    garbage where it should say "unknown" undermines exactly that distinction.
+    """
+    body = get(_client(), "/").text
+    js = body.split("<script>")[1].split("</script>")[0]
+
+    assert 'esc(c.numerator_value ?? "&mdash;")' not in js
+    assert 'esc(c.denominator_value ?? "&mdash;")' not in js
+    assert "const num = (v) =>" in js
