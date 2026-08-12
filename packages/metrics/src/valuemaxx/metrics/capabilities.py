@@ -129,9 +129,7 @@ def register(registry: Registry) -> None:
         # Without it a multi-key deployment served every caller the first tenant's
         # data, which is a cross-tenant leak rather than merely a wrong number.
         tenant = _ACTIVE_TENANT.get() or runtime.tenant_id
-        return runtime.executor.run(
-            tenant, plan, runtime.window, runtime.resolve_outcomes(tenant)
-        )
+        return runtime.executor.run(tenant, plan, runtime.window, runtime.resolve_outcomes(tenant))
 
     registry.register(
         capability(
@@ -152,9 +150,7 @@ def register(registry: Registry) -> None:
     )
 
 
-_ACTIVE_TENANT: ContextVar[TenantId | None] = ContextVar(
-    "valuemaxx_metric_tenant", default=None
-)
+_ACTIVE_TENANT: ContextVar[TenantId | None] = ContextVar("valuemaxx_metric_tenant", default=None)
 
 
 class metric_tenant_scope:  # noqa: N801 - used as a context manager, reads like one

@@ -38,6 +38,7 @@ from valuemaxx.core import (
 )
 from valuemaxx.metrics.compiler import compile_plan
 from valuemaxx.metrics.executor import MetricExecutor, MetricWindow
+from valuemaxx.metrics.grammar import Dimension
 from valuemaxx.metrics.schemas import MetricCell, MetricResult
 
 _TENANT = TenantId(uuid4())
@@ -75,19 +76,24 @@ def _cost(run: str, *, usd: str, provider: str = "anthropic", model: str = "opus
 
 
 def _outcome(
-    *, signal_class: SignalClass, tier: BindingTier | None, run: str | None = None
+    *,
+    signal_class: SignalClass,
+    tier: BindingTier | None,
+    run: str | None = None,
+    entity_keys: frozenset[tuple[str, str]] = frozenset(),
+    name: str = "outcome",
 ) -> OutcomeEvent:
     return OutcomeEvent(
         tenant_id=_TENANT,
         id=OutcomeEventId(f"oe-{uuid4()}"),
-        name="signup",
+        name=name,
         signal_class=signal_class,
         value=Decimal("1"),
         occurred_at=datetime(2026, 6, 15, tzinfo=UTC),
         binding=OutcomeBinding(
             run_id=RunId(run) if run else None, tier=tier, bound_by="t1" if tier else None
         ),
-        entity_keys=frozenset(),
+        entity_keys=entity_keys,
         correlation_id=None,
         source="test",
         raw={},
@@ -454,7 +460,7 @@ def test_every_grammar_dimension_is_handled_by_the_executor() -> None:
 # --- plan builders (kept here so each test reads independently) ---
 
 
-def compile_plan_cost_per_outcome():
+def compile_plan_cost_per_outcome(group_by: list[Dimension] | None = None):
     from valuemaxx.core import MetricDefinition
 
     return compile_plan(
@@ -463,7 +469,7 @@ def compile_plan_cost_per_outcome():
             numerator="total_cost_usd",
             denominator="verified_outcome_count",
             filters={},
-            group_by=(),
+            group_by=tuple(d.value for d in (group_by or [])),
         )
     )
 
@@ -550,3 +556,113 @@ def compile_plan_grouped_by_tenant():
             group_by=("tenant",),
         )
     )
+
+
+def test_entity_bound_outcome_narrows_cost_to_that_entitys_runs() -> None:
+    """An outcome that names only an ENTITY still gets a unit cost, not portfolio spend.
+
+    This is the delayed-CRM shape and the reason the product exists: a meeting is
+    booked days later carrying `lead_id`, never the run id. Until now the numerator
+    could only narrow when the outcome carried a run id, so this case silently fell
+    back to ALL cost in the window — "cost per meeting" became total spend divided by
+    meetings, charging every unrelated run to the successes.
+
+    The runs are resolvable: they carry the same entity key, and the executor already
+    holds a RunRepository that can list by it.
+    """
+    executor, costs, outcomes, runs = _executor()
+    lead = ("lead_id", "8172")
+    runs.upsert(_TENANT, _run("run-lead", agent_name="sdr"))
+    runs.upsert(_TENANT, _run("run-other", agent_name="sdr"))
+    # Only run-lead touched this lead.
+    runs.upsert(
+        _TENANT,
+        Run(
+            tenant_id=_TENANT,
+            id=RunId("run-lead"),
+            agent_name="sdr",
+            started_at=datetime(2026, 6, 15, tzinfo=UTC),
+            ended_at=None,
+            entity_keys=frozenset({lead}),
+        ),
+    )
+    costs.upsert(_TENANT, _cost("run-lead", usd="3.00"))
+    costs.upsert(_TENANT, _cost("run-other", usd="97.00"))  # unrelated traffic
+    outcomes.upsert(
+        _TENANT,
+        _outcome(
+            signal_class=SignalClass.OUTCOME_CONFIRMED,
+            tier=BindingTier.DETERMINISTIC,
+            entity_keys=frozenset({lead}),
+        ),
+    )
+
+    plan = compile_plan_cost_per_outcome()
+    result = executor.run(_TENANT, plan, _WINDOW, outcomes.list_all(_TENANT))
+
+    cell = result.cells[0]
+    assert cell.denominator_value == 1
+    # $3.00, not $100.00.
+    assert cell.numerator_value == Decimal("3.00")
+
+
+def test_unresolvable_outcome_still_reports_the_window_total() -> None:
+    """With neither a run id nor a resolvable entity there is nothing to join on.
+
+    Returning an empty numerator would read as "no spend" — a confident zero. The
+    honest degrade is the portfolio ratio the metric always reported.
+    """
+    executor, costs, outcomes, _runs = _executor()
+    costs.upsert(_TENANT, _cost("run-1", usd="6.00"))
+    outcomes.upsert(
+        _TENANT,
+        _outcome(signal_class=SignalClass.OUTCOME_CONFIRMED, tier=BindingTier.EXACT),
+    )
+
+    plan = compile_plan_cost_per_outcome()
+    result = executor.run(_TENANT, plan, _WINDOW, outcomes.list_all(_TENANT))
+
+    assert result.cells[0].numerator_value == Decimal("6.00")
+
+
+def test_a_run_serving_two_outcome_names_splits_its_cost_between_them() -> None:
+    """Grouped by outcome_name, a shared run must not be charged in full to each cell.
+
+    One vibechk run both finalises an alt and completes an interview. Charging its
+    whole $10 to `alt_created` AND its whole $10 to `interview_taken` reports $20 of
+    spend from $10 of tokens — summing the columns of the dashboard exceeds the
+    provider invoice, which is the fastest way for a buyer to stop trusting every
+    other number on the page.
+
+    The honest split is per-outcome share: $5 each.
+    """
+    executor, costs, outcomes, runs = _executor()
+    runs.upsert(_TENANT, _run("run-shared", agent_name="builder"))
+    costs.upsert(_TENANT, _cost("run-shared", usd="10.00"))
+    outcomes.upsert(
+        _TENANT,
+        _outcome(
+            signal_class=SignalClass.OUTCOME_CONFIRMED,
+            tier=BindingTier.EXACT,
+            run="run-shared",
+            name="alt_created",
+        ),
+    )
+    outcomes.upsert(
+        _TENANT,
+        _outcome(
+            signal_class=SignalClass.OUTCOME_CONFIRMED,
+            tier=BindingTier.EXACT,
+            run="run-shared",
+            name="interview_taken",
+        ),
+    )
+
+    plan = compile_plan_cost_per_outcome(group_by=[Dimension.OUTCOME_NAME])
+    result = executor.run(_TENANT, plan, _WINDOW, outcomes.list_all(_TENANT))
+
+    by_name = {dict(c.group_key)["outcome_name"]: c for c in result.cells}
+    assert by_name["alt_created"].numerator_value == Decimal("5.00")
+    assert by_name["interview_taken"].numerator_value == Decimal("5.00")
+    # The whole point: the columns sum back to what was actually spent.
+    assert sum(c.numerator_value for c in result.cells) == Decimal("10.00")

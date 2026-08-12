@@ -25,6 +25,7 @@ not resolve rather than collapsing into one ungrouped total).
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal
 from typing import TYPE_CHECKING
@@ -35,8 +36,7 @@ from valuemaxx.metrics.propagation import denominator_outcomes, is_billing_grade
 from valuemaxx.metrics.schemas import MetricCell, MetricResult
 
 if TYPE_CHECKING:
-    from collections import Counter
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Iterable, Mapping, Sequence
     from datetime import datetime
 
     from valuemaxx.core import (
@@ -178,10 +178,21 @@ class MetricExecutor:
         tenant_value = str(tenant_id)
         group_keys = self._group_keys(plan, events, outcomes, agent_by_run, tenant_value)
 
+        share_by_run = _attribution_shares(plan, outcomes, self._run_repo, tenant_id)
+
         cells: list[MetricCell] = []
         requires_reemit = False
         for key in group_keys:
-            cell = self._build_cell(plan, key, events, outcomes, agent_by_run, tenant_value)
+            cell = self._build_cell(
+                plan,
+                key,
+                events,
+                outcomes,
+                agent_by_run,
+                tenant_value,
+                tenant_id,
+                share_by_run,
+            )
             if cell.retracted_excluded_count > 0:
                 requires_reemit = True
             cells.append(cell)
@@ -249,6 +260,8 @@ class MetricExecutor:
         outcomes: Sequence[OutcomeEvent],
         agent_by_run: Mapping[RunId, str],
         tenant_value: str,
+        tenant_id: TenantId,
+        share_by_run: Mapping[RunId, Decimal],
     ) -> MetricCell:
         cell_events = [
             e
@@ -258,8 +271,10 @@ class MetricExecutor:
         cell_outcomes = [
             o for o in outcomes if _matches_key(_outcome_group_key(o, plan.group_by), key)
         ]
-        numerator_events = _numerator_events(plan, cell_events, cell_outcomes)
-        numerator = _numerator_value(plan.numerator, numerator_events, cell_outcomes)
+        numerator_events = _numerator_events(
+            plan, cell_events, cell_outcomes, self._run_repo, tenant_id
+        )
+        numerator = _numerator_value(plan.numerator, numerator_events, cell_outcomes, share_by_run)
         breakdown = denominator_outcomes(cell_outcomes)
         denominator = _denominator_value(plan.denominator, cell_events, cell_outcomes, breakdown)
         value = _ratio(numerator, denominator)
@@ -294,6 +309,8 @@ def _numerator_events(
     plan: QueryPlan,
     events: Sequence[CostEvent],
     outcomes: Sequence[OutcomeEvent],
+    run_repo: RunRepository | None,
+    tenant_id: TenantId,
 ) -> Sequence[CostEvent]:
     """Narrow the numerator to the runs that actually produced the denominator.
 
@@ -315,30 +332,97 @@ def _numerator_events(
     if plan.denominator is not Measure.VERIFIED_OUTCOME_COUNT:
         return events
 
-    producing_runs = {
-        outcome.binding.run_id
+    counted = [
+        outcome
         for outcome in outcomes
-        if outcome.binding.run_id is not None
-        and outcome.signal_class is SignalClass.OUTCOME_CONFIRMED
+        if outcome.signal_class is SignalClass.OUTCOME_CONFIRMED
         and outcome.binding.tier is not None
         and is_billing_grade(outcome.binding.tier)
-    }
+    ]
+    producing_runs = {o.binding.run_id for o in counted if o.binding.run_id is not None}
+    # An outcome that names only an ENTITY is the delayed-CRM shape: a meeting booked
+    # days later carries `lead_id`, never the run id. Those runs ARE resolvable — they
+    # carry the same entity key — so resolve them rather than falling back to the whole
+    # window, which would charge every unrelated run to the successes.
+    producing_runs |= _runs_for_entities(
+        run_repo, tenant_id, (o for o in counted if o.binding.run_id is None)
+    )
     if not producing_runs:
         return events
     return [event for event in events if event.run_id in producing_runs]
+
+
+def _attribution_shares(
+    plan: QueryPlan,
+    outcomes: Sequence[OutcomeEvent],
+    run_repo: RunRepository | None,
+    tenant_id: TenantId,
+) -> dict[RunId, Decimal]:
+    """Each producing run's share of its own cost: 1/(outcomes it produced).
+
+    A single run can produce several outcomes — one vibechk run both finalises an alt
+    and completes an interview. Grouped by outcome_name each cell narrows to that
+    outcome's producing runs, so without a share the run's FULL cost lands in every
+    cell it touches and the columns sum to more than was actually spent. Summing past
+    the provider invoice is the one error a buyer checks first, so split the run's
+    cost evenly across the outcomes it produced; the columns then reconcile.
+
+    Runs with a single outcome get share 1 and are unaffected.
+    """
+    if plan.numerator is not Measure.TOTAL_COST_USD:
+        return {}
+    if plan.denominator is not Measure.VERIFIED_OUTCOME_COUNT:
+        return {}
+    counts: Counter[RunId] = Counter()
+    for outcome in outcomes:
+        if outcome.signal_class is not SignalClass.OUTCOME_CONFIRMED:
+            continue
+        if outcome.binding.tier is None or not is_billing_grade(outcome.binding.tier):
+            continue
+        if outcome.binding.run_id is not None:
+            counts[outcome.binding.run_id] += 1
+            continue
+        for run_id in _runs_for_entities(run_repo, tenant_id, [outcome]):
+            counts[run_id] += 1
+    return {run_id: Decimal(1) / Decimal(n) for run_id, n in counts.items() if n > 1}
+
+
+def _runs_for_entities(
+    run_repo: RunRepository | None,
+    tenant_id: TenantId,
+    outcomes: Iterable[OutcomeEvent],
+) -> set[RunId]:
+    """Run ids reachable from the entity keys of outcomes that carry no run id.
+
+    Without a run repository there is nothing to resolve against, which is the
+    pure-sequence test shape; the caller then degrades to the window total.
+    """
+    if run_repo is None:
+        return set()
+    resolved: set[RunId] = set()
+    for outcome in outcomes:
+        for entity_key in outcome.entity_keys:
+            resolved.update(run.id for run in run_repo.list_by_entity(tenant_id, entity_key))
+    return resolved
 
 
 def _numerator_value(
     measure: Measure,
     events: Sequence[CostEvent],
     outcomes: Sequence[OutcomeEvent],
+    share_by_run: Mapping[RunId, Decimal] | None = None,
 ) -> Decimal:
     """Compute a numerator measure as a ``Decimal`` (a count is an integral Decimal)."""
     if measure is Measure.TOTAL_COST_USD:
         total = Decimal("0")
         for event in events:
             if event.cost_usd is not None:
-                total += event.cost_usd
+                share = (
+                    Decimal(1)
+                    if share_by_run is None
+                    else share_by_run.get(event.run_id, Decimal(1))
+                )
+                total += event.cost_usd * share
         return total
     if measure is Measure.ATTEMPT_COUNT:
         return Decimal(len(events))
