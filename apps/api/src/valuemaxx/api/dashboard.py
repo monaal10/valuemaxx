@@ -173,6 +173,8 @@ _PAGE = """<!doctype html>
       behind the figure, <b>evidence</b> says whether the link was observed or
       inferred, and <b>split</b> counts runs whose cost is shared with a different
       outcome. A split figure is arithmetic, not a measurement.
+      A row reading <b>insufficient data</b> means real spend that has bound to no
+      billing-grade outcome yet &mdash; a state to act on, not a missing number.
     </div>
   </section>
   <section>
@@ -287,6 +289,22 @@ function tierTag(tier) {
 // through esc() would print a literal "&amp;mdash;" — absent must LOOK absent.
 const num = (v) => (v === null || v === undefined ? "&mdash;" : esc(v));
 
+// The headline ratio, or a NAMED state when there is no ratio to show.
+//
+// The executor returns null rather than a fabricated ratio when the denominator is
+// zero, which is the honest thing to do. Rendering that as a bare dash throws the
+// honesty away at the last step: "we spent money and nothing has bound yet" is a
+// real and actionable state, and it must not look like a broken cell. Spend with a
+// zero denominator says so; a genuinely empty cell stays a dash.
+function ratio(c) {
+  if (c.value !== null && c.value !== undefined) return esc(c.value);
+  const spent = Number(c.numerator_value || 0);
+  if (spent > 0 && !Number(c.denominator_value || 0)) {
+    return '<span class="tag warn">insufficient data</span>';
+  }
+  return "&mdash;";
+}
+
 // Was the link between spend and outcome WATCHED, or inferred from a window? An
 // inferred join can be right and still must never render as an observed one.
 function evidenceTag(evidence) {
@@ -370,7 +388,7 @@ function renderMetric(el, result, valueLabel) {
   }
   const rows = cells.map((c) => {
     const group = (c.group_key || []).map((kv) => kv[1]).join(" / ") || "(all)";
-    const value = c.value === null || c.value === undefined ? "&mdash;" : esc(c.value);
+    const value = ratio(c);
     const conf = c.confidence || {};
     return "<tr><td>" + esc(group) + '</td><td class="num">' + value +
       // Escape the VALUE, not the dash: esc("&mdash;") yields a literal "&amp;mdash;".

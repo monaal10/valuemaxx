@@ -227,3 +227,18 @@ def test_cost_is_decomposable_by_agent_and_model() -> None:
 
     assert "SPEND BY AGENT" in body
     assert "SPEND BY MODEL" in body
+
+
+def test_insufficient_data_is_a_named_state_not_a_bare_dash() -> None:
+    """Spend with no billing-grade outcome yet must SAY so, not show an em-dash.
+
+    The executor returns `value: null` when the denominator is zero — it refuses to
+    publish a fabricated ratio, which is right. But a row rendering "— | $12.40 | 0"
+    is indistinguishable from a broken cell, so the user cannot tell "we spent money
+    and nothing has bound yet" from "this panel is malfunctioning". The first is a
+    real, actionable state; treating it as a rendering gap wastes the honesty the
+    null was protecting.
+    """
+    body = get(_client(), "/").text
+
+    assert "insufficient data" in body.lower()
