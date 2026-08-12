@@ -96,8 +96,23 @@ client.chat.completions.create(...,                       # line 3 (optional)
     extra_headers={"x-vmx-outcome": "order_fulfilled"})
 ```
 
-Routes: `/openai` `/anthropic` `/gemini` `/openrouter`. Every `x-vmx-*` header is
+Routes: `/openai` `/anthropic` `/gemini` `/openrouter`. Append whatever path the SDK
+already appends: an OpenAI client wants `<gateway>/openai/v1`, an Anthropic client
+wants `<gateway>/anthropic` (it adds `/v1/messages` itself). Every `x-vmx-*` header is
 stripped before forwarding; the provider key passes through and is never stored.
+
+**Two things to check before you write any wiring**, because both silently produce
+wrong numbers rather than an error:
+
+* **Does it stream from OpenAI?** Then the host must set
+  `stream_options={"include_usage": true}` on those calls. OpenAI omits usage from a
+  stream unless asked, so otherwise the gateway has nothing to read and those calls
+  capture zero tokens. We will not add the flag: that would change the request. Such
+  spans are flagged `partial_recovered` rather than reported as a confident zero.
+* **Does the run id vary per call?** Then put `x-vmx-run-id` in the PER-REQUEST headers
+  (`extra_headers=` / `{ headers: … }`), not in `default_headers` — a per-request header
+  wins over a default of the same name. Do not build a client per unit of work; keep
+  only the unchanging values (`x-vmx-key`, usually `x-vmx-agent`) on the client.
 
 **Headers are the entire contract.** Everything the SDK wanted in code is a string:
 
@@ -136,7 +151,7 @@ hosted signup yet, and an agent that assumes one will stall at the first step:
 
 ```bash
 docker run -p 8000:8000 -v valuemaxx-data:/home/valuemaxx/data \
-  ghcr.io/<owner>/valuemaxx-backend:latest          # the backend
+  ghcr.io/monaal10/valuemaxx-backend:latest          # the backend
 cd gateway && bunx wrangler deploy \
   --var VALUEMAXX_BACKEND:https://<your-backend>    # the gateway
 ```
@@ -453,6 +468,26 @@ a network call. If a partial rerun can reprocess the same items, note that units
 identified by that item id — reprocessing the same document is the same unit again, and
 you should tell the user whether they want that deduplicated or counted twice.
 
+**Ask whether the id CHANGES identity partway through.** A distinct question from "is it
+stable", and easy to miss because both ids are perfectly stable on their own. The work
+starts under one identity and the outcome arrives under another: an anonymous
+`session_id` that becomes a `lead_id` once someone fills a form, a trial account that
+converts, two CRM records merged into one. Ask directly: *"is the thing this work is
+about ever known by a different id later?"*
+
+If yes, keep sending whichever id is in scope at the time — do not try to backfill the
+later one — and post the link when you learn it:
+
+```bash
+POST <gateway>/v1/alias   {"from": {"session_id": "abc"}, "to": {"lead_id": "8172"}}
+```
+
+Aliases resolve at query time, so this works long after the fact and rewrites nothing.
+Skip it and the pre-identification spend is orphaned: the money was spent, the outcome
+happened, and no query connects them — so the unit cost silently excludes the anonymous
+half and looks better than it is. One entity key per side; the relation is symmetric and
+transitive, so `session→lead` and `lead→account` makes all three one entity.
+
 **Before declaring an id out of scope, check what the call site already loads.** "It is
 not in the session/context object" is not the same as "it is not available": handlers
 routinely fetch a row, a job record, or a document that carries the durable id as a
@@ -689,3 +724,11 @@ outcomes:
     value: "data.object.amount"
     signal: outcome_confirmed
 ```
+
+**Why `signal:` appears here even though you must never write a signal class.** These are
+not the same act, and the docs read as contradictory unless you know which is which. The
+YAML field is a *declared preference* about a source you are describing; the
+`SystemSignalClassMapper` still has the final say and will downgrade it when the source
+does not justify it. What is forbidden is asserting the class on an *event* — a
+`POST /v1/outcome` body has no signal field you can set to `outcome_confirmed` to make a
+guess count. Declare your intent in the rule; never state the class on the wire.

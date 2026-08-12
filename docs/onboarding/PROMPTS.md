@@ -2,16 +2,20 @@
 
 Ready-to-use prompts for driving valuemaxx integration with an AI coding agent (Claude Code, Cursor, etc.). Paste the relevant one to your agent; it follows the `integrate-valuemaxx` skill (`SKILL.md`).
 
+> These lead with the **gateway**, which is the front door: a base-URL swap and a few headers, with none of our code in your request path. The SDK is a compat path for providers the gateway cannot proxy (Bedrock, Vertex) or a house OTel collector — not the way in. If a prompt tells your agent to `pip install valuemaxx` and call `init()` first, it is out of date.
+
 ---
 
 ## Prompt 1 — Full guided integration (recommended)
 
 > Integrate **valuemaxx** into this codebase so I can see what each AI agent costs and what it earns, per outcome.
 >
-> 1. Install the SDK (`pip install valuemaxx` / `npm install valuemaxx`) and add `valuemaxx.init()` at app startup — run `valuemaxx init` to detect my framework and place it correctly.
-> 2. Scan the repo and find: where my agent(s) run, the points where a **business outcome** is recorded (a resolution / deal / payment / completed task — functions that set a status, ORM saves, Stripe/CRM/calendar calls, webhook handlers), and the durable entity IDs in scope (customer_id, conversation_id, email).
-> 3. **Show me a list** of the candidate outcomes + the entity ID each run carries, and tell me which can be bound deterministically vs which will be lower-confidence. Wait for my confirmation.
-> 4. Write the `valuemaxx.outcomes.yaml` config (and, for delayed/webhook outcomes, the run_id round-trip injection), validate it with the valuemaxx MCP `validate_*` tools, and give me a single reviewable diff/PR.
+> 1. Read `llms.txt` and `docs/onboarding/SKILL.md` first. Use the **gateway** path: point my LLM client's base URL at the gateway and set the `x-vmx-*` headers. Do not install an SDK and do not add an `init()` call unless my provider cannot be proxied.
+> 2. **Before editing anything**, ask me what one "unit of work" is — the thing I want a cost *per* — and which durable id of mine identifies it. Nothing in my code answers this and getting it wrong quietly distorts every number.
+> 3. Scan the repo and find where a **business outcome** becomes true (a status flip, an ORM save, a Stripe/CRM/calendar call, a webhook handler), plus the durable ids in scope. Show me the candidates and which can bind deterministically versus which will be lower-confidence. Wait for my confirmation.
+> 4. Wire it: base URL plus headers for capture, and one `POST /v1/outcome` call where each confirmed outcome happens. Give me a single reviewable diff.
+>
+> Tell me explicitly if my app streams from OpenAI, if the same work is known by different ids at different stages, or if an outcome can land more than 35 days after the work — each needs a specific handling and silently produces wrong numbers otherwise.
 >
 > Do not change how my app works, do not echo any secrets, and never mark a fuzzy match as high-confidence.
 
@@ -19,25 +23,31 @@ Ready-to-use prompts for driving valuemaxx integration with an AI coding agent (
 
 ## Prompt 2 — Just capture cost (no outcomes yet)
 
-> Add **valuemaxx** cost capture to this project: install the SDK, run `valuemaxx init` to wire `valuemaxx.init()` into my framework, and confirm it's capturing LLM cost off the hot path. Don't set up outcomes yet — I just want to see my spend by model and by agent first.
+> Add **valuemaxx** cost capture to this project using the gateway: point my LLM client's base URL at it, set `x-vmx-key` and `x-vmx-agent`, and use my own durable business id as `x-vmx-run-id` so calls group into real units. If I stream from OpenAI, also set `stream_options={"include_usage": true}` and tell me why. Don't set up outcomes yet — I want to see spend by model and by agent first.
 
 ---
 
 ## Prompt 3 — Add one specific outcome
 
-> I want valuemaxx to track **"<OUTCOME, e.g. a booked demo>"** as an outcome. Find where that happens in my code (or which webhook signals it), propose the `valuemaxx.outcomes.yaml` rule — including how to bind it back to the agent run that caused it — show me the diff, and validate it. Use the `suggest_attribution_rule` MCP tool if you're unsure which code site maps to my description.
+> I want valuemaxx to track **"&lt;OUTCOME, e.g. a booked demo&gt;"** as an outcome. Find where that happens in my code (or which webhook signals it) and add the `POST /v1/outcome` call there, carrying the same durable id my LLM calls use so it binds at `exact`. Set `identifier` for idempotency if the path can retry. Show me the diff. If the outcome arrives in a different process or days later, say so and explain how it still joins.
 
 ---
 
-## Prompt 4 — Set up the right-sizing / eval check
+## Prompt 4 — The id changes partway through
 
-> Set up valuemaxx's eval-backed model recommendation for my **"<AGENT/TASK>"**. It already has my real outcomes; enable the eval with my provider keys (these spend my tokens, so show me the per-candidate cost estimate and ask before each run), prune to a few candidate models, and produce a recommendation report on whether a cheaper/faster model holds my outcome — but never switch automatically.
+> In this codebase, work starts under one id and the outcome arrives under another — **&lt;e.g. an anonymous session that becomes a known lead&gt;**. Show me where each id is available, keep sending whichever is in scope at the time, and add the `POST /v1/alias` call at the moment the link becomes known. Explain what spend would be orphaned without it.
+
+---
+
+## Prompt 5 — Set up the right-sizing / eval check
+
+> Set up valuemaxx's eval-backed model recommendation for my **"&lt;AGENT/TASK&gt;"**. It already has my real outcomes; enable the eval with my provider keys (these spend my tokens, so show me the per-candidate cost estimate and ask before each run), prune to a few candidate models, and produce a recommendation report on whether a cheaper/faster model holds my outcome — but never switch automatically.
 
 ---
 
 ## What to expect
 
 - You only ever **review** — the agent writes the wiring and hands you a diff.
-- Every number valuemaxx shows is **honesty-labeled**: cost provenance (measured/estimated/reconciled), binding tier (exact→likely), outcome signal (attempted/confirmed/retracted).
-- Nothing about how your app runs changes; valuemaxx reads what's already there.
-- The SDK never throws into your app and adds <1ms; if it can't reach the backend it drops telemetry (counted), never blocks.
+- Every number valuemaxx shows is **honesty-labeled**: cost provenance (measured/estimated/reconciled), binding tier (exact→likely), outcome signal (attempted/confirmed/retracted), and whether the link was observed or inferred.
+- Nothing of ours runs inside your request path. A gateway failure falls back to a plain passthrough: losing a span is acceptable, losing your request is not.
+- Recording an outcome is a plain HTTP call you own — give it a timeout and let it fail quietly. It must never break a working feature.

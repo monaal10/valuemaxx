@@ -32,14 +32,14 @@ POST <gateway>/v1/outcome
 
 Everything else — the `x-vmx-outcome` header, inbound webhooks, settle rules, decorators — is a shortcut that emits this same event. The docs never say "for workflow codebases, do X": if your shape matches a shortcut it's one line instead of three, and nothing beyond the tuple is ever required.
 
-## Getting started (~5 minutes, ≤3 changed lines)
+## Getting started (~5 minutes; 3 lines for capture, ~15 for a delayed outcome)
 
 ### 0. Run the two pieces
 
 ```bash
 # the brain: FastAPI over SQLite (Postgres in prod), migrations on startup
 docker run -p 8000:8000 -v vmx-data:/home/valuemaxx/data \
-  ghcr.io/<owner>/valuemaxx-backend:latest
+  ghcr.io/monaal10/valuemaxx-backend:latest
 # or, with Python: pip install "valuemaxx[cli]" && valuemaxx up
 
 # the front door: a Cloudflare Worker (portable fetch/streams code — any edge runtime works)
@@ -58,6 +58,8 @@ client = OpenAI(
 ```
 
 Routes: `/openai` · `/anthropic` · `/gemini` · `/openrouter` (whose authoritative billed cost is recorded as `provider_reconciled`, never an estimate). Every `x-vmx-*` header is stripped before forwarding — the provider sees exactly the request you wrote. The dashboard already shows spend by model and agent.
+
+**If you stream from OpenAI, set `stream_options={"include_usage": True}` on those calls.** OpenAI omits the usage block from a stream unless the caller asks for it, so there is nothing for the gateway to read and the calls capture zero tokens. We deliberately do not add the flag for you: injecting it would change the request, and "the provider sees exactly the request you wrote" is the invariant the whole design rests on. The gateway detects that you did not set it and marks those spans `partial_recovered` rather than reporting a confident zero — but the fix is one argument on your side. Anthropic and Gemini always report usage; this applies to OpenAI (and OpenAI-compatible) streaming only.
 
 ### 2. Name your unit of work
 
@@ -80,9 +82,22 @@ requests.post(f"{GW}/v1/outcome", headers={"x-vmx-key": KEY},
 
 Contract discipline: a duplicate `identifier` is accepted-and-ignored, so at-least-once senders (retries, replays, webhook redelivery) never inflate a denominator; `occurred_at` outside 35 days back / 5 minutes forward is a 422, not a silent clamp; `?strict=true` rejects an event with no join key (default stays permissive — unbound-but-visible beats silently dropped).
 
+Two practical notes the shape of your app will raise. If the outcome legitimately lands more than 35 days after the work — a deal that closes in month three — **omit `occurred_at`**; the event is stamped at ingest and still binds at `exact`, because a shared-id join uses no time window at all. And wrap the call: recording an outcome must never break a working feature, so give it a timeout and swallow its failure.
+
+### 3b. If the id changes later, say so
+
+Work often starts under one identity and finishes under another — an anonymous chat session that becomes a known lead, a trial that converts, two CRM records merged:
+
+```bash
+curl -X POST "$GW/v1/alias" -H "x-vmx-key: $KEY" -H "content-type: application/json" \
+  -d '{"from": {"session_id": "abc"}, "to": {"lead_id": "8172"}}'
+```
+
+Post it whenever you learn it, including long afterwards. Aliases resolve at *query* time, so nothing already captured is rewritten and the earlier spend re-joins the moment you assert the link. Without it that spend is orphaned: real money, real outcome, and nothing connecting them — so the unit cost silently omits the anonymous half of the story.
+
 ### 4. See it
 
-Open `http://<backend>/?key=<your-key>` — spend by model/agent, cost per outcome at its confidence tier, margin when outcomes carry `value`. Or query directly:
+Open `http://<backend>/?key=<your-key>`. The page leads with **cost per outcome**, each row carrying how much to trust it — the weakest binding tier behind it, whether the link was observed or inferred, and whether the cost is shared with another outcome. Below that, **unattributed spend** (work that reached no billing-grade outcome) is shown rather than dropped: a number that quietly omits it looks more complete than it is. Spend by model and agent follow as drill-downs, plus margin when outcomes carry `value`. Or query directly:
 
 ```bash
 curl -X POST <backend>/run_metric -H "X-API-Key: <key>" -H "content-type: application/json" \
@@ -111,7 +126,7 @@ A Worker on a `*.workers.dev` subdomain cannot `fetch()` a Cloudflare-proxied ho
 
 ### Are the npm/pip SDKs still needed?
 
-**As the integration front door — no.** The gateway plus the outcome contract replace `init()`, run boundaries, outcome call sites, and flush plumbing. A host changes ≤3 lines and runs none of our code in its request path.
+**As the integration front door — no.** The gateway plus the outcome contract replace `init()`, run boundaries, outcome call sites, and flush plumbing. Capture is 3 lines and runs none of our code in the request path; an outcome confirmed later, in another process, is a handful more where that confirmation already lands.
 
 **As packages — yes, for three narrower jobs:**
 
