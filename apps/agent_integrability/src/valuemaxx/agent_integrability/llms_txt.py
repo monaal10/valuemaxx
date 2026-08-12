@@ -40,6 +40,13 @@ system-owned and MUST NOT be set or guessed by an agent or user:
 Every rollup carries minimum_tier + confidence_distribution — never collapse them
 into a bare number.
 
+Each cell also carries `shared_attribution_count`: how many of its producing runs
+ALSO produced a different outcome. One run can finalise an alt and complete an
+interview, and when a metric groups by outcome_name that run's cost is split so the
+columns still reconcile against the provider invoice. Non-zero is not an error — but
+the figure is then arithmetic rather than a measurement, and must not be presented as
+if the whole run's cost were measured for that one outcome.
+
 To wire an attribution rule, call `suggest_attribution_rule`: it returns an
 UNCONFIRMED candidate for a human to confirm. Do not hand-write or auto-apply a rule.
 To check an outcomes.yaml, call `validate_outcome_rule`. To preview a draft, call
@@ -106,13 +113,38 @@ a config change rather than code in the request path:
     client = OpenAI(
         base_url="https://<gateway>/openai/v1",              # line 1
         default_headers={"x-vmx-key": "vmx_live_...",        # line 2
-                         "x-vmx-run-id": order_id})          #   <- THEIR durable id
+                         "x-vmx-agent": "support-bot"})      #   only UNCHANGING values
     ...
-    client.chat.completions.create(...,                       # line 3, optional:
-        extra_headers={"x-vmx-outcome": "order_fulfilled"})
+    client.chat.completions.create(...,                       # line 3
+        extra_headers={"x-vmx-run-id": order_id,              #   <- THEIR durable id,
+                       "x-vmx-outcome": "order_fulfilled"})   #      PER CALL (optional)
 
-Routes: /openai /anthropic /gemini /openrouter. Every `x-vmx-*` header is stripped
-before forwarding; the host's provider key passes through and is never stored.
+The run id is per REQUEST because it changes per unit; putting it in
+`default_headers` on a long-lived client stamps every unit with the first one's id
+and collapses them into one. Nothing errors — the numbers are just wrong. Only put
+it on the client when that client serves exactly one unit of work.
+
+Routes: /openai /anthropic /gemini /openrouter. Append whatever path the SDK
+already appends — the gateway forwards everything after the route prefix verbatim,
+so an OpenAI client wants `<gateway>/openai/v1` (its own paths start `/chat/...`)
+while an Anthropic client wants `<gateway>/anthropic` (it appends `/v1/messages`
+itself). Every `x-vmx-*` header is stripped before forwarding; the host's provider
+key passes through and is never stored.
+
+PER-CALL vs PER-CLIENT HEADERS. A long-lived client whose run id changes per unit
+sets `x-vmx-run-id` PER REQUEST, not in `default_headers` — a per-request header
+wins over a default of the same name. Do not construct a client per unit of work.
+    OpenAI (python):  client.chat.completions.create(..., extra_headers={...})
+    Anthropic (ts):   client.messages.create({...}, { headers: {...} })
+Put only the values that never change (`x-vmx-key`, often `x-vmx-agent`) on the client.
+
+STREAMING FROM OPENAI: the host MUST set `stream_options={"include_usage": true}`.
+OpenAI omits usage from a stream unless asked, so without it there is nothing to
+read and the calls capture ZERO tokens. The gateway will not add the flag — that
+would change the request, breaking the invariant that the provider sees exactly
+what the host wrote. Spans from such a stream are flagged `partial_recovered`
+rather than reported as a confident zero, but the fix belongs to the host. Anthropic
+and Gemini always report usage; this is an OpenAI-shape concern only.
 
 HEADERS ARE THE WHOLE CONTRACT. Everything the SDK asked for in code is a string:
   x-vmx-key           the tenant
@@ -120,6 +152,13 @@ HEADERS ARE THE WHOLE CONTRACT. Everything the SDK asked for in code is a string
   x-vmx-agent         grouping label
   x-vmx-entity-<name> durable business ids the unit is about
   x-vmx-outcome       the outcome this call completes (recorded only on 2xx)
+  x-vmx-experiment    which comparison this call is an arm of
+
+  x-vmx-variant       which arm. No engine reads these yet; they are captured now
+                      because a variant stamp CANNOT be added to traffic after it
+                      has run, so any comparison over history depends on stamping
+                      it before the history exists.
+  x-vmx-app           which of the host's surfaces made the call (one tenant, several products)
 
 USE THE HOST'S OWN DURABLE ID as `x-vmx-run-id` (`order_9182`, not a UUID we mint).
 It groups the calls of one unit AND makes a delayed outcome free: when a webhook
@@ -152,11 +191,67 @@ Contract discipline (Stripe/Segment-grade):
 
 SHORTCUTS that emit this same event (use when the host's shape matches; never
 required): `x-vmx-outcome` header on the producing call (fires on 2xx, zero
-extra requests); an inbound webhook (Stripe et al. — config, no code, the path
-for outcomes confirmed days later); settle rules and decorators (planned).
+extra requests); settle rules and decorators (planned, not built).
+
+INBOUND WEBHOOKS — read this before promising a "no code" path. The endpoint is
+`POST <backend>/ingest_webhook_outcome`, HMAC-signed (`X-Signature`) over the raw
+body and verified BEFORE parse. What does NOT exist yet is the per-source mapping
+config that would turn a raw Stripe or Zendesk payload into the tuple. So today a
+third-party provider cannot post to it directly: something of the host's must
+receive the provider's webhook and forward the tuple. For a host that already has
+a webhook handler — the usual case for a CRM or billing outcome — that is ONE
+`POST /v1/outcome` line inside a handler they already own, which is the documented
+delayed path and is genuinely small. Do not tell a user this step is config-only.
+
+OUTCOMES OLDER THAN THE 35-DAY WINDOW. `occurred_at` is validated to 35 days back
+/ 5 minutes forward. A B2B outcome can legitimately land later than that (a deal
+that closes in month three). OMIT `occurred_at` in that case: the event is then
+stamped at ingest time and still binds to its run at `exact` via the shared id,
+because a shared-id join uses no time window at all. What you lose is only the
+true event time, not the attribution. Never clamp or fabricate a timestamp to fit
+the window, and never drop the outcome.
+
+THE ALIAS — when the id you had is not the id you end up with:
+
+    POST <gateway>/v1/alias
+    { "from": {"session_id": "abc"}, "to": {"lead_id": "8172"} }
+
+Use it when work happens under one identity and the outcome arrives under
+another: an anonymous chat session that later becomes a known lead, a trial
+account that converts, two records merged in a CRM. Without it that early spend
+is ORPHANED — the money was real, the outcome was real, and nothing joins them,
+so the unit cost silently excludes the anonymous half of the story.
+
+  - Each side is exactly ONE entity key. Two keys on one side would assert every
+    cross-pairing between them, a much larger claim than you wrote, so it is a 422.
+  - Resolution is symmetric and transitive: session→lead and lead→account means a
+    query for any one of the three considers all three.
+  - Applied at QUERY time. Nothing already stored is rewritten, so a span keeps
+    recording what the caller actually sent, and an alias asserted months later
+    still re-joins the history it names. Post it whenever you learn it.
+  - Asserting the same edge twice is one claim, not two.
+
+  THE ALIAS MATCHES ON ENTITY KEYS, so the anonymous side must have carried one.
+  This is the half that is easy to miss: posting the alias does nothing if the
+  early calls never attached the key it names. End to end, all three steps:
+
+    1. the anonymous call — attach the key you DO have (hyphens become
+       underscores, so this header is what `{"session_id": ...}` matches):
+         x-vmx-entity-session-id: abc
+         x-vmx-run-id: abc              (a session is its own unit for now)
+
+    2. the moment the identity is known — post the edge:
+         POST <gateway>/v1/alias  {"from":{"session_id":"abc"},"to":{"lead_id":"8172"}}
+
+    3. the outcome, days later, naming only the lead — no alias mentioned:
+         POST <gateway>/v1/outcome {"name":"meeting_booked","entity":{"lead_id":"8172"}}
+
+  Step 3 now costs out the spend from step 1, because step 2 made the two keys
+  one entity at query time. Skip step 1 and there is nothing to re-join: the
+  alias is a claim ABOUT entity keys, not a way to invent one after the fact.
 
 RUNNING IT. There is no hosted signup yet — the user runs both pieces:
-  docker run -p 8000:8000 ghcr.io/<owner>/valuemaxx-backend:latest
+  docker run -p 8000:8000 ghcr.io/monaal10/valuemaxx-backend:latest
   cd gateway && bunx wrangler deploy --var VALUEMAXX_BACKEND:https://<backend>
 The key is whatever `VALUEMAXX_INGEST_KEYS` maps ({key: tenant-uuid}); unset, the
 backend serves a single dev key `dev`. Do not write `vmx_live_...` into a host's
