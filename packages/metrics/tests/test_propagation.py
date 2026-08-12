@@ -169,3 +169,38 @@ def test_aggregate_minimum_never_exceeds_any_member(tiers: list[BindingTier]) ->
     minimum_rank = order.index(confidence.minimum_tier)
     assert all(minimum_rank <= order.index(tier) for tier in tiers)
     assert sum(confidence.confidence_distribution.values()) == len(tiers)
+
+
+def test_causal_evidence_never_launders_upward_in_a_rollup() -> None:
+    """One randomized outcome among observational ones does not make the cell causal.
+
+    H7 applied to the fourth axis: a cell mixing a randomized-experiment outcome with
+    ordinary observational ones is observational overall. The opposite — reporting the
+    strongest member — is exactly how a real lift number from one experiment gets
+    stretched across traffic that never ran one.
+    """
+    from valuemaxx.core import CausalEvidence
+    from valuemaxx.metrics.propagation import propagate_causal_evidence
+
+    assert (
+        propagate_causal_evidence([CausalEvidence.RANDOMIZED, CausalEvidence.OBSERVATIONAL])
+        is CausalEvidence.OBSERVATIONAL
+    )
+
+
+def test_causal_evidence_holds_when_every_member_is_randomized() -> None:
+    from valuemaxx.core import CausalEvidence
+    from valuemaxx.metrics.propagation import propagate_causal_evidence
+
+    assert (
+        propagate_causal_evidence([CausalEvidence.RANDOMIZED, CausalEvidence.RANDOMIZED])
+        is CausalEvidence.RANDOMIZED
+    )
+
+
+def test_empty_causal_rollup_is_observational() -> None:
+    """No members means no evidence — the weakest claim, never the strongest."""
+    from valuemaxx.core import CausalEvidence
+    from valuemaxx.metrics.propagation import propagate_causal_evidence
+
+    assert propagate_causal_evidence([]) is CausalEvidence.OBSERVATIONAL

@@ -17,6 +17,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from valuemaxx.core.base import StrictModel
+from valuemaxx.core.enums import CausalEvidence
 from valuemaxx.core.rollup import RollupConfidence
 
 
@@ -38,6 +39,9 @@ class MetricCell(StrictModel):
             denominator because their binding is advisory (candidate/likely/unbound).
         retracted_excluded_count: retracted outcomes excluded from the denominator
             and counted for the annotated re-emit (§3.1 H8).
+        causal_evidence: the conservative causal-evidence axis over the contributing
+            outcomes — observational unless EVERY member was earned by an experiment
+            (§3.1 H7 on the causal axis).
     """
 
     group_key: tuple[tuple[str, str], ...]
@@ -47,6 +51,7 @@ class MetricCell(StrictModel):
     confidence: RollupConfidence
     advisory_excluded_count: int
     retracted_excluded_count: int
+    causal_evidence: CausalEvidence = CausalEvidence.OBSERVATIONAL
 
 
 class MetricResult(StrictModel):

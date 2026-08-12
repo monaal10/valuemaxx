@@ -250,9 +250,7 @@ def _validated_occurred_at(raw: object) -> str:
     try:
         parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
     except ValueError as exc:
-        raise HTTPException(
-            status_code=422, detail="occurred_at must be an ISO datetime"
-        ) from exc
+        raise HTTPException(status_code=422, detail="occurred_at must be an ISO datetime") from exc
     if parsed.tzinfo is None:
         raise HTTPException(status_code=422, detail="occurred_at must be timezone-aware")
     now = datetime.now(tz=UTC)
@@ -260,16 +258,13 @@ def _validated_occurred_at(raw: object) -> str:
         raise HTTPException(
             status_code=422,
             detail=(
-                "occurred_at outside the acceptance window "
-                "(35 days back to 5 minutes forward)"
+                "occurred_at outside the acceptance window (35 days back to 5 minutes forward)"
             ),
         )
     return parsed.isoformat()
 
 
-def mount_outcome_alias_route(
-    app: FastAPI, registry: Registry, auth: ApiKeyAuthenticator
-) -> None:
+def mount_outcome_alias_route(app: FastAPI, registry: Registry, auth: ApiKeyAuthenticator) -> None:
     """`POST /outcome` — the one-line outcome call, no SDK required.
 
     `bind_outcome` takes a full `OutcomeEvent`: ids, timestamps, signal class, binding

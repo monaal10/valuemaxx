@@ -32,7 +32,11 @@ from typing import TYPE_CHECKING
 
 from valuemaxx.core import BindingTier, RollupConfidence, SignalClass
 from valuemaxx.metrics.grammar import Dimension, Measure
-from valuemaxx.metrics.propagation import denominator_outcomes, is_billing_grade
+from valuemaxx.metrics.propagation import (
+    denominator_outcomes,
+    is_billing_grade,
+    propagate_causal_evidence,
+)
 from valuemaxx.metrics.schemas import MetricCell, MetricResult
 
 if TYPE_CHECKING:
@@ -279,6 +283,7 @@ class MetricExecutor:
         denominator = _denominator_value(plan.denominator, cell_events, cell_outcomes, breakdown)
         value = _ratio(numerator, denominator)
         confidence = _confidence(breakdown.tier_distribution)
+        causal = propagate_causal_evidence(o.binding.causal_evidence for o in cell_outcomes)
         return MetricCell(
             group_key=key,
             numerator_value=numerator,
@@ -287,6 +292,7 @@ class MetricExecutor:
             confidence=confidence,
             advisory_excluded_count=breakdown.advisory_excluded_count,
             retracted_excluded_count=breakdown.retracted_excluded_count,
+            causal_evidence=causal,
         )
 
 

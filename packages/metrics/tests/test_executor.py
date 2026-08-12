@@ -666,3 +666,21 @@ def test_a_run_serving_two_outcome_names_splits_its_cost_between_them() -> None:
     assert by_name["interview_taken"].numerator_value == Decimal("5.00")
     # The whole point: the columns sum back to what was actually spent.
     assert sum(c.numerator_value for c in result.cells) == Decimal("10.00")
+
+
+def test_cell_reports_its_causal_evidence() -> None:
+    """The axis has to reach the cell, or nothing can render it beside the number."""
+    from valuemaxx.core import CausalEvidence
+
+    executor, costs, outcomes, runs = _executor()
+    runs.upsert(_TENANT, _run("run-1", agent_name="a"))
+    costs.upsert(_TENANT, _cost("run-1", usd="1.00"))
+    outcomes.upsert(
+        _TENANT,
+        _outcome(signal_class=SignalClass.OUTCOME_CONFIRMED, tier=BindingTier.EXACT, run="run-1"),
+    )
+
+    plan = compile_plan_cost_per_outcome()
+    result = executor.run(_TENANT, plan, _WINDOW, outcomes.list_all(_TENANT))
+
+    assert result.cells[0].causal_evidence is CausalEvidence.OBSERVATIONAL

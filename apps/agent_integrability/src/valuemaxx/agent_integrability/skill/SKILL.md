@@ -16,7 +16,7 @@ diff**.
 
 ## Honesty invariants (do NOT violate)
 
-The three axes are **system-owned** — never set or guess them:
+The four axes are **system-owned** — never set or guess them:
 
 - **Binding tier** (`exact | deterministic | candidate | likely`) is system-owned. An
   inferred match is never `exact`. `candidate`/`likely` are advisory, never
@@ -25,6 +25,10 @@ The three axes are **system-owned** — never set or guess them:
   **system-mapped** from the outcome source. A successful tool call is
   `action_attempted` unless the result is authoritative.
 - **Cost provenance** is system-owned; an estimate is never rendered as billed.
+- **Causal evidence** (`observational | holdout | randomized`) is system-owned and
+  defaults to `observational`. A strong binding tier proves the outcome came from that
+  run, not that the run *caused* it — only a withheld or randomised experiment earns
+  more. Never upgrade it to support a lift claim.
 
 Every rollup carries `minimum_tier` + `confidence_distribution` — never collapse them.
 

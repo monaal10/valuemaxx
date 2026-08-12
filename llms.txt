@@ -29,7 +29,7 @@
 
 ## instructions (read before calling any capability)
 
-valuemaxx measures cost-per-outcome WITH CONFIDENCE. The three honesty axes are
+valuemaxx measures cost-per-outcome WITH CONFIDENCE. The four honesty axes are
 system-owned and MUST NOT be set or guessed by an agent or user:
 
 - Binding tier (exact | deterministic | candidate | likely) is SYSTEM-OWNED. Never
@@ -40,6 +40,10 @@ system-owned and MUST NOT be set or guessed by an agent or user:
   unless the result is authoritative; never write signal_class yourself.
 - Cost provenance (measured | estimated | allocated | provider_reconciled |
   manual_reconciled) is system-owned; an estimate is never rendered as billed.
+- Causal evidence (observational | holdout | randomized) is SYSTEM-OWNED and defaults
+  to observational. A strong binding tier proves the outcome came from that run, NOT
+  that the run caused it — only a withheld or randomised experiment earns anything
+  stronger. Never upgrade this to justify a lift claim.
 
 Every rollup carries minimum_tier + confidence_distribution — never collapse them
 into a bare number.

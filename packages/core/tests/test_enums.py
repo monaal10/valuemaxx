@@ -1,7 +1,7 @@
 """F0-CORE-1a: exact enum string values + the honesty-axis identity.
 
-The three honesty axes are Provenance / BindingTier / SignalClass. EvalGrade and
-ReconciliationState are deliberately LOCAL/display, never system axes — encoded
+The honesty axes are Provenance / BindingTier / SignalClass / CausalEvidence.
+EvalGrade and ReconciliationState are deliberately LOCAL/display, never system axes — encoded
 here so a future change that promotes them to an axis trips a test.
 """
 
@@ -14,6 +14,7 @@ from valuemaxx.core.enums import (
     AllocationTier,
     BindingTier,
     CaptureGranularity,
+    CausalEvidence,
     ConfidenceLabel,
     EvalGrade,
     LabelSource,
@@ -63,8 +64,8 @@ def test_reconciliation_state_not_a_provenance() -> None:
 
 
 def test_eval_grade_and_recon_state_are_not_honesty_axes() -> None:
-    """The three honesty axes are exactly Provenance/BindingTier/SignalClass."""
-    honesty_axes = (Provenance, BindingTier, SignalClass)
+    """EvalGrade and ReconciliationState are display labels, never honesty axes."""
+    honesty_axes = (Provenance, BindingTier, SignalClass, CausalEvidence)
     assert EvalGrade not in honesty_axes
     assert ReconciliationState not in honesty_axes
 
@@ -130,3 +131,30 @@ def test_all_enums_are_str_enums(enum_cls: type[StrEnum]) -> None:
     assert issubclass(enum_cls, StrEnum)
     for member in enum_cls:
         assert isinstance(member.value, str)
+
+
+def test_causal_evidence_values() -> None:
+    """The fourth honesty axis: HOW a cost->outcome link was established.
+
+    Binding tier answers "how sure are we this outcome came from this run"; it says
+    nothing about whether the run CAUSED the outcome. A correctly-bound outcome at
+    `exact` tier is still only observational — the run and the outcome co-occurred.
+    Presenting that beside a number from a randomised holdout as if they carried the
+    same weight is the laundering the honesty axes exist to prevent, so causality
+    gets its own axis rather than being folded into tier.
+    """
+    assert {c.value for c in CausalEvidence} == {
+        "observational",
+        "holdout",
+        "randomized",
+    }
+
+
+def test_causal_evidence_is_an_honesty_axis() -> None:
+    """It rides on the binding beside tier, not as a local/display label."""
+    from valuemaxx.core import OutcomeBinding
+
+    binding = OutcomeBinding(
+        run_id=None, tier=None, bound_by=None, causal_evidence=CausalEvidence.OBSERVATIONAL
+    )
+    assert binding.causal_evidence is CausalEvidence.OBSERVATIONAL

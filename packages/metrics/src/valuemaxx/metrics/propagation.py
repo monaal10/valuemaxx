@@ -22,7 +22,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from valuemaxx.core import BindingTier, RollupConfidence, SignalClass
+from valuemaxx.core import BindingTier, CausalEvidence, RollupConfidence, SignalClass
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -46,6 +46,30 @@ def propagate(tiers: Iterable[BindingTier]) -> RollupConfidence:
     tier ordering and both-fields invariant are defined exactly once.
     """
     return RollupConfidence.propagate(tiers)
+
+
+# Weakest-first: a rollup takes the minimum, so an unqualified member pins the whole
+# cell to observational.
+_CAUSAL_ORDER: tuple[CausalEvidence, ...] = (
+    CausalEvidence.OBSERVATIONAL,
+    CausalEvidence.HOLDOUT,
+    CausalEvidence.RANDOMIZED,
+)
+
+
+def propagate_causal_evidence(evidence: Iterable[CausalEvidence]) -> CausalEvidence:
+    """H7 on the causal axis: a rollup is only as causal as its weakest member.
+
+    A cell mixing one randomized-experiment outcome with ordinary traffic is
+    observational. Reporting the strongest member instead is how a lift measured on
+    one experiment gets stretched over traffic that never ran one — the specific
+    overclaim this axis was added to make impossible. An empty rollup is
+    observational: no members is no evidence, never the strongest claim.
+    """
+    members = list(evidence)
+    if not members:
+        return CausalEvidence.OBSERVATIONAL
+    return min(members, key=_CAUSAL_ORDER.index)
 
 
 def is_billing_grade(tier: BindingTier) -> bool:

@@ -462,9 +462,7 @@ def _outcome_client() -> TestClient:
             entity_window=timedelta(hours=24),
         ),
     )
-    return TestClient(
-        build_app(registry, api_keys=_UUID_API_KEYS, webhook_secret=_WEBHOOK_SECRET)
-    )
+    return TestClient(build_app(registry, api_keys=_UUID_API_KEYS, webhook_secret=_WEBHOOK_SECRET))
 
 
 class _InMemoryRuns(RunRepository):
@@ -482,9 +480,7 @@ class _InMemoryRuns(RunRepository):
         self._rows[(str(tenant_id), str(run.id))] = run
 
     @override
-    def list_by_entity(
-        self, tenant_id: TenantId, entity_key: tuple[str, str]
-    ) -> Sequence[Run]:
+    def list_by_entity(self, tenant_id: TenantId, entity_key: tuple[str, str]) -> Sequence[Run]:
         return ()
 
 

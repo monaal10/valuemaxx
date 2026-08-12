@@ -1,8 +1,8 @@
 """OutcomeEvent + OutcomeBinding — the signal-classed outcome record (§6.2).
 
-``OutcomeBinding`` holds the run link and its tier; all three fields are nullable
-until the outcome is bound by the attribution cascade. ``OutcomeEvent`` carries
-the required ``signal_class`` honesty axis and a dedup key that prefers the
+``OutcomeBinding`` holds the run link, its tier, and its causal evidence; the
+link fields are nullable until the outcome is bound by the attribution cascade.
+``OutcomeEvent`` carries the required ``signal_class`` honesty axis and a dedup key that prefers the
 round-tripped ``correlation_id`` (T3) and falls back to ``(source, id)``.
 """
 
@@ -13,7 +13,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from valuemaxx.core.base import StrictModel, TenantScopedModel
-from valuemaxx.core.enums import BindingTier, SignalClass
+from valuemaxx.core.enums import BindingTier, CausalEvidence, SignalClass
 from valuemaxx.core.ids import CorrelationId, OutcomeEventId, RunId
 
 
@@ -23,6 +23,10 @@ class OutcomeBinding(StrictModel):
     run_id: RunId | None
     tier: BindingTier | None
     bound_by: str | None
+    # Defaulted because an unqualified binding IS observational: co-occurrence is
+    # what every non-experimental path can honestly claim. Only the experiment
+    # engine may set anything stronger.
+    causal_evidence: CausalEvidence = CausalEvidence.OBSERVATIONAL
 
 
 class OutcomeEvent(TenantScopedModel):

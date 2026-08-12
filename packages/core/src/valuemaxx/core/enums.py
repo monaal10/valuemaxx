@@ -4,10 +4,11 @@ Every public enum is a :class:`~enum.StrEnum` (serializes as its string value),
 never a loose ``str``. The string values are part of the wire/storage contract
 and match the design tables exactly; changing one is a breaking change.
 
-The three system honesty axes are :class:`Provenance`, :class:`BindingTier`, and
-:class:`SignalClass`. :class:`EvalGrade` and :class:`ReconciliationState` are
-deliberately *local/display* concepts — they are NOT honesty axes and must never
-ride every event (asserted by tests in core and a G1-EXIT meta-test).
+The four system honesty axes are :class:`Provenance`, :class:`BindingTier`,
+:class:`SignalClass`, and :class:`CausalEvidence`. :class:`EvalGrade` and
+:class:`ReconciliationState` are deliberately *local/display* concepts — they are
+NOT honesty axes and must never ride every event (asserted by tests in core and
+a G1-EXIT meta-test).
 """
 
 from __future__ import annotations
@@ -53,6 +54,21 @@ class SignalClass(StrEnum):
     ACTION_ATTEMPTED = "action_attempted"
     OUTCOME_CONFIRMED = "outcome_confirmed"
     OUTCOME_RETRACTED = "outcome_retracted"
+
+
+class CausalEvidence(StrEnum):
+    """Causal-evidence honesty axis (§3.1) — on every outcome->run link.
+
+    Binding tier says how sure we are the outcome came from that run; it says
+    nothing about whether the run CAUSED it. ``observational`` is the default and
+    the honest label for co-occurrence however exactly it was bound; ``holdout``
+    and ``randomized`` are earned only by an experiment that withheld or randomised
+    the treatment. A causal claim must never be inferred from a strong tier.
+    """
+
+    OBSERVATIONAL = "observational"
+    HOLDOUT = "holdout"
+    RANDOMIZED = "randomized"
 
 
 class CaptureGranularity(StrEnum):

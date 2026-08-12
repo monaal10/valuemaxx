@@ -227,13 +227,9 @@ class attribution_request_scope:  # noqa: N801 - a context manager, reads like o
 
     __slots__ = ("_signals", "_token")
 
-    def __init__(
-        self, *, baggage: str | None = None, echoed_run_id: RunId | None = None
-    ) -> None:
+    def __init__(self, *, baggage: str | None = None, echoed_run_id: RunId | None = None) -> None:
         parsed = parse_baggage_header(baggage) if baggage else None
-        self._signals = _RequestSignals(
-            baggage=parsed or None, echoed_run_id=echoed_run_id
-        )
+        self._signals = _RequestSignals(baggage=parsed or None, echoed_run_id=echoed_run_id)
         self._token: Token[_RequestSignals | None] | None = None
 
     def __enter__(self) -> None:
