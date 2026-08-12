@@ -186,6 +186,23 @@ _PAGE = """<!doctype html>
     </div>
   </section>
   <section>
+    <h2>WHY THIS OUTCOME IS ONLY CANDIDATE-TIER</h2>
+    <div class="body">
+      <p class="sub" style="margin:0 0 10px">
+        When several runs could have produced one outcome, the cascade refuses to pick
+        and holds it for review instead of guessing. Paste an outcome id to see the
+        competing runs, each with the score and the reason it was scored that way.
+        This is the evidence behind a <code>candidate</code> row above.
+      </p>
+      <div class="picker">
+        <label style="flex:1 1 320px">outcome id
+          <input id="att-id" type="text" placeholder="oe_..." /></label>
+        <button id="att-run" type="button">Show candidates</button>
+      </div>
+      <div id="att-out" class="note" style="padding-left:0"></div>
+    </div>
+  </section>
+  <section>
     <h2>OUTCOMES RECORDED</h2><div id="outcomes">loading&hellip;</div>
     <div class="note">
       What your agents actually produced. An outcome appears here as soon as it is
@@ -439,6 +456,58 @@ async function load() {
 // --- eval run ---------------------------------------------------------------
 // The key is read from the field and sent with THIS request only; it is never
 // persisted with the recommendation and never rendered back into the page.
+// --- competing attributions --------------------------------------------------
+// `list_review_queue` is keyed by ONE outcome (no list-wrapping model may exist
+// outside core), so this is a lookup rather than a queue listing. The route
+// overrides tenant_id from the API key and the handler reads only the id, so the
+// rest of the OutcomeEvent shape is filler required by the input model.
+document.getElementById("att-run").addEventListener("click", async () => {
+  const out = document.getElementById("att-out");
+  const id = document.getElementById("att-id").value.trim();
+  if (!id) { out.textContent = "Enter an outcome id."; return; }
+  out.textContent = "Loading…";
+
+  const res = await call("list_review_queue", {
+    tenant_id: "00000000-0000-4000-8000-000000000000",
+    id: id,
+    name: "lookup",
+    signal_class: "outcome_confirmed",
+    value: null,
+    occurred_at: new Date().toISOString(),
+    binding: { run_id: null, tier: null, bound_by: null },
+    entity_keys: [],
+    correlation_id: null,
+    source: "dashboard",
+    raw: {},
+  });
+
+  if (res.__error) {
+    // A 4xx here usually means "nothing pending for that id" — which is the
+    // ordinary case for an outcome that bound cleanly, not a failure.
+    out.innerHTML = '<p class="empty">No pending review item for <code>' +
+      esc(id) + "</code>. An outcome that bound at exact or deterministic tier " +
+      "never enters review.</p>";
+    return;
+  }
+  const candidates = res.candidates || [];
+  if (candidates.length === 0) {
+    out.innerHTML = '<p class="empty">No competing candidates recorded for <code>' +
+      esc(id) + "</code>.</p>";
+    return;
+  }
+  out.innerHTML =
+    "<p>Bound to " + (res.run_id ? "<code>" + esc(res.run_id) + "</code>" : "<b>nothing</b>") +
+    " at tier " + tierTag(res.tier) +
+    (res.review_required ? ' <span class="tag warn">review required</span>' : "") +
+    "</p><table><thead><tr><th>candidate run</th><th>tier</th>" +
+    "<th class='num'>score</th><th>why</th></tr></thead><tbody>" +
+    candidates.map((c) =>
+      "<tr><td><code>" + esc(c.run_id) + "</code></td><td>" + tierTag(c.tier) +
+      "</td><td class='num'>" + num(c.score) + "</td><td>" + esc(c.rationale || "") +
+      "</td></tr>").join("") +
+    "</tbody></table>";
+});
+
 document.getElementById("ev-run").addEventListener("click", async () => {
   const btn = document.getElementById("ev-run");
   const status = document.getElementById("ev-status");

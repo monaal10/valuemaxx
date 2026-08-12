@@ -199,3 +199,31 @@ def test_an_absent_number_is_never_escaped_into_literal_text() -> None:
     assert 'esc(c.numerator_value ?? "&mdash;")' not in js
     assert 'esc(c.denominator_value ?? "&mdash;")' not in js
     assert "const num = (v) =>" in js
+
+
+def test_the_page_exposes_competing_attributions_for_one_outcome() -> None:
+    """The T4 resolver returns candidate SETS; the page must be able to show them.
+
+    When several runs could have produced an outcome the cascade halts rather than
+    picking one, and the losing candidates — each with a score and a rationale — are
+    the evidence behind a `candidate`-tier number. Computing them and never offering
+    a way to look means "why is this only candidate-tier?" has no answer on the page.
+    """
+    body = get(_client(), "/").text
+
+    assert "list_review_queue" in body
+    # The competing runs and WHY each was scored that way, not just the winner.
+    assert "rationale" in body
+    assert "candidates" in body
+
+
+def test_cost_is_decomposable_by_agent_and_model() -> None:
+    """"Which part of achieving this outcome is expensive" must be answerable.
+
+    Cost per outcome grouped by agent and by model is the bridge to optimization:
+    a single blended figure says a unit costs $0.10 but never which step to attack.
+    """
+    body = get(_client(), "/").text
+
+    assert "SPEND BY AGENT" in body
+    assert "SPEND BY MODEL" in body
