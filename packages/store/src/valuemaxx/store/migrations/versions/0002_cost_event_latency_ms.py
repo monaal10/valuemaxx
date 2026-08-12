@@ -17,7 +17,7 @@ to no arm, and inventing one would fabricate a comparison.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import sqlalchemy as sa
 from alembic import op
@@ -30,7 +30,10 @@ down_revision: str | None = "0001"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-_ADDED: tuple[tuple[str, str, sa.types.TypeEngine[object]], ...] = (
+# `TypeEngine` is INVARIANT in its parameter, so `TypeEngine[object]` accepts neither
+# `Integer` (TypeEngine[int]) nor `String` (TypeEngine[str]). `Any` is the annotation
+# that admits a heterogeneous column-type table, which is what this is.
+_ADDED: tuple[tuple[str, str, sa.types.TypeEngine[Any]], ...] = (
     ("valuemaxx_cost_event", "latency_ms", sa.Integer()),
     ("valuemaxx_run", "experiment", sa.String()),
     ("valuemaxx_run", "variant", sa.String()),
