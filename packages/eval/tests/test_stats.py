@@ -10,8 +10,10 @@ from hypothesis import strategies as st
 from valuemaxx.eval.stats import (
     ci_separated,
     meets_hysteresis,
+    non_inferiority,
     percentiles,
     relative_improvement,
+    required_sample_size,
     underperforms_by,
     wilson_ci,
 )
@@ -190,3 +192,92 @@ def test_underperforms_within_25_percent_survives() -> None:
 def test_underperforms_better_than_incumbent_survives() -> None:
     """A candidate at or above the incumbent never underperforms."""
     assert underperforms_by(candidate=1.10, incumbent=1.0, fraction=0.25) is False
+
+
+# --- non-inferiority (the experiment verdict) --------------------------------
+
+
+def test_a_clearly_non_inferior_candidate_passes_at_the_stated_margin() -> None:
+    """A cheaper model holding the outcome rate within the margin is non-inferior.
+
+    This is the ONLY question worth asking of a cost-saving switch. Superiority
+    ("is it better?") is the wrong test — nobody claims the cheap model wins; the
+    claim is that it does not lose by more than an amount the business accepts.
+    Testing for superiority would reject every good switch.
+    """
+    verdict = non_inferiority(
+        candidate_successes=1_000,
+        candidate_n=12_400,
+        incumbent_successes=1_020,
+        incumbent_n=12_400,
+        margin=0.01,
+    )
+
+    assert verdict.decided is True
+    assert verdict.non_inferior is True
+    assert verdict.p_value < 0.05
+
+
+def test_a_candidate_that_loses_more_than_the_margin_fails() -> None:
+    """Losing 3 points against a 1-point margin is a real regression, not noise."""
+    verdict = non_inferiority(
+        candidate_successes=640,
+        candidate_n=12_400,
+        incumbent_successes=1_020,
+        incumbent_n=12_400,
+        margin=0.01,
+    )
+
+    assert verdict.decided is True
+    assert verdict.non_inferior is False
+
+
+def test_too_little_data_is_undecided_never_a_verdict() -> None:
+    """The failure this whole test exists to prevent: a confident answer from noise.
+
+    At 200 units per arm nothing can be concluded about a 1-point margin on an 8%
+    baseline. Returning `non_inferior=False` would read as "the candidate is worse"
+    and returning True would be a fabrication; both are lies about what the data
+    supports. Undecided is the honest third state.
+    """
+    verdict = non_inferiority(
+        candidate_successes=16,
+        candidate_n=200,
+        incumbent_successes=17,
+        incumbent_n=200,
+        margin=0.01,
+    )
+
+    assert verdict.decided is False
+    assert verdict.non_inferior is None
+
+
+def test_an_empty_arm_is_undecided_rather_than_a_divide_by_zero() -> None:
+    verdict = non_inferiority(
+        candidate_successes=0,
+        candidate_n=0,
+        incumbent_successes=10,
+        incumbent_n=100,
+        margin=0.01,
+    )
+
+    assert verdict.decided is False
+    assert verdict.non_inferior is None
+
+
+def test_required_sample_size_matches_the_documented_scale() -> None:
+    """~9.3k per arm for a 1pp margin on an 8.2% baseline, at 80% power.
+
+    Hand-checked: (z_.95 + z_.80)^2 * 2p(1-p) / margin^2 = 9307.96 -> 9308. The
+    plan's "~12k" figure assumed higher power; the standard 80% sizing is this.
+    Either way the point stands unchanged — a customer doing 500 units a month
+    cannot power this in a year, and saying so up front beats five weeks ending
+    in "undecided".
+    """
+    n = required_sample_size(baseline_rate=0.082, margin=0.01)
+
+    assert n == 9_308
+
+    # A wider margin is cheaper to prove; a narrower one is far more expensive.
+    assert required_sample_size(baseline_rate=0.082, margin=0.02) < n
+    assert required_sample_size(baseline_rate=0.082, margin=0.005) > n

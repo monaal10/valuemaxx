@@ -101,7 +101,10 @@ function parseBaggageRunId(raw: string | null): string | undefined {
     const key = member.slice(0, eq).trim();
     if (key !== BAGGAGE_RUN_ID_KEY) continue;
     // Strip any `;`-suffixed baggage properties — the value ends at the first one.
-    const value = member.slice(eq + 1).split(";")[0]?.trim();
+    const value = member
+      .slice(eq + 1)
+      .split(";")[0]
+      ?.trim();
     if (value) return decodeURIComponent(value);
   }
   return undefined;
@@ -127,4 +130,36 @@ export function forwardableHeaders(headers: Headers): Headers {
     out.set(name, value);
   }
   return out;
+}
+
+/**
+ * Deterministically assign a unit of work to an experiment arm.
+ *
+ * Assignment must be a pure function of (run id, experiment) rather than random,
+ * because a unit is many calls: a run that draws arm A on its first call and arm B
+ * on its second has been served by both models, so its outcome belongs to neither
+ * and the experiment measures a blend instead of a comparison. Hashing gives that
+ * stability with no state to store and no coordination between isolates.
+ *
+ * The experiment name is folded into the hash so two experiments do not correlate.
+ * Sharing one hash would put the same runs in the "first" arm of every experiment,
+ * silently inheriting each experiment's selection effects into the next.
+ *
+ * Returns undefined when there is nothing to assign, so a caller can always call it
+ * and let the absence of an experiment mean "no variant" rather than branch first.
+ */
+export async function assignVariant(
+  runId: string,
+  experiment: string,
+  variants: readonly string[],
+): Promise<string | undefined> {
+  if (!experiment || variants.length === 0) return undefined;
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`${experiment}:${runId}`),
+  );
+  // The first four bytes are ample: 2^32 buckets over a handful of arms, and the
+  // modulo bias at that ratio is far below the noise any experiment tolerates.
+  const view = new DataView(digest);
+  return variants[view.getUint32(0) % variants.length];
 }

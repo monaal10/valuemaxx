@@ -15,7 +15,11 @@ import {
   observeNonStreaming,
   readInlineCost,
 } from "../src/capture.js";
-import { forwardableHeaders, readIntent } from "../src/headers.js";
+import {
+  assignVariant,
+  forwardableHeaders,
+  readIntent,
+} from "../src/headers.js";
 
 describe("SSE folding", () => {
   it("counts an anthropic stream's tokens without double-counting cache", () => {
@@ -60,7 +64,7 @@ describe("SSE folding", () => {
   it("skips [DONE] and malformed frames instead of throwing", () => {
     const acc = newAccumulator("openai");
     expect(() =>
-      foldSseChunk(acc, 'data: [DONE]\ndata: {not json}\ndata: \n', ""),
+      foldSseChunk(acc, "data: [DONE]\ndata: {not json}\ndata: \n", ""),
     ).not.toThrow();
   });
 
@@ -247,5 +251,55 @@ describe("experiment fields", () => {
     );
     expect(out.get("x-vmx-experiment")).toBeNull();
     expect(out.get("authorization")).toBe("Bearer sk-1");
+  });
+});
+
+describe("experiment assignment", () => {
+  it("assigns the same run id to the same arm, every time", async () => {
+    // Determinism is the whole contract. A unit of work that lands in arm A on its
+    // first call and arm B on its second has been served by both models, so its
+    // outcome belongs to neither — and the experiment silently measures a blend
+    // rather than a comparison.
+    const a = await assignVariant("order_9182", "haiku-vs-opus", [
+      "control",
+      "haiku",
+    ]);
+    const b = await assignVariant("order_9182", "haiku-vs-opus", [
+      "control",
+      "haiku",
+    ]);
+    expect(a).toBe(b);
+  });
+
+  it("splits a population roughly evenly across arms", async () => {
+    // A skewed split is not merely inelegant: it lengthens the smaller arm's time
+    // to significance, and the sample-size gate is computed per arm.
+    const counts: Record<string, number> = { control: 0, haiku: 0 };
+    for (let i = 0; i < 2000; i++) {
+      const v = await assignVariant(`run-${i}`, "exp", ["control", "haiku"]);
+      if (v) counts[v] = (counts[v] ?? 0) + 1;
+    }
+    expect(counts["control"]).toBeGreaterThan(850);
+    expect(counts["haiku"]).toBeGreaterThan(850);
+  });
+
+  it("changes assignment when the experiment name changes", async () => {
+    // Reusing one hash across experiments correlates their arms: a run in the
+    // control of experiment 1 lands in the control of experiment 2 as well, so the
+    // second experiment silently inherits the first's selection effects.
+    const runs = Array.from({ length: 400 }, (_, i) => `run-${i}`);
+    const first = await Promise.all(
+      runs.map((r) => assignVariant(r, "exp-1", ["a", "b"])),
+    );
+    const second = await Promise.all(
+      runs.map((r) => assignVariant(r, "exp-2", ["a", "b"])),
+    );
+    const identical = first.filter((v, i) => v === second[i]).length;
+    expect(identical).toBeLessThan(360);
+  });
+
+  it("returns undefined when there is nothing to assign", async () => {
+    expect(await assignVariant("run-1", "exp", [])).toBeUndefined();
+    expect(await assignVariant("run-1", "", ["a", "b"])).toBeUndefined();
   });
 });
