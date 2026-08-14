@@ -250,6 +250,33 @@ _PAGE = """<!doctype html>
     </div>
   </section>
   <section>
+    <h2>WOULD SWITCHING PAY OFF &mdash; AND COULD YOU PROVE IT?</h2>
+    <div class="body">
+      <p class="sub" style="margin:0 0 10px">
+        Compares <b>cost per outcome</b>, not cost per token. A model that halves your
+        token bill while dropping the outcome rate has made each outcome
+        <i>dearer</i>, and only this framing catches that. A repricing alone is
+        <code>observational</code> and never safe to switch on: it shows what the same
+        traffic would have cost, not whether the cheaper model would have produced the
+        same outcomes. Only a powered experiment earns <code>randomized</code>.
+      </p>
+      <div class="picker">
+        <label>spend now (USD) <input id="sw-inc-usd" type="text" value="82400" /></label>
+        <label>projected (USD) <input id="sw-cand-usd" type="text" value="31200" /></label>
+        <label>outcomes <input id="sw-outcomes" type="text" value="4218" /></label>
+        <label>outcome rate <input id="sw-baseline" type="text" value="0.082" /></label>
+        <button id="sw-run" type="button">Evaluate</button>
+      </div>
+      <div id="sw-out" class="note" style="padding-left:0"></div>
+    </div>
+    <div class="note">
+      The sizing table answers "what would proof cost me". Required sample scales as
+      1/margin&sup2;, so a 1-point bar costs about nine times a 3-point bar &mdash;
+      "you need 9,308 per arm" is the price of a one-point claim, not a verdict on
+      your size. Pick a bar you can afford to prove.
+    </div>
+  </section>
+  <section>
     <h2>MODEL RECOMMENDATIONS</h2><div id="evals">loading&hellip;</div>
     <div class="note">
       Recommendations are evidence, never an automatic switch. Run
@@ -479,6 +506,54 @@ async function load() {
 // outside core), so this is a lookup rather than a queue listing. The route
 // overrides tenant_id from the API key and the handler reads only the id, so the
 // rest of the OutcomeEvent shape is filler required by the input model.
+// --- would switching pay off ------------------------------------------------
+document.getElementById("sw-run").addEventListener("click", async () => {
+  const out = document.getElementById("sw-out");
+  out.textContent = "Evaluating…";
+  const res = await call("evaluate_switch", {
+    tenant_id: "00000000-0000-4000-8000-000000000000",
+    incumbent_usd: document.getElementById("sw-inc-usd").value.trim(),
+    candidate_usd: document.getElementById("sw-cand-usd").value.trim(),
+    incumbent_outcomes: Number(document.getElementById("sw-outcomes").value || 0),
+    baseline_rate: Number(document.getElementById("sw-baseline").value || 0),
+    margin: 0.01,
+  });
+  if (res.__error) {
+    out.innerHTML = '<p class="empty">Not available (' + esc(res.__error) + ")</p>";
+    return;
+  }
+  // No denominator means no unit cost. Rendering 0 here would turn "nothing has
+  // bound yet" into "this is free", which is the same confusion the metric cells
+  // refuse elsewhere.
+  const unit =
+    res.incumbent_cost_per_outcome === null || res.candidate_cost_per_outcome === null
+      ? '<p class="empty">No billing-grade outcomes yet — no cost per outcome to compare.</p>'
+      : "<p><b>$" + esc(res.incumbent_cost_per_outcome) + "</b> &rarr; <b>$" +
+        esc(res.candidate_cost_per_outcome) + "</b> per outcome (" +
+        esc(res.pct_change) + "%)</p>";
+
+  const verdict = res.safe_to_switch
+    ? '<span class="tag exact">safe to switch</span>'
+    : '<span class="tag warn">not proven — do not switch on this alone</span>';
+
+  const rows = (res.margin_options || []).map((m) =>
+    "<tr><td>accept a " + esc(m.margin_pp) + "pp drop</td><td class='num'>" +
+    esc(m.n_per_arm.toLocaleString()) + "</td></tr>").join("");
+  const sizing = rows
+    ? "<table><thead><tr><th>confidence bar</th><th class='num'>units / arm</th>" +
+      "</tr></thead><tbody>" + rows + "</tbody></table>"
+    : '<p class="sub">Enter your outcome rate to price what proof would cost.</p>';
+
+  out.innerHTML =
+    unit +
+    "<p>evidence " + evidenceTag(res.causal_evidence) + " " + verdict +
+    (res.required_n_per_arm
+      ? ' <span class="sub">(undecided — needs ' +
+        esc(res.required_n_per_arm.toLocaleString()) + " per arm at this margin)</span>"
+      : "") +
+    "</p>" + sizing;
+});
+
 document.getElementById("att-run").addEventListener("click", async () => {
   const out = document.getElementById("att-out");
   const id = document.getElementById("att-id").value.trim();

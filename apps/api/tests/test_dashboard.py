@@ -242,3 +242,20 @@ def test_insufficient_data_is_a_named_state_not_a_bare_dash() -> None:
     body = get(_client(), "/").text
 
     assert "insufficient data" in body.lower()
+
+
+def test_the_page_shows_what_proving_a_switch_would_cost() -> None:
+    """The sample-size curve must be on the page, not just in the API.
+
+    A user told "you need 9,308 units per arm" reads it as "you are too small for
+    this". It is really the price of a ONE-POINT claim — sizing scales as 1/margin^2,
+    so a team willing to accept a 3-point drop needs about a ninth as many. Showing
+    the curve turns a wall into a choice, and that choice is the whole reason the
+    non-inferiority machinery is worth surfacing at all.
+    """
+    body = get(_client(), "/").text
+
+    assert "evaluate_switch" in body
+    assert "margin_options" in body
+    # And the honesty label that decides whether the number can be acted on.
+    assert "causal_evidence" in body

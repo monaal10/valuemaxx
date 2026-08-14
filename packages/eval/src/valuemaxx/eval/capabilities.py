@@ -27,11 +27,13 @@ from weakref import WeakKeyDictionary
 from pydantic import BaseModel
 from valuemaxx.capabilities import Mode, Surface, capability
 from valuemaxx.core import AtmError
+from valuemaxx.eval.optimization import evaluate_switch
 from valuemaxx.eval.promptfoo import (
     ImportedSuite,
     import_promptfoo_config,
     import_promptfoo_tests,
 )
+from valuemaxx.eval.stats import required_sample_size
 
 if TYPE_CHECKING:
     from valuemaxx.capabilities import Registry
@@ -118,6 +120,67 @@ class ImportPromptfooOutput(BaseModel):
     """Assertion types skipped, with why. Reported so a partial import is never
     mistaken for a complete one."""
     unsupported: tuple[str, ...]
+
+
+def _money(value: Decimal | None) -> str | None:
+    """Render a Decimal for the wire, keeping None as None.
+
+    Serialised as a STRING: a float would reintroduce the representation error the
+    Decimal arithmetic exists to avoid, on the number a buyer reads first.
+    """
+    return None if value is None else str(value)
+
+
+class EvaluateSwitchInput(BaseModel):
+    """Ask whether switching improves cost per outcome, and how provable that is.
+
+    The experiment arms are optional and all-or-nothing. Omitting them asks the
+    observational question ("what would the same traffic have cost"); supplying them
+    adds the outcome-rate test that can upgrade the evidence label.
+    """
+
+    tenant_id: str
+    incumbent_usd: Decimal
+    candidate_usd: Decimal
+    incumbent_outcomes: int
+    margin: float = 0.01
+    baseline_rate: float = 0.0
+    candidate_successes: int | None = None
+    candidate_n: int | None = None
+    incumbent_successes: int | None = None
+    incumbent_n: int | None = None
+
+
+class MarginPrice(BaseModel):
+    """What one confidence bar costs, in units per arm.
+
+    A typed row rather than a bare mapping: the pair only means something together,
+    and a caller reading `n_per_arm` without the margin it belongs to would quote a
+    sample size for a claim nobody chose.
+    """
+
+    margin_pp: float
+    n_per_arm: int
+
+
+class EvaluateSwitchOutput(BaseModel):
+    """Cost per outcome on both sides, the verdict, and what proof would cost.
+
+    ``margin_options`` is the part a user acts on. Required sample size scales as
+    1/margin^2, so a single "you need 9,308 per arm" reads as "you are too small for
+    this" when it is really the price of a ONE-POINT claim. Showing the curve lets a
+    team pick a bar they can afford to prove — 3 points costs about a ninth as much.
+    """
+
+    incumbent_cost_per_outcome: str | None
+    candidate_cost_per_outcome: str | None
+    pct_change: str | None
+    causal_evidence: str
+    safe_to_switch: bool
+    outcome_decided: bool | None
+    outcome_non_inferior: bool | None
+    required_n_per_arm: int | None
+    margin_options: tuple[MarginPrice, ...]
 
 
 class EstimateSwitchInput(BaseModel):
@@ -234,6 +297,14 @@ _ESTIMATE_EXAMPLE = EstimateSwitchInput(
     candidate_model="claude-haiku-4",
     candidate_provider="anthropic",
 )
+_EVALUATE_SWITCH_EXAMPLE = EvaluateSwitchInput(
+    tenant_id="00000000-0000-0000-0000-000000000000",
+    incumbent_usd=Decimal("82400"),
+    candidate_usd=Decimal("31200"),
+    incumbent_outcomes=4218,
+    margin=0.01,
+    baseline_rate=0.082,
+)
 _APPROVE_EXAMPLE = ApproveGateInput(
     tenant_id="00000000-0000-0000-0000-000000000000", phase="smoke", approved=True
 )
@@ -276,6 +347,52 @@ def register(registry: Registry) -> None:
             judge_count=sum(1 for c in suite.criteria if c.judge_required),
             deterministic_count=sum(1 for c in suite.criteria if not c.judge_required),
             unsupported=suite.unsupported,
+        )
+
+    def evaluate_switch_handler(request: EvaluateSwitchInput) -> EvaluateSwitchOutput:
+        verdict = evaluate_switch(
+            incumbent_usd=request.incumbent_usd,
+            candidate_usd=request.candidate_usd,
+            incumbent_outcomes=request.incumbent_outcomes,
+            candidate_successes=request.candidate_successes,
+            candidate_n=request.candidate_n,
+            incumbent_successes=request.incumbent_successes,
+            incumbent_n=request.incumbent_n,
+            margin=request.margin,
+        )
+        # The baseline the sizing curve is priced against: the observed incumbent rate
+        # when an experiment ran, else what the caller declared. Sizing off a rate
+        # nobody supplied would quote a confident number for an unstated assumption.
+        baseline = (
+            verdict.outcome_verdict.incumbent_rate
+            if verdict.outcome_verdict is not None
+            else request.baseline_rate
+        )
+        options = (
+            tuple(
+                MarginPrice(
+                    margin_pp=pp,
+                    n_per_arm=required_sample_size(baseline_rate=baseline, margin=pp / 100.0),
+                )
+                for pp in (0.5, 1.0, 2.0, 3.0, 5.0)
+            )
+            if baseline > 0.0
+            else ()
+        )
+        return EvaluateSwitchOutput(
+            incumbent_cost_per_outcome=_money(verdict.incumbent_cost_per_outcome),
+            candidate_cost_per_outcome=_money(verdict.candidate_cost_per_outcome),
+            pct_change=_money(verdict.pct_change),
+            causal_evidence=verdict.causal_evidence.value,
+            safe_to_switch=verdict.safe_to_switch,
+            outcome_decided=(
+                None if verdict.outcome_verdict is None else verdict.outcome_verdict.decided
+            ),
+            outcome_non_inferior=(
+                None if verdict.outcome_verdict is None else verdict.outcome_verdict.non_inferior
+            ),
+            required_n_per_arm=verdict.required_n_per_arm,
+            margin_options=options,
         )
 
     def estimate_switch_handler(request: EstimateSwitchInput) -> EstimateSwitchOutput:
@@ -409,6 +526,25 @@ def register(registry: Registry) -> None:
             surfaces=_RR_SURFACES,
             mode=Mode.REQUEST_RESPONSE,
             examples=(_IMPORT_EXAMPLE,),
+        )
+    )
+    registry.register(
+        capability(
+            name="evaluate_switch",
+            input_model=EvaluateSwitchInput,
+            output_model=EvaluateSwitchOutput,
+            handler=evaluate_switch_handler,
+            description=(
+                "Decide whether switching models improves cost PER OUTCOME, and label "
+                "how provable that is. A repricing alone stays observational and is "
+                "never safe_to_switch; only a POWERED non-inferiority test on the "
+                "outcome rate earns the randomized label. Returns what each confidence "
+                "margin would cost in units per arm, so a team can pick a bar it can "
+                "afford to prove."
+            ),
+            surfaces=_RR_SURFACES,
+            mode=Mode.REQUEST_RESPONSE,
+            examples=(_EVALUATE_SWITCH_EXAMPLE,),
         )
     )
     registry.register(

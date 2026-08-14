@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+from typing import cast
+from uuid import uuid4
 
 import pytest
 from valuemaxx.capabilities import Mode, Registry, Surface
 from valuemaxx.eval.capabilities import (
     DiscoverAgentsInput,
     EvalNotWiredError,
+    EvaluateSwitchInput,
+    EvaluateSwitchOutput,
     bind_runtime,
     register,
 )
@@ -17,6 +21,7 @@ from valuemaxx.eval.capabilities import (
 _EXPECTED = {
     "discover_agents",
     "estimate_switch_cost",
+    "evaluate_switch",
     "import_promptfoo_suite",
     "run_eval_funnel",
     "get_recommendation",
@@ -163,3 +168,101 @@ def test_holders_do_not_outlive_their_registry() -> None:
     gc.collect()
     fresh = Registry()
     assert fresh not in _HOLDERS
+
+
+# --- evaluate_switch: the optimization verdict as a callable capability ------
+
+
+def _switch_body(**over: object) -> dict[str, object]:
+    body: dict[str, object] = {
+        "tenant_id": str(uuid4()),
+        "incumbent_usd": "82400",
+        "candidate_usd": "31200",
+        "incumbent_outcomes": 4218,
+        "margin": 0.01,
+    }
+    body.update(over)
+    return body
+
+
+def _call_switch(body: dict[str, object]) -> EvaluateSwitchOutput:
+    """Drive the registered capability through its own handler.
+
+    Going via `registry.all()` returns a generic `BaseModel`, so every field read
+    would be untyped — the assertions would still pass while checking nothing about
+    the shape. The registration itself is asserted separately.
+    """
+    registry = Registry()
+    register(registry)
+    cap = next(c for c in registry.all() if c.name == "evaluate_switch")
+    assert cap.input_model is EvaluateSwitchInput
+    return cast("EvaluateSwitchOutput", cap.handler(EvaluateSwitchInput.model_validate(body)))
+
+
+def test_evaluate_switch_is_registered_and_returns_cost_per_outcome() -> None:
+    """The verdict must be reachable as a capability, not just as a Python function.
+
+    Everything a user can see arrives through the registry — API route, MCP tool and
+    CLI are all projections of it. A module nothing registers is unreachable no
+    matter how correct it is, which was this loop's actual state.
+    """
+    registry = Registry()
+    register(registry)
+    assert any(c.name == "evaluate_switch" for c in registry.all())
+
+    out = _call_switch(_switch_body())
+
+    assert out.incumbent_cost_per_outcome == "19.54"
+    assert out.candidate_cost_per_outcome == "7.40"
+    assert out.causal_evidence == "observational"
+    assert out.safe_to_switch is False
+
+
+def test_evaluate_switch_answers_what_the_experiment_would_cost() -> None:
+    """The actionable question is the MARGIN's price, not a fixed threshold.
+
+    Sample size scales as 1/margin^2, so "9,308 per arm" is not a property of the
+    product — it is the price of a 1-point claim. A team willing to accept a 3-point
+    drop needs ~1,035. Telling a user only the first number reads as "you are too
+    small for this"; showing the trade lets them choose a bar they can actually
+    afford to prove.
+    """
+    out = _call_switch(_switch_body(baseline_rate=0.082))
+
+    prices = {row.margin_pp: row.n_per_arm for row in out.margin_options}
+    assert prices[1.0] == 9_308
+    assert prices[3.0] < prices[1.0]
+    assert prices[5.0] < prices[3.0]
+
+
+def test_evaluate_switch_carries_a_powered_experiment_through_to_the_verdict() -> None:
+    """With real arms and enough units, the capability reports the upgraded evidence."""
+    out = _call_switch(
+        _switch_body(
+            candidate_successes=1_000,
+            candidate_n=12_400,
+            incumbent_successes=1_020,
+            incumbent_n=12_400,
+        )
+    )
+
+    assert out.causal_evidence == "randomized"
+    assert out.safe_to_switch is True
+    assert out.outcome_decided is True
+
+
+def test_evaluate_switch_reports_the_shortfall_when_underpowered() -> None:
+    """An undecided run must say how far short it fell, not merely that it failed."""
+    out = _call_switch(
+        _switch_body(
+            candidate_successes=16,
+            candidate_n=200,
+            incumbent_successes=17,
+            incumbent_n=200,
+        )
+    )
+
+    assert out.outcome_decided is False
+    assert out.causal_evidence == "observational"
+    assert out.required_n_per_arm is not None
+    assert out.required_n_per_arm > 200
