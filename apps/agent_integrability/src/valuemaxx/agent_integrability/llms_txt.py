@@ -199,6 +199,13 @@ Contract discipline (Stripe/Segment-grade):
     retries) never inflate the denominator. Always set it when you can.
   - `occurred_at`: accepted 35 days back to 5 minutes forward; outside that is a
     422, not a silent clamp. Late REAL outcomes fit; clock bugs surface.
+  - `entity_window_days`: how far back an ENTITY-bound outcome may reach for its
+    runs. Default 1 day. A B2B deal closing in month three needs ~90; a support
+    ticket needs hours. Only you know your lag, and one global value must either
+    strand the slow case or over-match the fast one. Widening buys REACH, never
+    trust: an entity match stays `candidate` and stays out of the billing-grade
+    denominator at any window. Irrelevant when you send `run_id` — a shared-id join
+    uses no window at all, which is another reason to send it.
   - `?strict=true`: rejects an event with neither run_id nor entity. Default is
     permissive — unbound-but-visible beats silently dropped.
   - The TIER is always decided server-side. A caller states what happened; it

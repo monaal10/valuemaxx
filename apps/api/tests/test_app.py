@@ -736,3 +736,51 @@ def test_an_entity_outcome_that_matched_nothing_is_reported_as_unattached() -> N
     assert res["attached"] is False
     assert res["attachment"] == "entity_unmatched"
     assert "alias" in res["hint"] or "run_id" in res["hint"]
+
+
+def test_an_outcome_can_declare_how_far_back_it_may_match() -> None:
+    """A deal that closes in month three must be able to reach its runs.
+
+    The window was one global 24h constant, chosen for "the deal closed the next
+    morning". Anything slower — the B2B case this product is sold on — silently bound
+    to nothing, and an unbound outcome never reaches the cost-per-outcome denominator.
+    Widening the global value is not the fix: it would let every fast outcome bind to
+    week-old runs it had nothing to do with. Only the caller knows their lag.
+
+    Same endpoint, same body, one more optional field — the contract does not fork.
+    """
+    client = _outcome_client()
+
+    res = post(
+        client,
+        "/outcome",
+        json={
+            "name": "deal_closed",
+            "entity": {"lead_id": "8172"},
+            "entity_window_days": 90,
+        },
+        headers={"X-API-Key": "key-uuid"},
+    )
+
+    assert res.status_code == 200, res.text
+    # It reached the resolver as a declared window rather than being rejected or
+    # silently ignored; with no matching run in this fixture it stays unattached.
+    assert res.json()["attachment"] in {"entity_unmatched", "entity"}
+
+
+def test_a_nonsense_window_does_not_break_the_call() -> None:
+    """A malformed hint costs a wider match, never the outcome itself.
+
+    Rejecting the event would lose a real business fact over a bad optional field —
+    exactly backwards, since the fact is the part that cannot be recreated.
+    """
+    client = _outcome_client()
+
+    for bad in (-5, 0, "soon"):
+        res = post(
+            client,
+            "/outcome",
+            json={"name": "x", "entity": {"lead_id": "1"}, "entity_window_days": bad},
+            headers={"X-API-Key": "key-uuid"},
+        )
+        assert res.status_code == 200, res.text

@@ -22,6 +22,7 @@ The cascade depends only on ``valuemaxx.core`` ABCs/Protocols (``RunRepository``
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from valuemaxx.attribution.binding.t1_ambient import AmbientContextResolver
@@ -34,7 +35,6 @@ from valuemaxx.core import AttributionResult
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
-    from datetime import timedelta
 
     from valuemaxx.core import (
         AttributionCandidate,
@@ -218,7 +218,25 @@ class Cascade:
             baggage=baggage if baggage is not None else {},
             echoed_run_id=echoed_run_id,
             content=content if isinstance(content, str) else "",
+            entity_window=_declared_window(outcome),
         )
+
+
+def _declared_window(outcome: OutcomeEvent) -> timedelta | None:
+    """The lag this outcome declared, in seconds, or None for the default.
+
+    Read from ``raw`` rather than added to ``OutcomeEvent``: the window is a hint
+    about how to MATCH this event, not a property of the business fact, and putting
+    it on the persisted model would make every stored outcome carry a field that
+    describes the query rather than the world.
+
+    A non-numeric or non-positive value degrades to the default instead of raising —
+    a malformed hint should cost the caller a wider match, never the outcome itself.
+    """
+    declared = outcome.raw.get("entity_window_seconds")
+    if isinstance(declared, bool) or not isinstance(declared, (int, float)):
+        return None
+    return timedelta(seconds=float(declared)) if declared > 0 else None
 
 
 __all__ = ["BAGGAGE_RUN_ID_KEY", "Cascade"]

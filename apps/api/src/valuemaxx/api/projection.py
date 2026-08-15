@@ -344,7 +344,9 @@ def mount_outcome_alias_route(app: FastAPI, registry: Registry, auth: ApiKeyAuth
             "entity_keys": entity_keys,
             "correlation_id": payload.get("correlation_id"),
             "source": payload.get("source") or "rest",
-            "raw": payload.get("raw") or {},
+            # The declared lag rides in `raw` because it describes how to MATCH this
+            # event, not the business fact itself — see cascade._declared_window.
+            "raw": {**(_as_dict(payload.get("raw")) or {}), **_window_hint(payload)},
         }
         validated = _validate(cap, event)
         with attribution_request_scope(baggage=baggage):
@@ -356,6 +358,21 @@ def mount_outcome_alias_route(app: FastAPI, registry: Registry, auth: ApiKeyAuth
         )
 
     app.post("/outcome", name="outcome_alias")(handler)
+
+
+def _window_hint(payload: dict[str, object]) -> dict[str, object]:
+    """Translate the caller's `entity_window_days` into the resolver's seconds hint.
+
+    Days on the wire because that is the unit a human reasons about a sales cycle in;
+    seconds internally because the resolver divides by it. A non-numeric or
+    non-positive value yields no hint at all, so the outcome is still recorded and
+    simply matched with the default window — losing a real business fact over a
+    malformed optional field would be exactly backwards.
+    """
+    raw = payload.get("entity_window_days")
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)) or raw <= 0:
+        return {}
+    return {"entity_window_seconds": float(raw) * 86_400.0}
 
 
 def _with_attachment(

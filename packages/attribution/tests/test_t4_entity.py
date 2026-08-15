@@ -35,6 +35,7 @@ def _ctx(
     *,
     tenant_id: object = TENANT_A,
     entity_keys: frozenset[tuple[str, str]] = frozenset({("customer_id", "c-1")}),
+    window: timedelta | None = None,
 ) -> ResolveContext:
     return ResolveContext(
         tenant_id=tenant_id,  # type: ignore[arg-type]  # TenantId is a UUID NewType
@@ -44,6 +45,7 @@ def _ctx(
         ambient_run_id=None,
         baggage={},
         echoed_run_id=None,
+        entity_window=window,
     )
 
 
@@ -197,3 +199,104 @@ def test_same_run_via_two_keys_is_deduplicated() -> None:
     )
     assert len(out.candidates) == 1
     assert out.candidates[0].run_id == RunId("dup")
+
+
+# --- the window is per-outcome, not one global setting -----------------------
+
+
+def test_an_outcome_may_widen_the_window_it_is_matched_within() -> None:
+    """A B2B deal closes in month three; a support ticket closes in an hour.
+
+    One global window cannot serve both. Set it wide enough for the deal and every
+    ticket binds to week-old runs it had nothing to do with; set it tight and the
+    deal — the case this product is sold on — silently binds to nothing at all.
+    Only the caller knows the lag of the outcome they are recording, so the caller
+    supplies it.
+    """
+    repo = InMemoryRunRepository()
+    repo.upsert(
+        TENANT_A,
+        make_run(
+            run_id="r-old",
+            started_at=_OCCURRED - timedelta(days=20),
+            entity_keys=frozenset({("customer_id", "c-1")}),
+        ),
+    )
+
+    # The default window cannot reach it.
+    assert _resolver(repo).resolve(_ctx()).candidates == ()
+
+    # The outcome declaring a 30-day lag can.
+    widened = _resolver(repo).resolve(_ctx(window=timedelta(days=30)))
+    assert [c.run_id for c in widened.candidates] == [RunId("r-old")]
+
+
+def test_a_widened_window_still_only_ever_produces_candidate_tier() -> None:
+    """Widening buys reach, never trust.
+
+    The temptation is to treat a caller-declared window as a caller-declared
+    confidence. It is the opposite: a wider window means a weaker claim, because
+    more unrelated runs fall inside it. The tier must not move, so an entity match
+    stays advisory and stays out of the billing-grade denominator no matter what
+    window found it.
+    """
+    repo = InMemoryRunRepository()
+    repo.upsert(
+        TENANT_A,
+        make_run(
+            run_id="r-old",
+            started_at=_OCCURRED - timedelta(days=20),
+            entity_keys=frozenset({("customer_id", "c-1")}),
+        ),
+    )
+
+    outcome = _resolver(repo).resolve(_ctx(window=timedelta(days=30)))
+
+    assert all(c.tier is BindingTier.CANDIDATE for c in outcome.candidates)
+
+
+def test_the_score_is_relative_to_the_window_the_outcome_declared() -> None:
+    """Proximity is scored against the declared window, not a fixed one.
+
+    The score is `1 - distance/window`, so it is a statement about where the run sits
+    WITHIN the range the caller said was plausible. Scoring a 20-day-old match against
+    a 24h denominator would produce a large negative number and rank a distant run
+    above a near one.
+    """
+    repo = InMemoryRunRepository()
+    repo.upsert(
+        TENANT_A,
+        make_run(
+            run_id="r-near",
+            started_at=_OCCURRED - timedelta(days=1),
+            entity_keys=frozenset({("customer_id", "c-1")}),
+        ),
+    )
+    repo.upsert(
+        TENANT_A,
+        make_run(
+            run_id="r-far",
+            started_at=_OCCURRED - timedelta(days=25),
+            entity_keys=frozenset({("customer_id", "c-1")}),
+        ),
+    )
+
+    outcome = _resolver(repo).resolve(_ctx(window=timedelta(days=30)))
+
+    scores = {c.run_id: c.score for c in outcome.candidates}
+    assert 0.0 < scores[RunId("r-far")] < scores[RunId("r-near")] <= 1.0
+
+
+def test_an_outcome_with_no_declared_window_uses_the_resolver_default() -> None:
+    """Existing callers are unaffected: absent means today's behaviour, exactly."""
+    repo = InMemoryRunRepository()
+    repo.upsert(
+        TENANT_A,
+        make_run(
+            run_id="r-in",
+            started_at=_OCCURRED - timedelta(hours=1),
+            entity_keys=frozenset({("customer_id", "c-1")}),
+        ),
+    )
+
+    assert [c.run_id for c in _resolver(repo).resolve(_ctx()).candidates] == [RunId("r-in")]

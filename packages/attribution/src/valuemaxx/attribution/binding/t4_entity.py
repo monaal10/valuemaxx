@@ -63,7 +63,7 @@ class EntityMatchResolver(Resolver):
         if not runs:
             return no_match()
 
-        window_seconds = self._window.total_seconds()
+        window_seconds = self._window_for(ctx).total_seconds()
         scored: list[tuple[Run, float, float]] = []  # (run, distance_seconds, score)
         for run in runs:
             distance = abs((run.started_at - ctx.occurred_at).total_seconds())
@@ -78,7 +78,7 @@ class EntityMatchResolver(Resolver):
             self.candidate(
                 run_id=run.id,
                 score=score,
-                rationale=f"entity-match within ±{self._window} (Δ={distance:.0f}s)",
+                rationale=f"entity-match within ±{self._window_for(ctx)} (Δ={distance:.0f}s)",
             )
             for run, distance, score in scored
         )
@@ -93,9 +93,21 @@ class EntityMatchResolver(Resolver):
                     seen[run.id] = run
         return list(seen.values())
 
+    def _window_for(self, ctx: ResolveContext) -> timedelta:
+        """The window this outcome declared, else the resolver's default.
+
+        A non-positive value is refused rather than honoured: the score divides by
+        it, so zero would be a crash and a negative one would invert the ranking so
+        that the most distant run scored highest.
+        """
+        declared = ctx.entity_window
+        if declared is None or declared.total_seconds() <= 0:
+            return self._window
+        return declared
+
     def _within_window(self, run: Run, ctx: ResolveContext) -> bool:
         distance = abs((run.started_at - ctx.occurred_at).total_seconds())
-        return distance <= self._window.total_seconds()
+        return distance <= self._window_for(ctx).total_seconds()
 
     def _is_ambiguous(self, scored: list[tuple[Run, float, float]]) -> bool:
         """True iff the two closest runs are within ``epsilon`` of each other in time."""

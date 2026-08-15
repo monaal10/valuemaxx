@@ -26,7 +26,7 @@ from valuemaxx.core import (
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
-    from datetime import datetime
+    from datetime import datetime, timedelta
 
     from valuemaxx.core import OutcomeEventId, RunId, TenantId
 
@@ -49,6 +49,11 @@ class ResolveContext:
     baggage: Mapping[str, str]
     echoed_run_id: RunId | None
     content: str = ""
+    #: How far back this outcome may reach to claim a run by shared entity id.
+    #: None means "use the resolver's default" — only the caller knows whether their
+    #: outcome lags by an hour (a support ticket) or a quarter (a B2B deal), and one
+    #: global value must either strand the slow case or over-match the fast one.
+    entity_window: timedelta | None = None
 
 
 @dataclass(frozen=True, slots=True)
