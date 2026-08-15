@@ -349,9 +349,57 @@ def mount_outcome_alias_route(app: FastAPI, registry: Registry, auth: ApiKeyAuth
         validated = _validate(cap, event)
         with attribution_request_scope(baggage=baggage):
             result = cap.handler(validated)
-        return result.model_dump(mode="json")
+        return _with_attachment(
+            result.model_dump(mode="json"),
+            had_run_id=isinstance(run_id, str) and bool(run_id),
+            had_entity=bool(entity_keys),
+        )
 
     app.post("/outcome", name="outcome_alias")(handler)
+
+
+def _with_attachment(
+    body: dict[str, object], *, had_run_id: bool, had_entity: bool
+) -> dict[str, object]:
+    """Say plainly whether the event attached to any spend, and if not, why.
+
+    The contract is already uniform — one endpoint, one body, every field but `name`
+    optional. What was NOT uniform is the answer: an outcome that carried a join key
+    and failed to match returned a response byte-identical to one sent with no join
+    key at all. Both are a 200 with a null tier, so both read as success, and the
+    orphan stays invisible until someone notices the denominator is too small weeks
+    later.
+
+    So the shape of the request never varies and the shape of the reply never varies
+    either — it always carries `attached`, `attachment` and, when unattached, a
+    `hint` naming what the CALLER can change. A reason the caller cannot act on is
+    just a different way of saying nothing.
+    """
+    attached = body.get("run_id") is not None
+    if attached:
+        attachment = "run_id" if had_run_id else "entity"
+        hint = ""
+    elif had_entity:
+        attachment = "entity_unmatched"
+        hint = (
+            "No run carried that entity key inside the binding window. Send the "
+            "run_id you used on the LLM calls, or POST /v1/alias if the entity is "
+            "known by a different id there."
+        )
+    elif had_run_id:
+        attachment = "run_unmatched"
+        hint = (
+            "No spend was captured under that run_id. Check it matches the "
+            "x-vmx-run-id sent on the LLM calls for this unit."
+        )
+    else:
+        attachment = "none"
+        hint = (
+            "The event carried neither run_id nor entity, so it can never attach to "
+            "spend. Send run_id (preferred) or entity. Use ?strict=true to make this "
+            "a 422 instead."
+        )
+    return {**body, "attached": attached, "attachment": attachment, "hint": hint}
 
 
 def mount_entity_alias_route(app: FastAPI, auth: ApiKeyAuthenticator, now: NowFn) -> None:

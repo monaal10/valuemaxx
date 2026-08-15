@@ -186,6 +186,13 @@ relevant business id in a variable. Deliver the tuple then. If it is expressible
 in curl, it is expressible in every language — no SDK, no patchable function, no
 framework knowledge required.
 
+ONE SHAPE, ALWAYS. Every outcome is this same call — an in-process one, a webhook
+days later, a queue consumer. Only which optional fields you fill changes. And the
+REPLY is uniform too: it always carries `attached` (did this reach any spend),
+`attachment` (run_id | entity | run_unmatched | entity_unmatched | none) and, when
+it did not attach, a `hint` naming what you can change. Check `attached` on your
+first integration call — a 200 alone does not mean the event found its cost.
+
 Contract discipline (Stripe/Segment-grade):
   - `identifier`: caller idempotency key. A duplicate (tenant, identifier) is
     accepted-and-ignored, so at-least-once senders (waitUntil replays, webhook

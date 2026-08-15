@@ -683,3 +683,56 @@ def test_alias_requires_authentication() -> None:
 
     assert res.status_code in {401, 403}
     assert aliases.appended == []
+
+
+# --- one contract, one honest answer -----------------------------------------
+
+
+def test_an_outcome_that_could_not_bind_says_so_rather_than_returning_a_quiet_null() -> None:
+    """The uniformity gap: a 200 with tier=None means two very different things.
+
+    Today an outcome that carried a join key but failed to match, and one sent with
+    no join key at all, return byte-identical responses. Both look like success. A
+    caller integrating for the first time has no way to tell "recorded and attached"
+    from "recorded and orphaned", and the orphan is invisible until someone notices
+    the denominator is too small weeks later.
+
+    One contract stays one contract — the request shape does not change. What changes
+    is that the response always states whether the event attached, and when it did
+    not, which reason.
+    """
+    client = _outcome_client()
+
+    bound = post(
+        client, "/outcome", json={"name": "x", "run_id": "run-1"}, headers={"X-API-Key": "key-uuid"}
+    ).json()
+    unbound = post(client, "/outcome", json={"name": "x"}, headers={"X-API-Key": "key-uuid"}).json()
+
+    assert bound["attached"] is True
+    assert bound["attachment"] == "run_id"
+
+    assert unbound["attached"] is False
+    # The actionable half: WHY, in terms of what the caller can change.
+    assert unbound["attachment"] == "none"
+    assert "run_id" in unbound["hint"]
+
+
+def test_an_entity_outcome_that_matched_nothing_is_reported_as_unattached() -> None:
+    """An entity key that resolves to no run is the delayed-CRM failure mode.
+
+    It is the case the product is sold on, it fails silently today, and the caller's
+    fix is specific: carry the run id, or post an alias. Saying so at the moment of
+    the call is worth more than any amount of documentation.
+    """
+    client = _outcome_client()
+
+    res = post(
+        client,
+        "/outcome",
+        json={"name": "meeting_booked", "entity": {"lead_id": "never-seen"}},
+        headers={"X-API-Key": "key-uuid"},
+    ).json()
+
+    assert res["attached"] is False
+    assert res["attachment"] == "entity_unmatched"
+    assert "alias" in res["hint"] or "run_id" in res["hint"]
