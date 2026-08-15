@@ -31,6 +31,8 @@ import {
   H_RUN_ID_ECHO,
   forwardableHeaders,
   readIntent,
+  withAssignedVariant,
+  withVariantEcho,
   type CaptureIntent,
 } from "./headers.js";
 import { reportOutcome, reportSpan } from "./report.js";
@@ -84,7 +86,8 @@ export default {
     }
 
     const route = ROUTES.find(
-      (r) => url.pathname === r.prefix || url.pathname.startsWith(`${r.prefix}/`),
+      (r) =>
+        url.pathname === r.prefix || url.pathname.startsWith(`${r.prefix}/`),
     );
     if (!route) {
       return json(
@@ -124,7 +127,10 @@ async function forwardOutcome(
 ): Promise<Response> {
   const key = request.headers.get("x-vmx-key")?.trim();
   if (!key) {
-    return json({ error: "missing_key", message: "x-vmx-key is required" }, 401);
+    return json(
+      { error: "missing_key", message: "x-vmx-key is required" },
+      401,
+    );
   }
   const body = await request.text();
   // The query string carries contract options (`?strict=true`); dropping it here
@@ -150,7 +156,11 @@ async function proxy(
   env: Env,
   ctx: ExecutionContext,
 ): Promise<Response> {
-  const intent = readIntent(request.headers, () => crypto.randomUUID());
+  // Assignment happens before anything else so the arm is on the span whether the
+  // call succeeds or not, and so a failed request still counts toward its arm — an
+  // experiment that silently drops its failures compares two success-only worlds.
+  const parsed = readIntent(request.headers, () => crypto.randomUUID());
+  const intent = await withAssignedVariant(parsed, parsed.variants);
 
   // The request body is needed twice: forwarded upstream, and read for the model
   // name (the response does not always carry it, e.g. Anthropic streaming). Buffer
@@ -207,7 +217,9 @@ async function proxy(
 
 /** Echo the run id so a host can stamp it into an external system for later binding. */
 function withEcho(response: Response, intent: CaptureIntent): Response {
-  if (!intent.runIdWasMinted) return response;
+  const withVariant = withVariantEcho(response, intent);
+  if (!intent.runIdWasMinted) return withVariant;
+  response = withVariant;
   const headers = new Headers(response.headers);
   headers.set(H_RUN_ID_ECHO, intent.runId);
   return new Response(response.body, {
@@ -346,4 +358,3 @@ function json(body: unknown, status: number): Response {
     headers: { "content-type": "application/json" },
   });
 }
-

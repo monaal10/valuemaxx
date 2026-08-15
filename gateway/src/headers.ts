@@ -28,6 +28,8 @@ export const H_OUTCOME = "x-vmx-outcome";
 export const H_ENTITY_PREFIX = "x-vmx-entity-";
 export const H_EXPERIMENT = "x-vmx-experiment";
 export const H_VARIANT = "x-vmx-variant";
+/** The arms of the experiment, comma-separated — what the gateway assigns FROM. */
+export const H_VARIANTS = "x-vmx-variants";
 export const H_APP = "x-vmx-app";
 /** W3C baggage — the standard alias for `x-vmx-run-id`, so existing tracing works. */
 export const H_BAGGAGE = "baggage";
@@ -51,6 +53,15 @@ export interface CaptureIntent {
   /** Which comparison this call is an arm of. Recorded, not yet acted on. */
   readonly experiment: string | undefined;
   readonly variant: string | undefined;
+  /**
+   * The arms the host declared for this experiment.
+   *
+   * The host names them rather than the gateway holding a registry, because there is
+   * no per-tenant config store yet and inventing one to hold two strings would be a
+   * larger commitment than the feature warrants. It also keeps the invariant that a
+   * request says everything about itself.
+   */
+  readonly variants: readonly string[];
   /** Which of the host's apps/surfaces made the call — one tenant, several products. */
   readonly app: string | undefined;
 }
@@ -88,8 +99,24 @@ export function readIntent(
     outcome: headers.get(H_OUTCOME)?.trim() || undefined,
     experiment: headers.get(H_EXPERIMENT)?.trim() || undefined,
     variant: headers.get(H_VARIANT)?.trim() || undefined,
+    variants: parseVariants(headers.get(H_VARIANTS)),
     app: headers.get(H_APP)?.trim() || undefined,
   };
+}
+
+/**
+ * The declared arms, trimmed and de-blanked.
+ *
+ * A malformed list degrades to no arms — and therefore to no assignment — rather
+ * than producing an arm named "" or a one-armed comparison, either of which would
+ * record traffic as belonging to an experiment that cannot be analysed.
+ */
+function parseVariants(raw: string | null): readonly string[] {
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((v) => v.trim())
+    .filter((v) => v.length > 0);
 }
 
 /** Extract the run id from a W3C `baggage` header, or undefined. */
@@ -162,4 +189,65 @@ export async function assignVariant(
   // modulo bias at that ratio is far below the noise any experiment tolerates.
   const view = new DataView(digest);
   return variants[view.getUint32(0) % variants.length];
+}
+
+/**
+ * Fill in the experiment arm the gateway is responsible for choosing.
+ *
+ * Three rules, in priority order, each protecting a different thing:
+ *
+ * 1. **A host-supplied variant always wins.** A host running its own assignment — a
+ *    feature flag, a staged rollout — is the authority on which arm served this call.
+ *    Relabelling it would make the recorded arm disagree with the model that actually
+ *    ran, which is worse than not recording an arm at all.
+ * 2. **No experiment means no arm.** Ordinary traffic passes through untouched;
+ *    stamping it would enrol every unrelated call in a comparison nobody declared.
+ * 3. **Otherwise the gateway assigns**, deterministically on the run id. This is the
+ *    reason the function exists: a host choosing its own arms has no randomisation
+ *    guarantee, and any correlation between that choice and traffic source, time of
+ *    day or customer size gets measured as if it were the model's effect.
+ *
+ * Separate from `readIntent` because assignment needs Web Crypto and is therefore
+ * async, while reading headers is not — keeping the split means the parse stays a
+ * pure synchronous function.
+ */
+export async function withAssignedVariant(
+  intent: CaptureIntent,
+  variants: readonly string[],
+): Promise<CaptureIntent> {
+  if (intent.variant || !intent.experiment) return intent;
+  const variant = await assignVariant(
+    intent.runId,
+    intent.experiment,
+    variants,
+  );
+  return variant ? { ...intent, variant } : intent;
+}
+
+/**
+ * Echo the assigned arm so the host can act on it.
+ *
+ * This is where an observe-only proxy meets its honest limit. By the time the gateway
+ * sees a request the host has already chosen a model, and changing it would mean
+ * rewriting the request — breaking the invariant the whole design rests on. So the
+ * gateway cannot make THIS call use the assigned arm.
+ *
+ * What it can do is decide the arm and hand it back. The host reads the header once
+ * per unit of work and uses it for that unit's calls. The assignment is still the
+ * gateway's — deterministic, unbiased, not correlated with anything in the host's
+ * traffic — while the choice of what to run stays the host's, which is the only place
+ * it can safely live.
+ */
+export function withVariantEcho(
+  response: Response,
+  intent: CaptureIntent,
+): Response {
+  if (!intent.variant) return response;
+  const headers = new Headers(response.headers);
+  headers.set(H_VARIANT, intent.variant);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }

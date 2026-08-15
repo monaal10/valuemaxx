@@ -95,6 +95,19 @@ curl -X POST "$GW/v1/alias" -H "x-vmx-key: $KEY" -H "content-type: application/j
 
 Post it whenever you learn it, including long afterwards. Aliases resolve at *query* time, so nothing already captured is rewritten and the earlier spend re-joins the moment you assert the link. Without it that spend is orphaned: real money, real outcome, and nothing connecting them — so the unit cost silently omits the anonymous half of the story.
 
+### 3c. Running an experiment (optional)
+
+Declare the arms and let the gateway assign them:
+
+```python
+extra_headers={"x-vmx-experiment": "haiku-vs-opus",
+               "x-vmx-variants": "control,haiku"}     # gateway picks; echoes the arm back
+```
+
+It hashes `(experiment, run id)` — so one unit stays in one arm across every call it makes — and returns the choice in the `x-vmx-variant` response header. Read it once per unit and serve that arm. You *can* set `x-vmx-variant` yourself and it always wins, but then the split is only as unbiased as your own logic: if it correlates with traffic source, time of day, or customer size, the experiment measures that rather than the model. Because the gateway never alters a request, it cannot switch the call it is already looking at — it decides the arm, you serve it.
+
+Then `evaluate_switch` turns the arms into a verdict: cost per outcome on both sides, a non-inferiority test on the outcome rate, and what each confidence bar would cost in units per arm.
+
 ### 4. See it
 
 Open `http://<backend>/?key=<your-key>`. The page leads with **cost per outcome**, each row carrying how much to trust it — the weakest binding tier behind it, whether the link was observed or inferred, and whether the cost is shared with another outcome. Below that, **unattributed spend** (work that reached no billing-grade outcome) is shown rather than dropped: a number that quietly omits it looks more complete than it is. Spend by model and agent follow as drill-downs, plus margin when outcomes carry `value`. Or query directly:

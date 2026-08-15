@@ -19,6 +19,8 @@ import {
   assignVariant,
   forwardableHeaders,
   readIntent,
+  withAssignedVariant,
+  withVariantEcho,
 } from "../src/headers.js";
 
 describe("SSE folding", () => {
@@ -301,5 +303,167 @@ describe("experiment assignment", () => {
   it("returns undefined when there is nothing to assign", async () => {
     expect(await assignVariant("run-1", "exp", [])).toBeUndefined();
     expect(await assignVariant("run-1", "", ["a", "b"])).toBeUndefined();
+  });
+});
+
+describe("gateway-side assignment", () => {
+  const arms = ["control", "haiku"];
+
+  it("assigns an arm when the host declares an experiment but no variant", async () => {
+    // The host says WHICH comparison this call is part of; the gateway decides which
+    // side. That is the point: a host choosing its own arms has no randomisation
+    // guarantee, and any correlation between its choice and traffic source, time of
+    // day or customer size is measured as if it were the model's effect.
+    const intent = readIntent(
+      new Headers({
+        "x-vmx-key": "k",
+        "x-vmx-run-id": "order_1",
+        "x-vmx-experiment": "e",
+      }),
+      () => "minted",
+    );
+
+    const assigned = await withAssignedVariant(intent, arms);
+
+    expect(arms).toContain(assigned.variant);
+  });
+
+  it("never overrides a variant the host set itself", async () => {
+    // A host running its own assignment (a feature flag, a staged rollout) is the
+    // authority on which arm this call is. Silently relabelling it would make the
+    // recorded arm disagree with the model that actually served the request.
+    const intent = readIntent(
+      new Headers({
+        "x-vmx-key": "k",
+        "x-vmx-run-id": "order_1",
+        "x-vmx-experiment": "e",
+        "x-vmx-variant": "host-chose-this",
+      }),
+      () => "minted",
+    );
+
+    const assigned = await withAssignedVariant(intent, arms);
+
+    expect(assigned.variant).toBe("host-chose-this");
+  });
+
+  it("leaves ordinary traffic completely untouched", async () => {
+    // No experiment means no arm. Stamping one would put every unrelated call into
+    // a comparison nobody declared.
+    const intent = readIntent(
+      new Headers({ "x-vmx-key": "k" }),
+      () => "minted",
+    );
+
+    const assigned = await withAssignedVariant(intent, arms);
+
+    expect(assigned.variant).toBeUndefined();
+    expect(assigned).toEqual(intent);
+  });
+
+  it("keeps a unit in one arm across every call it makes", async () => {
+    // A unit is many calls. One that draws control on its first call and haiku on
+    // its second was served by both models, so its outcome belongs to neither.
+    const headers = new Headers({
+      "x-vmx-key": "k",
+      "x-vmx-run-id": "order_9182",
+      "x-vmx-experiment": "e",
+    });
+    const first = await withAssignedVariant(
+      readIntent(headers, () => "m"),
+      arms,
+    );
+    const second = await withAssignedVariant(
+      readIntent(headers, () => "m"),
+      arms,
+    );
+
+    expect(first.variant).toBe(second.variant);
+  });
+});
+
+describe("declared arms", () => {
+  it("reads the arm list the host declared", () => {
+    const intent = readIntent(
+      new Headers({
+        "x-vmx-key": "k",
+        "x-vmx-experiment": "e",
+        "x-vmx-variants": "control, haiku ,opus",
+      }),
+      () => "m",
+    );
+
+    expect(intent.variants).toEqual(["control", "haiku", "opus"]);
+  });
+
+  it("ignores blanks and a list with only separators", () => {
+    // A malformed value must degrade to "no experiment to run" rather than create a
+    // one-armed comparison or an arm named "".
+    const intent = readIntent(
+      new Headers({ "x-vmx-key": "k", "x-vmx-variants": " , ,, " }),
+      () => "m",
+    );
+
+    expect(intent.variants).toEqual([]);
+  });
+
+  it("assigns from the declared arms end to end", async () => {
+    const intent = readIntent(
+      new Headers({
+        "x-vmx-key": "k",
+        "x-vmx-run-id": "order_1",
+        "x-vmx-experiment": "e",
+        "x-vmx-variants": "control,haiku",
+      }),
+      () => "m",
+    );
+
+    const assigned = await withAssignedVariant(intent, intent.variants);
+
+    expect(["control", "haiku"]).toContain(assigned.variant);
+  });
+
+  it("strips the declaration before forwarding upstream", () => {
+    const out = forwardableHeaders(
+      new Headers({ "x-vmx-variants": "a,b", authorization: "Bearer sk-1" }),
+    );
+
+    expect(out.get("x-vmx-variants")).toBeNull();
+    expect(out.get("authorization")).toBe("Bearer sk-1");
+  });
+});
+
+describe("assignment is observe-only", () => {
+  it("echoes the assigned arm back so the host can act on it NEXT call", async () => {
+    // The honest limit of an observe-only proxy: by the time the gateway sees a
+    // request, the host has already chosen its model. The gateway cannot change that
+    // call without rewriting the request, which breaks the founding invariant.
+    //
+    // So assignment is a two-step contract. The gateway assigns and ECHOES; the host
+    // reads the arm and uses it for the calls it makes after. The first call of a new
+    // run is served by whatever the host defaulted to and is stamped with that same
+    // default only if the host set one — never with an arm nobody served.
+    const intent = readIntent(
+      new Headers({
+        "x-vmx-key": "k",
+        "x-vmx-run-id": "order_1",
+        "x-vmx-experiment": "e",
+        "x-vmx-variants": "control,haiku",
+      }),
+      () => "m",
+    );
+    const assigned = await withAssignedVariant(intent, intent.variants);
+
+    const echoed = withVariantEcho(new Response("ok"), assigned);
+
+    expect(echoed.headers.get("x-vmx-variant")).toBe(assigned.variant);
+  });
+
+  it("echoes nothing when there was no assignment to make", () => {
+    const intent = readIntent(new Headers({ "x-vmx-key": "k" }), () => "m");
+
+    const echoed = withVariantEcho(new Response("ok"), intent);
+
+    expect(echoed.headers.get("x-vmx-variant")).toBeNull();
   });
 });

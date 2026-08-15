@@ -153,6 +153,14 @@ HEADERS ARE THE WHOLE CONTRACT. Everything the SDK asked for in code is a string
   x-vmx-entity-<name> durable business ids the unit is about
   x-vmx-outcome       the outcome this call completes (recorded only on 2xx)
   x-vmx-experiment    which comparison this call is an arm of
+  x-vmx-variants      the arms, comma-separated. Send this and the GATEWAY assigns:
+                      it hashes (experiment, run id) to pick an arm and ECHOES the
+                      choice back in the `x-vmx-variant` response header. Read that
+                      once per unit and use it for the unit's calls. Assigning it
+                      yourself is allowed and always wins, but then the split is only
+                      as unbiased as your own logic — if it correlates with traffic
+                      source, time of day or customer size, the experiment measures
+                      that instead of the model.
 
   x-vmx-variant       which arm. No engine reads these yet; they are captured now
                       because a variant stamp CANNOT be added to traffic after it
