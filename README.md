@@ -1,16 +1,23 @@
 # valuemaxx
 
-**stop tokenmaxxing. start valuemaxxing.** — *the anti-tokenmaxxing tool*
+**Know what the AI you ship actually costs — per real business outcome — and where to make it cheaper without losing the outcome.**
+
+*For engineering and product teams running LLM features in production, who can see their provider bill but not what it bought.*
 
 [![CI](https://github.com/monaal10/valuemaxx/actions/workflows/ci.yml/badge.svg)](https://github.com/monaal10/valuemaxx/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/valuemaxx?label=pypi)](https://pypi.org/project/valuemaxx/)
 [![npm](https://img.shields.io/npm/v/valuemaxx?label=npm)](https://www.npmjs.com/package/valuemaxx)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](./LICENSE)
 
-> **Know what each AI agent actually costs you — correctly — and what it earned, per outcome, with confidence.**
-> For teams that **build** AI agents, not the ones who buy them.
+Your provider invoice says you spent $82,400 last month. It cannot tell you that this was **$19.54 per meeting booked**, that 38% of it produced no outcome at all, or that a cheaper model would hold the same booking rate.
 
-Observability tools (Helicone, Langfuse) tell you what you **spent**. This tells you whether it was **worth it**: it captures *correct* LLM cost per unit of work, binds it to the real business outcome each unit produced — including outcomes that arrive days later, out of process — and labels every number with how trustworthy it is. Then it shows you, on your real workload, where a cheaper model holds the same outcome.
+valuemaxx answers those three questions:
+
+1. **What does one outcome cost?** — cost per ticket resolved, per deal closed, per document processed. Captured correctly, including streaming, cached tokens and calls the client disconnected from.
+2. **How much should you trust that number?** — every figure carries system-owned labels for how the cost was measured, how strongly it was linked to the outcome, and whether that link was *observed* or merely *inferred*. A caller states what happened; it never states how much to trust the link.
+3. **What would make it cheaper?** — a candidate model is compared on cost **per outcome**, not per token, and a switch is only called safe when a properly powered test says the outcome rate held.
+
+The outcome can arrive days later, in another process, under a different id — a CRM confirming a deal, a webhook marking a ticket resolved. That case is the reason this exists, and most of the engineering here is about getting it right.
 
 ---
 
