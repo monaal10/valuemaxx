@@ -2,6 +2,11 @@
 
 **stop tokenmaxxing. start valuemaxxing.** — *the anti-tokenmaxxing tool*
 
+[![CI](https://github.com/monaal10/valuemaxx/actions/workflows/ci.yml/badge.svg)](https://github.com/monaal10/valuemaxx/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/valuemaxx?label=pypi)](https://pypi.org/project/valuemaxx/)
+[![npm](https://img.shields.io/npm/v/valuemaxx?label=npm)](https://www.npmjs.com/package/valuemaxx)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](./LICENSE)
+
 > **Know what each AI agent actually costs you — correctly — and what it earned, per outcome, with confidence.**
 > For teams that **build** AI agents, not the ones who buy them.
 
@@ -81,6 +86,10 @@ requests.post(f"{GW}/v1/outcome", headers={"x-vmx-key": KEY},
 ```
 
 Contract discipline: a duplicate `identifier` is accepted-and-ignored, so at-least-once senders (retries, replays, webhook redelivery) never inflate a denominator; `occurred_at` outside 35 days back / 5 minutes forward is a 422, not a silent clamp; `?strict=true` rejects an event with no join key (default stays permissive — unbound-but-visible beats silently dropped).
+
+**Check `attached` on your first call.** Every reply carries `attached`, `attachment` (`run_id` / `entity` / `run_unmatched` / `entity_unmatched` / `none`) and, when it did not attach, a `hint` naming what you can change. A 200 alone does not mean the event found its cost — an outcome that matched nothing looks identical to a successful one otherwise, and stays invisible until someone notices the denominator is too small.
+
+If the outcome binds by **entity** rather than `run_id` and your lag is long, say so: `"entity_window_days": 90`. The default is 1 day, which strands a B2B deal that closes in month three. Widening buys reach, never trust — an entity match stays `candidate` and stays out of the billing-grade denominator at any window.
 
 Two practical notes the shape of your app will raise. If the outcome legitimately lands more than 35 days after the work — a deal that closes in month three — **omit `occurred_at`**; the event is stamped at ingest and still binds at `exact`, because a shared-id join uses no time window at all. And wrap the call: recording an outcome must never break a working feature, so give it a timeout and swallow its failure.
 
@@ -171,7 +180,21 @@ This project is built to be wired up **by** a coding agent. Point it at [`llms.t
 
 ## Contributing
 
+Contributions are welcome — start with [`CONTRIBUTING.md`](./CONTRIBUTING.md), which covers setup, the checks CI runs, and the two traps people hit here (generated files that must not be hand-edited, and the cross-language wire contract).
+
 Engineering standards are strict and binding — see [`AGENTS.md`](./AGENTS.md): test-driven development (unit + integration + e2e), `pyright --strict` + `ruff`, ≥90% coverage on core, and a **ratchet** discipline (every bug becomes a permanent conformance rule so its class can't recur).
+
+The rule underneath all of them: a change that makes a number *look* better by making it less honest is declined, even when the code is good.
+
+## Project
+
+| | |
+|---|---|
+| [Changelog](./CHANGELOG.md) | What changed, and which numbers were wrong before |
+| [Contributing](./CONTRIBUTING.md) | Setup, checks, house style |
+| [Security](./SECURITY.md) | Report privately — never a public issue |
+| [Code of Conduct](./CODE_OF_CONDUCT.md) | Contributor Covenant 2.1 |
+| [Releasing](./RELEASING.md) | Lockstep pip + npm from one `VERSION` |
 
 ## License
 
