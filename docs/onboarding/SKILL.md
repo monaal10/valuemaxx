@@ -167,13 +167,6 @@ none configured the backend serves a single dev key, `dev`. Say this to the user
 rather than writing `vmx_live_...` into their config and leaving them to wonder where
 it comes from.
 
-**A Worker cannot fetch a Cloudflare-proxied host** (`api.anthropic.com` is one) from a
-`*.workers.dev` subdomain — Cloudflare returns error 1042 before the request leaves the
-edge. OpenAI/Gemini/OpenRouter are unaffected. Deploy on a custom domain, run the
-gateway off Cloudflare, or route Anthropic via OpenRouter. Verify with one real call
-per provider the host actually uses; `/healthz` returning 200 proves nothing about
-upstream reachability.
-
 **Detecting an existing gateway integration.** The step-0 greps look for SDK
 signatures (`init(`, `run(`) and will report "unwired" on a repo that is fully wired
 through the gateway. Add `grep -rn "x-vmx-\|VALUEMAXX_GATEWAY_URL"` before concluding

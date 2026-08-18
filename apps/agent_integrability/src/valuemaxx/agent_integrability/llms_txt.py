@@ -279,12 +279,6 @@ The key is whatever `VALUEMAXX_INGEST_KEYS` maps ({key: tenant-uuid}); unset, th
 backend serves a single dev key `dev`. Do not write `vmx_live_...` into a host's
 config without telling them where it comes from.
 
-A Worker on *.workers.dev CANNOT fetch a Cloudflare-proxied host — `api.anthropic.com`
-is one, and returns error 1042 before leaving the edge. OpenAI/Gemini/OpenRouter are
-unaffected. Use a custom domain, host the gateway elsewhere, or route Anthropic via
-OpenRouter. `/healthz` proves the worker is up, NOT that upstream is reachable: verify
-with one real call per provider the host uses.
-
 NEVER commit a gateway URL pointing at localhost. It replaces the provider base URL,
 so it is on the REQUEST path — a deployed worker resolving 127.0.0.1 to its own
 isolate breaks every model call, not just telemetry. Ship it empty; set per env.

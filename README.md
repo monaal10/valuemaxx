@@ -138,32 +138,41 @@ curl -X POST <backend>/run_metric -H "X-API-Key: <key>" -H "content-type: applic
 
 With cost bound to outcomes over real traffic, `estimate_switch_cost` reprices your *actual observed token mix* against a candidate model — never a headline-rate ratio, never a fabricated zero for a model it cannot price. The eval layer goes further: it replays cheaper candidates against your captured workload and tells you whether one holds the same outcome — with the evidence, and **never switching automatically**. Because eval runs spend your provider tokens, it estimates the cost and gates on explicit approval first (`run_eval_funnel` → `approve_gate` → `get_recommendation`).
 
-## Known deployment constraint
-
-A Worker on a `*.workers.dev` subdomain cannot `fetch()` a Cloudflare-proxied host — `api.anthropic.com` is one, and fails with error 1042 before the request leaves the edge (OpenAI/Gemini/OpenRouter are unaffected). Deploy the gateway on a custom domain, run it off Cloudflare, or route Anthropic via OpenRouter. Verify with one real call per provider you use; `/healthz` proves the worker booted, not that upstream is reachable. Details in [`gateway/README.md`](./gateway/README.md).
-
 ## What's in this repo
 
 | Path | What it is |
 |---|---|
-| `gateway/` | the capture proxy (TypeScript, Cloudflare Worker shape, portable fetch/streams) |
+| `gateway/` | the capture proxy — TypeScript, Cloudflare Worker shape, portable fetch/streams ([deploy notes](./gateway/README.md)) |
 | `apps/server`, `apps/api` | the backend: ingest, attribution cascade, metrics, dashboard |
 | `packages/` | the server-side engine: pricing, attribution (T1–T5), metrics DSL, evals, reconciliation, outcomes |
-| `sdks/typescript` | **the capture primitives the gateway is built from** + the compat SDK (below) |
-| `sdks/python` | **the backend's distribution vehicle** (`pip install "valuemaxx[cli]"` → `valuemaxx up`) + the compat SDK (below) |
+| `sdks/typescript` | published to npm: capture primitives + the in-process SDK |
+| `sdks/python` | published to PyPI: the backend, its CLI, and the in-process SDK |
 | `docs/onboarding/` | the agent-facing integration skill; `llms.txt` is generated |
 
-### Are the npm/pip SDKs still needed?
+### The published packages
 
-**As the integration front door — no.** The gateway plus the outcome contract replace `init()`, run boundaries, outcome call sites, and flush plumbing. Capture is 3 lines and runs none of our code in the request path; an outcome confirmed later, in another process, is a handful more where that confirmation already lands.
+Two packages ship from this repo, always at the same version.
 
-**As packages — yes, for three narrower jobs:**
+```bash
+pip install "valuemaxx[cli]"     # the backend + its CLI: valuemaxx up
+npm install valuemaxx            # capture primitives, and the compat SDK
+```
 
-1. `sdks/typescript` is the gateway's engine. The stream accumulators and usage extractors it imports encode already-paid-for bugs (Anthropic's `message_delta` *overwrites* rather than sums; OpenAI streams usage only when `stream_options.include_usage` is set; Gemini's cached tokens are a subset of the prompt count). A reimplementation would re-earn every one.
-2. `sdks/python` ships the backend itself — `valuemaxx up`, the query CLI — and the Docker image bundles this wheel.
-3. Both remain the **compat capture path** for hosts the gateway cannot serve: SigV4/OAuth-signed providers (Bedrock, Vertex), teams with an existing OTel collector (`POST /v1/traces` accepts standard OTLP), or a policy against proxied egress.
+**`valuemaxx` on PyPI** is how you run the backend without Docker — `valuemaxx up`
+serves the API and dashboard, and the published image bundles this same wheel.
 
-The SDK capture surface (`init()`, client patching, `run()`, baggage/injection carries) is no longer documented as the way in; it exists for the compat path and will slim over time.
+**`valuemaxx` on npm** holds the capture primitives the gateway is built from: the
+stream accumulators and usage extractors that get token counts right per provider
+(Anthropic's `message_delta` *overwrites* rather than sums; OpenAI streams usage only
+when `stream_options.include_usage` is set; Gemini's cached tokens are a subset of the
+prompt count). If you are building your own capture path, this is the part worth
+reusing rather than rewriting.
+
+Both also carry an **in-process capture SDK** for hosts the gateway cannot sit in front
+of: providers whose calls are SigV4/OAuth-signed (Bedrock, Vertex), teams who already
+run an OTel collector (`POST /v1/traces` accepts standard OTLP), or anywhere proxied
+egress is not an option. It instruments your client in place and ships spans to the
+same backend, so the numbers and their honesty labels are identical either way.
 
 ## The honesty model
 
