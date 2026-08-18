@@ -1,8 +1,8 @@
 # valuemaxx
 
-**Know what the AI you ship actually costs — per real business outcome — and where to make it cheaper without losing the outcome.**
+**Your LLM bill tells you what you spent. valuemaxx tells you what it bought, and proves when a cheaper model buys the same thing.**
 
-*For engineering and product teams running LLM features in production, who can see their provider bill but not what it bought.*
+*For engineering and product teams running LLM features in production.*
 
 [![CI](https://github.com/monaal10/valuemaxx/actions/workflows/ci.yml/badge.svg)](https://github.com/monaal10/valuemaxx/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/valuemaxx?label=pypi)](https://pypi.org/project/valuemaxx/)
