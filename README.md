@@ -1,6 +1,6 @@
 # valuemaxx
 
-**Your LLM bill tells you what you spent. valuemaxx tells you what it bought, and proves when a cheaper model buys the same thing.**
+**Your LLM bill tells you what you spent. valuemaxx tells you what it bought — then finds you a cheaper way to buy it, and proves the cheaper way still works.**
 
 *For engineering and product teams running LLM features in production.*
 
