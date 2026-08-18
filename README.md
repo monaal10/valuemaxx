@@ -124,6 +124,38 @@ It hashes `(experiment, run id)` — so one unit stays in one arm across every c
 
 Then `evaluate_switch` turns the arms into a verdict: cost per outcome on both sides, a non-inferiority test on the outcome rate, and what each confidence bar would cost in units per arm.
 
+### 3d. Or let the provider send it — Stripe, HubSpot, Zendesk
+
+If the outcome is already a webhook you receive, you can skip the call entirely. Point
+the provider at the backend and map its payload once:
+
+```yaml
+# valuemaxx.outcomes.yaml
+outcomes:
+  - name: order_paid
+    match: { webhook: stripe, event: "checkout.session.completed" }
+    value: "data.object.amount_total"          # revenue -> margin per outcome
+    bind:  { customer_id: "data.object.customer" }
+    signal: outcome_confirmed
+    run_id_injection:                          # Stripe echoes metadata back
+      sdk_call: "stripe.checkout.Session.create"
+      inject_into: "metadata.vmx_run_id"
+      webhook_event: "checkout.session.completed"
+      extract_from: "data.object.metadata.vmx_run_id"
+```
+
+`stripe`, `hubspot` and `zendesk` ship as starting points — copy one and edit the paths
+if your fields differ. **Adding a provider is adding one file**: drop `<name>.yaml` in
+[`packages/outcomes/.../providers/`](./packages/outcomes/src/valuemaxx/outcomes/providers/)
+and it is discovered — no registry to edit, no import to add. That directory's
+[README](./packages/outcomes/src/valuemaxx/outcomes/providers/README.md) covers the
+three things a mapping has to get right, and PRs adding one are very welcome.
+
+The strongest join is still your own id. If the provider echoes metadata (Stripe does),
+stamp your `run_id` outbound and it comes back days later at `exact` tier with no time
+window. Where it cannot, `bind` matches on an entity key instead — honest, but
+`candidate` tier and outside the billing-grade denominator.
+
 ### 4. See it
 
 Open `http://<backend>/?key=<your-key>`. The page leads with **cost per outcome**, each row carrying how much to trust it — the weakest binding tier behind it, whether the link was observed or inferred, and whether the cost is shared with another outcome. Below that, **unattributed spend** (work that reached no billing-grade outcome) is shown rather than dropped: a number that quietly omits it looks more complete than it is. Spend by model and agent follow as drill-downs, plus margin when outcomes carry `value`. Or query directly:

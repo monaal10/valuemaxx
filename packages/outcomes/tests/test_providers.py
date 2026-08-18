@@ -79,3 +79,27 @@ def test_an_unknown_provider_names_the_ones_that_exist() -> None:
         load_provider_rules("hubspt")
 
     assert "stripe" in str(exc.value)
+
+
+def test_the_readme_example_actually_parses() -> None:
+    """A doc example that does not load is worse than no example.
+
+    It is the first YAML anyone copies, and a rule that fails only at the first live
+    webhook wastes exactly the trust the walkthrough was meant to build. This caught a
+    real one: the README abbreviated `run_id_injection` to the two fields that read as
+    interesting and dropped the two the schema requires.
+    """
+    import re
+    from pathlib import Path
+
+    from valuemaxx.outcomes.loader import load_rules
+    from valuemaxx.outcomes.predicate import SafePredicateValidator
+
+    readme = Path(__file__).resolve().parents[3] / "README.md"
+    block = re.search(r"```yaml\n# valuemaxx\.outcomes\.yaml\n(.*?)```", readme.read_text(), re.S)
+    assert block, "the README's outcomes.yaml example moved or was removed"
+
+    rules = load_rules(block.group(1), validator=SafePredicateValidator())
+
+    assert rules, "the example declares no rules"
+    assert rules[0].value, "the example should show a revenue outcome"
