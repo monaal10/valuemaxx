@@ -1,0 +1,56 @@
+# Stripe — payments and refunds.
+#
+# Stripe echoes anything you put in `metadata` back on the webhook, so the run id
+# survives the round trip for free: set `metadata.vmx_run_id` when you create the
+# session or intent, and it comes back days later on the event. That is a T3
+# round-trip binding and it reaches `exact` tier with no time window at all.
+#
+# If you cannot stamp metadata, the `bind` block falls back to matching on the Stripe
+# customer id as an entity key. That is honest but weaker: it binds at `candidate`
+# tier and stays out of the billing-grade denominator.
+outcomes:
+  - name: order_paid
+    match:
+      webhook: stripe
+      event: "checkout.session.completed"
+    value: "data.object.amount_total"
+    bind:
+      customer_id: "data.object.customer"
+    signal: outcome_confirmed
+    run_id_injection:
+      sdk_call: "stripe.checkout.Session.create"
+      inject_into: "metadata.vmx_run_id"
+      webhook_event: "checkout.session.completed"
+      extract_from: "data.object.metadata.vmx_run_id"
+
+  - name: invoice_paid
+    match:
+      webhook: stripe
+      event: "invoice.paid"
+    value: "data.object.amount_paid"
+    bind:
+      customer_id: "data.object.customer"
+    signal: outcome_confirmed
+    run_id_injection:
+      sdk_call: "stripe.Invoice.create"
+      inject_into: "metadata.vmx_run_id"
+      webhook_event: "invoice.paid"
+      extract_from: "data.object.metadata.vmx_run_id"
+
+  # A refund does NOT declare `outcome_retracted` here: retraction is a later flip on
+  # an outcome that was already confirmed (see outcomes/retraction.py), not a class a
+  # rule may assert. This rule identifies the event; `retract_outcome` performs the
+  # flip, which is what removes it from the cost-per-outcome denominator. Declaring it
+  # up front would let a rule claim a state transition it never observed.
+  - name: order_paid
+    match:
+      webhook: stripe
+      event: "charge.refunded"
+    bind:
+      customer_id: "data.object.customer"
+    signal: outcome_confirmed
+    run_id_injection:
+      sdk_call: "stripe.PaymentIntent.create"
+      inject_into: "metadata.vmx_run_id"
+      webhook_event: "charge.refunded"
+      extract_from: "data.object.metadata.vmx_run_id"

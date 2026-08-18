@@ -1,0 +1,19 @@
+# HubSpot — deals reaching a closed stage.
+#
+# HubSpot has no metadata passthrough of Stripe's kind, so there is nothing to echo a
+# run id back. Binding is by ENTITY: put the same HubSpot object id on your LLM calls
+# (`x-vmx-entity-deal-id: <objectId>`) and the deal's own id joins them here.
+#
+# Entity binding is `candidate` tier — advisory, and outside the billing-grade
+# denominator. To reach `exact`, use the HubSpot deal id AS your `x-vmx-run-id` on the
+# calls that work the deal; a shared id needs no window and no inference.
+outcomes:
+  - name: deal_closed_won
+    match:
+      webhook: hubspot
+      event: "deal.propertyChange"
+      when: "data.propertyName == 'dealstage' and data.propertyValue == 'closedwon'"
+    value: "data.amount"
+    bind:
+      deal_id: "data.objectId"
+    signal: outcome_confirmed

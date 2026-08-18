@@ -1,0 +1,15 @@
+# Zendesk — a ticket reaching solved.
+#
+# The ticket id is the natural unit of work for a support agent, and it is already in
+# scope at every LLM call the agent makes. Send it as `x-vmx-run-id` and this webhook
+# binds at `exact` tier days later with no window at all — the strongest join
+# available, and it costs one header.
+outcomes:
+  - name: ticket_resolved
+    match:
+      webhook: zendesk
+      event: "ticket.status_changed"
+      when: "data.status == 'solved'"
+    bind:
+      ticket_id: "data.ticket_id"
+    signal: outcome_confirmed
