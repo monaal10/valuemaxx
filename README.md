@@ -1,6 +1,6 @@
 # valuemaxx
 
-**Your LLM bill tells you what you spent. valuemaxx tells you what it bought — then finds you a cheaper way to buy it, and proves the cheaper way still works.**
+**valuemaxx tells you what your AI spend is per business outcome - a resolved ticket, a closed deal, a completed workflow - and helps you bring that spend down without losing the outcome.**
 
 *For engineering and product teams running LLM features in production.*
 
@@ -9,15 +9,15 @@
 [![npm](https://img.shields.io/npm/v/valuemaxx?label=npm)](https://www.npmjs.com/package/valuemaxx)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](./LICENSE)
 
-Your provider invoice says you spent $82,400 last month. It cannot tell you that this was **$19.54 per meeting booked**, that 38% of it produced no outcome at all, or that a cheaper model would hold the same booking rate.
+Your traces show that last month's LLM calls cost $82,400. They do not show that this worked out to **$19.54 per meeting booked**, that 38% of the spend produced no outcome at all, or that a cheaper model would have held the same booking rate.
 
 valuemaxx answers those three questions:
 
-1. **What does one outcome cost?** — cost per ticket resolved, per deal closed, per document processed. Captured correctly, including streaming, cached tokens and calls the client disconnected from.
-2. **How much should you trust that number?** — every figure carries system-owned labels for how the cost was measured, how strongly it was linked to the outcome, and whether that link was *observed* or merely *inferred*. A caller states what happened; it never states how much to trust the link.
-3. **What would make it cheaper?** — a candidate model is compared on cost **per outcome**, not per token, and a switch is only called safe when a properly powered test says the outcome rate held.
+1. **What does one outcome cost?** Cost per ticket resolved, per deal closed, per document processed. Captured correctly, including streaming, cached tokens and calls the client disconnected from.
+2. **How much should you trust that number?** Every figure carries system-owned labels for how the cost was measured, how strongly it was linked to the outcome, and whether that link was *observed* or merely *inferred*. A caller states what happened; it never states how much to trust the link.
+3. **What would bring it down?** A candidate is compared on cost **per outcome**, not per token, and a switch is only called safe when a properly powered test says the outcome rate held.
 
-The outcome can arrive days later, in another process, under a different id — a CRM confirming a deal, a webhook marking a ticket resolved. That case is the reason this exists, and most of the engineering here is about getting it right.
+The outcome can arrive days later, in another process, under a different id, such as a CRM confirming a deal or a webhook marking a ticket resolved. That case is the reason this exists, and most of the engineering here is about getting it right.
 
 ---
 
