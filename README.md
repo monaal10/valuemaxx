@@ -33,7 +33,7 @@ valuemaxx closes both gaps, and it is honest about precision the whole way: ever
 
 Everything reduces to two things, and both are expressible in curl:
 
-**1. Cost flows through the gateway.** An observe-only reverse proxy in front of your LLM provider. Swap your `baseURL`, keep your provider key (it passes through, never stored), and every call's correct cost is captured server-side — streaming, cache tokens, and client-disconnect recovery included. Nothing of ours runs inside your request path, and any gateway failure falls back to a plain passthrough: losing a span is acceptable, losing your request is not.
+**1. Cost flows through the gateway.** An observe-only-by-default reverse proxy in front of your LLM provider. Swap your `baseURL`, keep your provider key (it passes through, never stored), and every call's correct cost is captured server-side — streaming, cache tokens, and client-disconnect recovery included. Explicitly authorized per-call-site deployments can later change bounded request parameters; disabled, invalid, source-mismatched, or failed enforcement always falls back to the host's original request.
 
 **2. Outcomes are one event.** At the moment a business fact becomes true, *some* code of yours is executing with the relevant business id in a variable — the one invariant every architecture shares. Deliver the tuple there:
 
@@ -120,7 +120,7 @@ extra_headers={"x-vmx-experiment": "haiku-vs-opus",
                "x-vmx-variants": "control,haiku"}     # gateway picks; echoes the arm back
 ```
 
-It hashes `(experiment, run id)` — so one unit stays in one arm across every call it makes — and returns the choice in the `x-vmx-variant` response header. Read it once per unit and serve that arm. You *can* set `x-vmx-variant` yourself and it always wins, but then the split is only as unbiased as your own logic: if it correlates with traffic source, time of day, or customer size, the experiment measures that rather than the model. Because the gateway never alters a request, it cannot switch the call it is already looking at — it decides the arm, you serve it.
+It hashes `(experiment, run id)` — so one unit stays in one arm across every call it makes — and returns the choice in the `x-vmx-variant` response header. Read it once per unit and serve that arm. You *can* set `x-vmx-variant` yourself and it always wins, but then the split is only as unbiased as your own logic: if it correlates with traffic source, time of day, or customer size, the experiment measures that rather than the model. Experiment assignment alone never alters a request, so it cannot switch the call it is already looking at — it decides the arm, you serve it. The separately authorized optimization-deployment path described below can apply a bounded configuration after a call site and source configuration have been matched explicitly.
 
 Then `evaluate_switch` turns the arms into a verdict: cost per outcome on both sides, a non-inferiority test on the outcome rate, and what each confidence bar would cost in units per arm.
 
@@ -168,7 +168,16 @@ curl -X POST <backend>/run_metric -H "X-API-Key: <key>" -H "content-type: applic
 
 ### 5. Right-size your models (later, once you have real data)
 
-With cost bound to outcomes over real traffic, `estimate_switch_cost` reprices your *actual observed token mix* against a candidate model — never a headline-rate ratio, never a fabricated zero for a model it cannot price. The eval layer goes further: it replays cheaper candidates against your captured workload and tells you whether one holds the same outcome — with the evidence, and **never switching automatically**. Because eval runs spend your provider tokens, it estimates the cost and gates on explicit approval first (`run_eval_funnel` → `approve_gate` → `get_recommendation`).
+With cost bound to outcomes over real traffic, `estimate_switch_cost` reprices your *actual observed token mix* against a candidate model — never a headline-rate ratio, never a fabricated zero for a model it cannot price. The eval layer goes further: it replays cheaper candidates against your captured workload and tells you whether one holds the same outcome. An eval recommendation remains evidence and never applies itself. Because eval runs spend your provider tokens, it estimates the cost and gates on explicit approval first (`run_eval_funnel` → `approve_gate` → `get_recommendation`).
+
+Continuous optimization builds on that evidence per call site:
+
+- `lint_call_site` reports structural cache misalignment and exact duplicate calls within one run; it does not rewrite prompt semantics.
+- `search_configurations` cost-prefilters the discrete request space, then evaluates survivors at 50, 200 and 1,000 examples while retaining the top half each round.
+- `get_optimization_frontier` keeps cheaper, failed and replay-only rows visible with the evidence tier and constraint result each actually earned.
+- `authorize_optimization_deployment` creates a separate, explicit production authorization. The gateway matches the call site and incumbent config, accepts only the fixed 1% → 5% → 25% → 100% rollout stages, and supports an immediate `x-vmx-bypass: 1` escape hatch plus `activate_optimization_kill_switch`.
+
+The bounded gateway slice currently applies model, reasoning-effort and output-token-cap changes. Cache-breakpoint and history-depth candidates are represented in search, but are not applied until their provider-specific semantics can be enforced safely. See the [gateway deployment notes](./gateway/README.md) for the policy snapshot format.
 
 ## What's in this repo
 
@@ -176,7 +185,7 @@ With cost bound to outcomes over real traffic, `estimate_switch_cost` reprices y
 |---|---|
 | `gateway/` | the capture proxy — TypeScript, Cloudflare Worker shape, portable fetch/streams ([deploy notes](./gateway/README.md)) |
 | `apps/server`, `apps/api` | the backend: ingest, attribution cascade, metrics, dashboard |
-| `packages/` | the server-side engine: pricing, attribution (T1–T5), metrics DSL, evals, reconciliation, outcomes |
+| `packages/` | the server-side engine: pricing, attribution (T1–T5), metrics DSL, evals, continuous optimization, reconciliation, outcomes |
 | `sdks/typescript` | published to npm: capture primitives + the in-process SDK |
 | `sdks/python` | published to PyPI: the backend, its CLI, and the in-process SDK |
 | `docs/onboarding/` | the agent-facing integration skill; `llms.txt` is generated |
