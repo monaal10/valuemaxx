@@ -27,6 +27,7 @@ def test_default_modules_cover_every_logic_package() -> None:
         "valuemaxx.allocation.capabilities",
         "valuemaxx.metrics.capabilities",
         "valuemaxx.eval.capabilities",
+        "valuemaxx.optimization.capabilities",
         "valuemaxx.onboarding.service",
         "valuemaxx.store.capabilities",
     }

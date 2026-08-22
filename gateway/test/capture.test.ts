@@ -160,6 +160,8 @@ describe("header contract", () => {
         "x-vmx-agent": "support-bot",
         "x-vmx-entity-customer-id": "c_1",
         "x-vmx-outcome": "ticket_resolved",
+        "x-vmx-call-site": "support.classify",
+        "x-vmx-bypass": "true",
       }),
       () => "minted",
     );
@@ -172,6 +174,8 @@ describe("header contract", () => {
     // matches the snake_case the backend stores.
     expect(intent.entityKeys).toEqual({ customer_id: "c_1" });
     expect(intent.outcome).toBe("ticket_resolved");
+    expect(intent.callSiteId).toBe("support.classify");
+    expect(intent.bypassOptimization).toBe(true);
   });
 
   it("mints a run id when none is supplied, and says so", () => {
@@ -217,6 +221,8 @@ describe("header contract", () => {
     expect(out.get("content-type")).toBe("application/json");
     expect(out.get("x-vmx-key")).toBeNull();
     expect(out.get("x-vmx-outcome")).toBeNull();
+    expect(out.get("x-vmx-call-site")).toBeNull();
+    expect(out.get("x-vmx-bypass")).toBeNull();
     expect(out.get("host")).toBeNull();
   });
 });

@@ -15,6 +15,7 @@ dependencies = [
     "valuemaxx-allocation",
     "valuemaxx-metrics",
     "valuemaxx-eval",
+    "valuemaxx-optimization",
     "valuemaxx-onboarding",
     "valuemaxx-store",
     "pyyaml>=6.0",
@@ -47,5 +48,6 @@ valuemaxx-reconciliation = { workspace = true }
 valuemaxx-allocation = { workspace = true }
 valuemaxx-metrics = { workspace = true }
 valuemaxx-eval = { workspace = true }
+valuemaxx-optimization = { workspace = true }
 valuemaxx-onboarding = { workspace = true }
 valuemaxx-store = { workspace = true }

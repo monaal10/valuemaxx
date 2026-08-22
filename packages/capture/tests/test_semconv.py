@@ -47,6 +47,13 @@ def test_ai_margin_extension_keys_present() -> None:
         semconv.AI_MARGIN_COST_USD,
         semconv.AI_MARGIN_IS_STREAMING,
         semconv.AI_MARGIN_PARTIAL_RECOVERED,
+        semconv.AI_MARGIN_CALL_SITE_ID,
+        semconv.AI_MARGIN_SYSTEM_HASH,
+        semconv.AI_MARGIN_TOOLS_HASH,
+        semconv.AI_MARGIN_PARAMS_HASH,
+        semconv.AI_MARGIN_CONFIG_IDENTITY,
+        semconv.AI_MARGIN_CONFIG_IDENTITY_WEAK,
+        semconv.AI_MARGIN_HTTP_STATUS,
     }
     for key in extensions:
         assert key.startswith("ai_margin."), key

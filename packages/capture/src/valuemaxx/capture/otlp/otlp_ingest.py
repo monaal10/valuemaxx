@@ -173,6 +173,13 @@ def span_to_cost_event(
         provenance_warnings=warnings,
         occurred_at=clock.now(),
         latency_ms=_optional_int_attr(attrs, semconv.AI_MARGIN_LATENCY_MS),
+        call_site_id=_str_attr(attrs, semconv.AI_MARGIN_CALL_SITE_ID) or None,
+        system_hash=_str_attr(attrs, semconv.AI_MARGIN_SYSTEM_HASH) or None,
+        tools_hash=_str_attr(attrs, semconv.AI_MARGIN_TOOLS_HASH) or None,
+        params_hash=_str_attr(attrs, semconv.AI_MARGIN_PARAMS_HASH) or None,
+        config_identity=_str_attr(attrs, semconv.AI_MARGIN_CONFIG_IDENTITY) or None,
+        config_identity_weak=_bool_attr(attrs, semconv.AI_MARGIN_CONFIG_IDENTITY_WEAK),
+        http_status=_optional_int_attr(attrs, semconv.AI_MARGIN_HTTP_STATUS),
     )
 
 

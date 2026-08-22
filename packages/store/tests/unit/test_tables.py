@@ -18,6 +18,11 @@ from valuemaxx.store.tables import (
     eval_dataset,
     eval_recommendation,
     metadata,
+    optimization_baseline,
+    optimization_deployment,
+    optimization_experiment,
+    optimization_finding,
+    optimization_frontier,
     outcome_event,
     raw_record,
     reconciliation_record,
@@ -36,6 +41,11 @@ _ALL_TABLES = (
     eval_dataset,
     eval_recommendation,
     review_queue,
+    optimization_baseline,
+    optimization_finding,
+    optimization_frontier,
+    optimization_experiment,
+    optimization_deployment,
 )
 
 
@@ -86,6 +96,8 @@ def test_money_columns_are_numeric_not_float() -> None:
         reconciliation_record.c.proration_factor,
         reconciliation_record.c.drift_pct,
         allocation_line.c.amount_usd,
+        optimization_finding.c.estimated_savings_usd,
+        optimization_frontier.c.cost_per_unit,
     )
     for col in money_columns:
         assert isinstance(col.type, Numeric), f"{col} is not Numeric"
@@ -101,6 +113,9 @@ def test_timestamps_are_timezone_aware() -> None:
         cost_event.c.occurred_at,
         outcome_event.c.occurred_at,
         reconciliation_record.c.created_at,
+        optimization_baseline.c.activated_at,
+        optimization_experiment.c.started_at,
+        optimization_deployment.c.authorized_at,
     )
     for col in ts_columns:
         assert isinstance(col.type, DateTime), f"{col} is not DateTime"
@@ -115,6 +130,22 @@ def test_cost_event_has_idempotency_unique_constraint() -> None:
         if isinstance(con, UniqueConstraint)
     ]
     assert {"tenant_id", "run_id", "attempt_id"} in uniques
+
+
+def test_cost_event_has_nullable_config_stamp_columns() -> None:
+    """Legacy events coexist with queryable gateway config stamps."""
+    names = (
+        "call_site_id",
+        "system_hash",
+        "tools_hash",
+        "params_hash",
+        "config_identity",
+        "config_identity_weak",
+        "http_status",
+    )
+    for name in names:
+        assert name in cost_event.c
+        assert cost_event.c[name].nullable is True
 
 
 def test_outcome_event_has_correlation_unique_constraint() -> None:
@@ -135,6 +166,19 @@ def test_reconciliation_record_has_no_unique_constraint() -> None:
     assert uniques == [], "reconciliation_record must be append-only (no unique constraint)"
 
 
+def test_experiment_has_one_active_per_call_site_index() -> None:
+    """Only one pending/running/held experiment may occupy a call site's traffic."""
+    active_indexes = [
+        idx
+        for idx in optimization_experiment.indexes
+        if idx.name == "uq_valuemaxx_optimization_experiment_active_call_site"
+    ]
+    assert len(active_indexes) == 1
+    index = active_indexes[0]
+    assert index.unique is True
+    assert [column.name for column in index.columns] == ["tenant_id", "call_site_id"]
+
+
 def test_jsonb_columns_present() -> None:
     """The raw/entity-key columns are JSON(B) for preserved replay payloads (§9)."""
     json_columns = (
@@ -142,6 +186,11 @@ def test_jsonb_columns_present() -> None:
         outcome_event.c.entity_keys,
         raw_record.c.payload,
         raw_record.c.entity_keys,
+        optimization_baseline.c.payload,
+        optimization_finding.c.payload,
+        optimization_frontier.c.payload,
+        optimization_experiment.c.payload,
+        optimization_deployment.c.payload,
     )
     for col in json_columns:
         type_name = col.type.__class__.__name__.lower()

@@ -25,6 +25,13 @@ from valuemaxx.core.eval.repositories import (
     EvalDatasetRepository,
     EvalRecommendationRepository,
 )
+from valuemaxx.core.optimization_repositories import (
+    BaselineRepository,
+    DeploymentRepository,
+    ExperimentRepository,
+    FindingRepository,
+    FrontierRepository,
+)
 from valuemaxx.core.repositories import (
     CostEventRepository,
     OutcomeEventRepository,
@@ -35,10 +42,15 @@ from valuemaxx.core.repositories import (
 from valuemaxx.store.engine import create_engine, create_sessionmaker
 from valuemaxx.store.migrations_api import upgrade_to_head
 from valuemaxx.store.repositories import (
+    PgBaselineRepository,
     PgCostEventRepository,
+    PgDeploymentRepository,
     PgEntityAliasRepository,
     PgEvalDatasetRepository,
     PgEvalRecommendationRepository,
+    PgExperimentRepository,
+    PgFindingRepository,
+    PgFrontierRepository,
     PgOutcomeEventRepository,
     PgRawRecordRepository,
     PgReviewQueue,
@@ -56,6 +68,13 @@ if TYPE_CHECKING:
     from valuemaxx.core.cost import CostEvent
     from valuemaxx.core.eval.models import EvalDataset, EvalRecommendation
     from valuemaxx.core.ids import OutcomeEventId, RunId, TenantId
+    from valuemaxx.core.optimization import (
+        CallSiteBaseline,
+        FrontierEntry,
+        LinterFinding,
+        OptimizationDeployment,
+        OptimizationExperiment,
+    )
     from valuemaxx.core.outcome import OutcomeEvent
     from valuemaxx.core.run import Run
 
@@ -89,6 +108,11 @@ class StoreBridge:
         self._raw_records = PgRawRecordRepository(sessions)
         self._eval_datasets = PgEvalDatasetRepository(sessions)
         self._eval_recommendations = PgEvalRecommendationRepository(sessions)
+        self._optimization_baselines = PgBaselineRepository(sessions)
+        self._optimization_findings = PgFindingRepository(sessions)
+        self._optimization_frontier = PgFrontierRepository(sessions)
+        self._optimization_experiments = PgExperimentRepository(sessions)
+        self._optimization_deployments = PgDeploymentRepository(sessions)
 
     @classmethod
     def open(cls, database_url: str, *, run_migrations: bool = True) -> StoreBridge:
@@ -172,6 +196,31 @@ class StoreBridge:
     def eval_recommendations(self) -> SyncEvalRecommendationRepository:
         """A synchronous eval-recommendation repository (what `get_recommendation` reads)."""
         return SyncEvalRecommendationRepository(self._portal, self._eval_recommendations)
+
+    @property
+    def optimization_baselines(self) -> SyncBaselineRepository:
+        """Synchronous retained baseline history."""
+        return SyncBaselineRepository(self._portal, self._optimization_baselines)
+
+    @property
+    def optimization_findings(self) -> SyncFindingRepository:
+        """Synchronous structural linter findings."""
+        return SyncFindingRepository(self._portal, self._optimization_findings)
+
+    @property
+    def optimization_frontier(self) -> SyncFrontierRepository:
+        """Synchronous current evidence-frontier projection."""
+        return SyncFrontierRepository(self._portal, self._optimization_frontier)
+
+    @property
+    def optimization_experiments(self) -> SyncExperimentRepository:
+        """Synchronous retained experiment history."""
+        return SyncExperimentRepository(self._portal, self._optimization_experiments)
+
+    @property
+    def optimization_deployments(self) -> SyncDeploymentRepository:
+        """Synchronous authorized production deployments."""
+        return SyncDeploymentRepository(self._portal, self._optimization_deployments)
 
     def close(self) -> None:
         """Dispose the engine on the portal's loop, then stop the portal."""
@@ -367,11 +416,110 @@ class SyncEvalRecommendationRepository(EvalRecommendationRepository):
         return self._portal.call(self._repo.list_for_incumbent, tenant_id, incumbent_model)
 
 
+class SyncBaselineRepository(BaselineRepository):
+    """Sync facade over retained optimization baselines."""
+
+    def __init__(self, portal: BlockingPortal, repo: PgBaselineRepository) -> None:
+        self._portal = portal
+        self._repo = repo
+
+    @override
+    def upsert(self, tenant_id: TenantId, baseline: CallSiteBaseline) -> None:
+        self._portal.call(self._repo.upsert, tenant_id, baseline)
+
+    @override
+    def list_for_call_site(
+        self, tenant_id: TenantId, call_site_id: str
+    ) -> Sequence[CallSiteBaseline]:
+        return self._portal.call(self._repo.list_for_call_site, tenant_id, call_site_id)
+
+
+class SyncFindingRepository(FindingRepository):
+    """Sync facade over structural optimization findings."""
+
+    def __init__(self, portal: BlockingPortal, repo: PgFindingRepository) -> None:
+        self._portal = portal
+        self._repo = repo
+
+    @override
+    def upsert(self, tenant_id: TenantId, finding: LinterFinding) -> None:
+        self._portal.call(self._repo.upsert, tenant_id, finding)
+
+    @override
+    def list_for_call_site(self, tenant_id: TenantId, call_site_id: str) -> Sequence[LinterFinding]:
+        return self._portal.call(self._repo.list_for_call_site, tenant_id, call_site_id)
+
+
+class SyncFrontierRepository(FrontierRepository):
+    """Sync facade over the replaceable optimization frontier."""
+
+    def __init__(self, portal: BlockingPortal, repo: PgFrontierRepository) -> None:
+        self._portal = portal
+        self._repo = repo
+
+    @override
+    def replace_for_call_site(
+        self,
+        tenant_id: TenantId,
+        call_site_id: str,
+        entries: Sequence[FrontierEntry],
+    ) -> None:
+        self._portal.call(
+            self._repo.replace_for_call_site,
+            tenant_id,
+            call_site_id,
+            entries,
+        )
+
+    @override
+    def list_for_call_site(self, tenant_id: TenantId, call_site_id: str) -> Sequence[FrontierEntry]:
+        return self._portal.call(self._repo.list_for_call_site, tenant_id, call_site_id)
+
+
+class SyncExperimentRepository(ExperimentRepository):
+    """Sync facade over exclusive optimization experiments."""
+
+    def __init__(self, portal: BlockingPortal, repo: PgExperimentRepository) -> None:
+        self._portal = portal
+        self._repo = repo
+
+    @override
+    def upsert(self, tenant_id: TenantId, experiment: OptimizationExperiment) -> None:
+        self._portal.call(self._repo.upsert, tenant_id, experiment)
+
+    @override
+    def list_for_call_site(
+        self, tenant_id: TenantId, call_site_id: str
+    ) -> Sequence[OptimizationExperiment]:
+        return self._portal.call(self._repo.list_for_call_site, tenant_id, call_site_id)
+
+
+class SyncDeploymentRepository(DeploymentRepository):
+    """Sync facade over authorized optimization deployments."""
+
+    def __init__(self, portal: BlockingPortal, repo: PgDeploymentRepository) -> None:
+        self._portal = portal
+        self._repo = repo
+
+    @override
+    def upsert(self, tenant_id: TenantId, deployment: OptimizationDeployment) -> None:
+        self._portal.call(self._repo.upsert, tenant_id, deployment)
+
+    @override
+    def get_active(self, tenant_id: TenantId, call_site_id: str) -> OptimizationDeployment | None:
+        return self._portal.call(self._repo.get_active, tenant_id, call_site_id)
+
+
 __all__ = [
     "StoreBridge",
+    "SyncBaselineRepository",
     "SyncCostEventRepository",
+    "SyncDeploymentRepository",
     "SyncEvalDatasetRepository",
     "SyncEvalRecommendationRepository",
+    "SyncExperimentRepository",
+    "SyncFindingRepository",
+    "SyncFrontierRepository",
     "SyncOutcomeEventRepository",
     "SyncRawRecordRepository",
     "SyncReviewQueue",

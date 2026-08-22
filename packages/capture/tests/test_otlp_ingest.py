@@ -174,3 +174,27 @@ def test_latency_decodes_and_is_absent_rather_than_zero() -> None:
         clock=_FixedClock(),
     )
     assert unmeasured.latency_ms is None
+
+
+def test_gateway_config_stamp_and_status_are_decoded() -> None:
+    event = span_to_cost_event(
+        _span_attrs(
+            **{
+                semconv.AI_MARGIN_CALL_SITE_ID: "site-1",
+                semconv.AI_MARGIN_SYSTEM_HASH: "a" * 64,
+                semconv.AI_MARGIN_TOOLS_HASH: "b" * 64,
+                semconv.AI_MARGIN_PARAMS_HASH: "c" * 64,
+                semconv.AI_MARGIN_CONFIG_IDENTITY: "d" * 64,
+                semconv.AI_MARGIN_CONFIG_IDENTITY_WEAK: True,
+                semconv.AI_MARGIN_HTTP_STATUS: 503,
+            }
+        ),
+        tenant_id=_TENANT,
+        pricebook=_pricebook(),
+        clock=_FixedClock(),
+    )
+    assert event.call_site_id == "site-1"
+    assert event.system_hash == "a" * 64
+    assert event.config_identity == "d" * 64
+    assert event.config_identity_weak is True
+    assert event.http_status == 503

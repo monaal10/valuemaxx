@@ -47,6 +47,8 @@ from valuemaxx.eval.providers import (
 )
 from valuemaxx.metrics import MetricExecutor, MetricRuntime, MetricWindow
 from valuemaxx.metrics import bind_runtime as bind_metrics_runtime
+from valuemaxx.optimization import OptimizationService
+from valuemaxx.optimization import bind_runtime as bind_optimization_runtime
 from valuemaxx.server.settings import DEV_TENANT_ID, ServerSettings
 from valuemaxx.server.store_bridge import StoreBridge
 
@@ -161,6 +163,15 @@ def _wire_runtimes(registry: Registry, bridge: StoreBridge, settings: ServerSett
             cost_repo=bridge.cost_events,
             pricebook=default_pricebook(),
             price=compute_cost_usd,
+        ),
+    )
+
+    bind_optimization_runtime(
+        registry,
+        OptimizationService(
+            findings=bridge.optimization_findings,
+            frontiers=bridge.optimization_frontier,
+            deployments=bridge.optimization_deployments,
         ),
     )
 

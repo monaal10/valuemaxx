@@ -87,6 +87,14 @@ export const AI_MARGIN_VARIANT = "ai_margin.variant";
 export const AI_MARGIN_APP = "ai_margin.app";
 /** Which of the tenant's apps/surfaces made the call. */
 
+export const AI_MARGIN_CALL_SITE_ID = "ai_margin.call_site_id";
+export const AI_MARGIN_SYSTEM_HASH = "ai_margin.config.system_hash";
+export const AI_MARGIN_TOOLS_HASH = "ai_margin.config.tools_hash";
+export const AI_MARGIN_PARAMS_HASH = "ai_margin.config.params_hash";
+export const AI_MARGIN_CONFIG_IDENTITY = "ai_margin.config.identity";
+export const AI_MARGIN_CONFIG_IDENTITY_WEAK = "ai_margin.config.identity_weak";
+export const AI_MARGIN_HTTP_STATUS = "ai_margin.http_status";
+
 export const AI_MARGIN_IS_STREAMING = "ai_margin.is_streaming";
 
 /** Whether usage was only partially recovered (cancelled / missing include_usage). */
@@ -119,6 +127,13 @@ export const ALL_KEYS: readonly string[] = Object.freeze(
     AI_MARGIN_EXPERIMENT,
     AI_MARGIN_VARIANT,
     AI_MARGIN_APP,
+    AI_MARGIN_CALL_SITE_ID,
+    AI_MARGIN_SYSTEM_HASH,
+    AI_MARGIN_TOOLS_HASH,
+    AI_MARGIN_PARAMS_HASH,
+    AI_MARGIN_CONFIG_IDENTITY,
+    AI_MARGIN_CONFIG_IDENTITY_WEAK,
+    AI_MARGIN_HTTP_STATUS,
     AI_MARGIN_IS_STREAMING,
     AI_MARGIN_PARTIAL_RECOVERED,
   ].sort(),

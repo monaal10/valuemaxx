@@ -24,6 +24,7 @@ from _server_helpers import (
     KEY_A,
     KEY_B,
     ingest_span,
+    post_json,
     route_paths,
     run_metric,
     span_attributes,
@@ -39,6 +40,63 @@ def test_app_boots_and_migrations_apply(client: TestClient) -> None:
     paths = route_paths(client.app)
     assert "/ingest_otlp_span" in paths
     assert "/run_metric" in paths
+    assert "/lint_call_site" in paths
+
+
+def test_optimization_linter_is_wired_to_persistence(client: TestClient) -> None:
+    body: dict[str, object] = {
+        "call_site_id": "support.reply",
+        "calls": [
+            {"call_id": "1", "run_id": "r", "request_body": "same", "blocks": []},
+            {"call_id": "2", "run_id": "r", "request_body": "same", "blocks": []},
+        ],
+    }
+    response = post_json(
+        client,
+        path="/lint_call_site",
+        api_key=KEY_A,
+        body=body,
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["finding_count"] == 1
+
+
+def test_optimization_deployment_and_kill_switch_round_trip(client: TestClient) -> None:
+    authorized = post_json(
+        client,
+        path="/authorize_optimization_deployment",
+        api_key=KEY_A,
+        body={
+            "deployment_id": "deploy-1",
+            "call_site_id": "support.reply",
+            "mode": "approve",
+            "policy_enabled": True,
+            "source_config_identity": "a" * 64,
+            "target_model": "claude-haiku-4-5",
+            "target_provider": "anthropic",
+            "authorized_by": "user-1",
+            "authorized_at": "2026-08-22T00:00:00Z",
+        },
+    )
+    assert authorized.status_code == 200, authorized.text
+    assert authorized.json()["authorized"] is True
+
+    killed = post_json(
+        client,
+        path="/activate_optimization_kill_switch",
+        api_key=KEY_A,
+        body={"call_site_id": "support.reply"},
+    )
+    assert killed.status_code == 200, killed.text
+
+    active = post_json(
+        client,
+        path="/get_active_optimization_deployment",
+        api_key=KEY_A,
+        body={"call_site_id": "support.reply"},
+    )
+    assert active.status_code == 200, active.text
+    assert active.json()["found"] is False
 
 
 def test_ingested_span_persists_and_is_queryable(client: TestClient) -> None:

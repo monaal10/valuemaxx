@@ -15,6 +15,8 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+import pytest
+from sqlalchemy.exc import IntegrityError
 from valuemaxx.core.cost import CostEvent
 from valuemaxx.core.enums import CaptureGranularity, Provenance, SignalClass
 from valuemaxx.core.ids import (
@@ -23,6 +25,23 @@ from valuemaxx.core.ids import (
     OutcomeEventId,
     RunId,
     TenantId,
+)
+from valuemaxx.core.optimization import (
+    ApplicationMode,
+    ApplicationPolicy,
+    BaselineCause,
+    BaselineStatus,
+    CallSiteBaseline,
+    CandidateMetrics,
+    CandidateStatus,
+    EvidenceTier,
+    ExperimentState,
+    FrontierEntry,
+    LinterFinding,
+    LinterFindingKind,
+    OptimizationConfig,
+    OptimizationDeployment,
+    OptimizationExperiment,
 )
 from valuemaxx.core.outcome import OutcomeBinding, OutcomeEvent
 from valuemaxx.core.provenance import ProvenanceLabel
@@ -197,3 +216,105 @@ def test_open_without_migrations_uses_an_existing_schema(tmp_path: Path) -> None
             tenant, _cost_event(tenant, run_id="r2", attempt_id="a2", cost="0.0020")
         )
         assert len(bridge.cost_events.list_for_run(tenant, RunId("r2"))) == 1
+
+
+def test_optimization_repositories_roundtrip_through_sync_wrappers(tmp_path: Path) -> None:
+    """Every optimization port is reachable synchronously through StoreBridge."""
+    tenant = _tenant()
+    config = OptimizationConfig(model="claude-haiku", provider="anthropic")
+    baseline = CallSiteBaseline(
+        tenant_id=tenant,
+        id="base-1",
+        call_site_id="site-a",
+        config_identity="a" * 64,
+        status=BaselineStatus.ACTIVE,
+        dominant_share=Decimal("0.8"),
+        outcome_rate=Decimal("0.08"),
+        cause=BaselineCause.CUSTOMER_CHANGE,
+        activated_at=_AT,
+    )
+    finding = LinterFinding(
+        tenant_id=tenant,
+        id="finding-1",
+        call_site_id="site-a",
+        kind=LinterFindingKind.CACHE_MISALIGNMENT,
+        summary="stable prefix follows volatile content",
+        evidence="3800 stable tokens over 50 calls",
+        evidence_tier=EvidenceTier.STATIC,
+    )
+    frontier = FrontierEntry(
+        config=config,
+        metrics=CandidateMetrics(
+            cost_per_unit=Decimal("0.07"),
+            outcome_rate=Decimal("0.081"),
+            error_rate=Decimal("0.01"),
+            refusal_rate=Decimal("0.02"),
+            p95_latency_ms=800,
+            sample_size=9400,
+        ),
+        evidence_tier=EvidenceTier.LIVE_GUARDRAILS,
+        status=CandidateStatus.PASSED,
+    )
+    experiment = OptimizationExperiment(
+        tenant_id=tenant,
+        id="exp-1",
+        call_site_id="site-a",
+        baseline_id="base-1",
+        candidate=config,
+        state=ExperimentState.RUNNING,
+        ramp_percentage=1,
+        started_at=_AT,
+    )
+    deployment = OptimizationDeployment(
+        tenant_id=tenant,
+        id="deploy-1",
+        policy=ApplicationPolicy(
+            tenant_id=tenant,
+            call_site_id="site-a",
+            mode=ApplicationMode.APPROVE,
+            enabled=True,
+        ),
+        source_config_identity="a" * 64,
+        target_config=config,
+        authorized_by="operator@example.com",
+        authorized_at=_AT,
+    )
+
+    with StoreBridge.open(_url(tmp_path)) as bridge:
+        bridge.optimization_baselines.upsert(tenant, baseline)
+        bridge.optimization_findings.upsert(tenant, finding)
+        bridge.optimization_frontier.replace_for_call_site(tenant, "site-a", [frontier])
+        bridge.optimization_experiments.upsert(tenant, experiment)
+        bridge.optimization_deployments.upsert(tenant, deployment)
+
+        assert list(bridge.optimization_baselines.list_for_call_site(tenant, "site-a")) == [
+            baseline
+        ]
+        assert list(bridge.optimization_findings.list_for_call_site(tenant, "site-a")) == [finding]
+        assert list(bridge.optimization_frontier.list_for_call_site(tenant, "site-a")) == [frontier]
+        assert list(bridge.optimization_experiments.list_for_call_site(tenant, "site-a")) == [
+            experiment
+        ]
+        assert bridge.optimization_deployments.get_active(tenant, "site-a") == deployment
+
+
+def test_sync_experiment_repository_preserves_active_exclusivity(tmp_path: Path) -> None:
+    """The bridge does not weaken the store's one-active-experiment constraint."""
+    tenant = _tenant()
+
+    def experiment(experiment_id: str) -> OptimizationExperiment:
+        return OptimizationExperiment(
+            tenant_id=tenant,
+            id=experiment_id,
+            call_site_id="site-a",
+            baseline_id="base-1",
+            candidate=OptimizationConfig(model="claude-haiku", provider="anthropic"),
+            state=ExperimentState.RUNNING,
+            ramp_percentage=1,
+            started_at=_AT,
+        )
+
+    with StoreBridge.open(_url(tmp_path)) as bridge:
+        bridge.optimization_experiments.upsert(tenant, experiment("exp-1"))
+        with pytest.raises(IntegrityError):
+            bridge.optimization_experiments.upsert(tenant, experiment("exp-2"))

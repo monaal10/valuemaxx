@@ -99,3 +99,18 @@ def test_cost_event_carries_latency() -> None:
     """
     assert _event(latency_ms=1450).latency_ms == 1450
     assert _event().latency_ms is None
+
+
+def test_attempt_can_carry_gateway_config_identity_and_status() -> None:
+    event = _event(
+        call_site_id="site-1",
+        system_hash="a" * 64,
+        tools_hash="b" * 64,
+        params_hash="c" * 64,
+        config_identity="d" * 64,
+        config_identity_weak=True,
+        http_status=429,
+    )
+    assert event.config_identity == "d" * 64
+    assert event.config_identity_weak is True
+    assert event.http_status == 429

@@ -1,6 +1,6 @@
 # valuemaxx gateway
 
-An **observe-only** reverse proxy in front of the LLM providers. Swap your `baseURL`,
+An **observe-only by default** reverse proxy in front of the LLM providers. Swap your `baseURL`,
 set a couple of headers, and cost-per-outcome appears — no SDK, no run boundaries, no
 flush, no code in your request path.
 
@@ -22,6 +22,8 @@ client.chat.completions.create(..., extra_headers={"x-vmx-outcome": "order_fulfi
 | `x-vmx-agent` | agent name for grouping | — |
 | `x-vmx-entity-<name>` | durable business ids (`x-vmx-entity-order-id: 9182`) | — |
 | `x-vmx-outcome` | business outcome this call completes (fires on 2xx only) | — |
+| `x-vmx-call-site` | confirmed call site eligible for a bounded deployment | — |
+| `x-vmx-bypass` | `1`/`true`/`on` immediately serves the host's original config | — |
 
 Every `x-vmx-*` header is stripped before forwarding. Your provider key passes through
 untouched and is never stored.
@@ -36,7 +38,8 @@ capture the echoed `x-vmx-run-id` response header and stamp it outward yourself.
 ## Guarantees
 
 1. **Never breaks your call.** Any internal failure falls back to a plain passthrough.
-2. **Never changes your request.** Only `x-vmx-*`, `host`, and `accept-encoding` differ.
+2. **Never changes your request by default.** A change requires an enabled,
+   source-matched deployment for an explicit call site; bypass always restores the original.
 3. **Never delays your response.** The body is `tee()`d; capture runs in `waitUntil`.
 
 ## Routes

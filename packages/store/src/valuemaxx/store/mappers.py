@@ -146,6 +146,13 @@ def cost_event_to_row(tenant_id: TenantId, model: CostEvent) -> dict[str, object
         "billing_uncertain_abort": model.billing_uncertain_abort,
         "provenance_warnings": list(model.provenance_warnings),
         "latency_ms": model.latency_ms,
+        "call_site_id": model.call_site_id,
+        "system_hash": model.system_hash,
+        "tools_hash": model.tools_hash,
+        "params_hash": model.params_hash,
+        "config_identity": model.config_identity,
+        "config_identity_weak": model.config_identity_weak,
+        "http_status": model.http_status,
         "occurred_at": model.occurred_at,
     }
 
@@ -179,6 +186,17 @@ def row_to_cost_event(row: Mapping[str, object]) -> CostEvent:
         billing_uncertain_abort=_as_bool(row["billing_uncertain_abort"]),
         provenance_warnings=_str_tuple_from_json(row["provenance_warnings"]),
         latency_ms=_optional_int(row.get("latency_ms")),
+        call_site_id=_as_opt_str(row.get("call_site_id")),
+        system_hash=_as_opt_str(row.get("system_hash")),
+        tools_hash=_as_opt_str(row.get("tools_hash")),
+        params_hash=_as_opt_str(row.get("params_hash")),
+        config_identity=_as_opt_str(row.get("config_identity")),
+        config_identity_weak=(
+            _as_bool(row["config_identity_weak"])
+            if row.get("config_identity_weak") is not None
+            else False
+        ),
+        http_status=_optional_int(row.get("http_status")),
         occurred_at=_as_dt(row["occurred_at"]),
     )
 

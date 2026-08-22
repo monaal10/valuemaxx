@@ -4,6 +4,24 @@ All notable changes to valuemaxx. This project follows [Semantic Versioning](htt
 Pre-1.0, the public API may change between minor versions; the pip and npm packages
 always ship the same version (see [RELEASING.md](./RELEASING.md)).
 
+## Unreleased
+
+### Added
+
+- Continuous per-call-site configuration optimization: structural cache/duplicate
+  lints, rolling template identity, cost prefiltering, 50/200/1000 successive
+  halving, constrained evidence frontiers, retained baselines and experiment history.
+- Explicit deployment approval/auto policies, fixed 1% → 5% → 25% → 100% rollout,
+  fast-signal rollback contracts, and a persisted per-call-site kill switch.
+- Gateway stamping for system/tools/parameter hashes and actual served configuration,
+  plus bounded model/reasoning/token-cap mutation that remains disabled by default.
+
+### Fixed
+
+- Gateway fail-open retries now retain the original request body after inspection;
+  provider failures without usage are recorded as zero-token attempts so error-rate
+  guardrails do not silently exclude failures.
+
 ## [0.3.0] — 2026-08-18
 
 The release that makes cost-per-outcome correct for **delayed** outcomes — work whose

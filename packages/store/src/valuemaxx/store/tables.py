@@ -39,6 +39,7 @@ from sqlalchemy import (
     Table,
     UniqueConstraint,
     Uuid,
+    text,
 )
 from valuemaxx.store.types_pg import jsonb, money
 
@@ -131,6 +132,15 @@ cost_event = Table(
     Column("occurred_at", DateTime(timezone=True), nullable=False),
     # nullable: a producer that did not measure the attempt says nothing rather than 0ms.
     Column("latency_ms", Integer(), nullable=True),
+    # Gateway-derived continuous-optimization stamp. All columns are nullable so
+    # legacy/SDK events remain valid; the core model enforces hash completeness.
+    Column("call_site_id", String(), nullable=True),
+    Column("system_hash", String(), nullable=True),
+    Column("tools_hash", String(), nullable=True),
+    Column("params_hash", String(), nullable=True),
+    Column("config_identity", String(), nullable=True),
+    Column("config_identity_weak", Boolean(), nullable=True),
+    Column("http_status", Integer(), nullable=True),
     # the idempotency key (M7) — at-least-once ingest never double-counts.
     UniqueConstraint(
         "tenant_id",
@@ -140,6 +150,13 @@ cost_event = Table(
     ),
     Index("ix_valuemaxx_cost_event_tenant", "tenant_id"),
     Index("ix_valuemaxx_cost_event_run", "tenant_id", "run_id"),
+    Index(
+        "ix_valuemaxx_cost_event_call_site_config",
+        "tenant_id",
+        "call_site_id",
+        "config_identity",
+        "occurred_at",
+    ),
     # match-key index for the reconciliation window scan (§5.3).
     Index("ix_valuemaxx_cost_event_matchkey", "provider", "model", "occurred_at"),
 )
@@ -306,6 +323,113 @@ review_queue = Table(
 )
 
 
+optimization_baseline = Table(
+    "valuemaxx_optimization_baseline",
+    metadata,
+    Column("id", String(), primary_key=True),
+    _tenant_id_column(),
+    Column("call_site_id", String(), nullable=False),
+    Column("status", String(), nullable=False),
+    Column("activated_at", DateTime(timezone=True), nullable=False),
+    Column("payload", jsonb(), nullable=False),
+    Index("ix_valuemaxx_optimization_baseline_tenant", "tenant_id"),
+    Index(
+        "ix_valuemaxx_optimization_baseline_call_site",
+        "tenant_id",
+        "call_site_id",
+        "activated_at",
+    ),
+)
+
+
+optimization_finding = Table(
+    "valuemaxx_optimization_finding",
+    metadata,
+    Column("id", String(), primary_key=True),
+    _tenant_id_column(),
+    Column("call_site_id", String(), nullable=False),
+    Column("kind", String(), nullable=False),
+    Column("estimated_savings_usd", money(), nullable=True),
+    Column("payload", jsonb(), nullable=False),
+    Index("ix_valuemaxx_optimization_finding_tenant", "tenant_id"),
+    Index(
+        "ix_valuemaxx_optimization_finding_call_site",
+        "tenant_id",
+        "call_site_id",
+    ),
+)
+
+
+optimization_frontier = Table(
+    "valuemaxx_optimization_frontier",
+    metadata,
+    # A frontier entry has no domain id. The ordinal is its stable identity within
+    # one replace-for-call-site projection and also preserves display order.
+    Column("call_site_id", String(), primary_key=True),
+    Column("ordinal", Integer(), primary_key=True),
+    _tenant_id_column(),
+    Column("status", String(), nullable=False),
+    Column("evidence_tier", Integer(), nullable=False),
+    Column("cost_per_unit", money(), nullable=False),
+    Column("payload", jsonb(), nullable=False),
+    Index("ix_valuemaxx_optimization_frontier_tenant", "tenant_id"),
+    Index(
+        "ix_valuemaxx_optimization_frontier_call_site",
+        "tenant_id",
+        "call_site_id",
+        "ordinal",
+    ),
+)
+
+
+optimization_experiment = Table(
+    "valuemaxx_optimization_experiment",
+    metadata,
+    Column("id", String(), primary_key=True),
+    _tenant_id_column(),
+    Column("call_site_id", String(), nullable=False),
+    Column("state", String(), nullable=False),
+    Column("started_at", DateTime(timezone=True), nullable=False),
+    Column("payload", jsonb(), nullable=False),
+    Index("ix_valuemaxx_optimization_experiment_tenant", "tenant_id"),
+    Index(
+        "ix_valuemaxx_optimization_experiment_call_site",
+        "tenant_id",
+        "call_site_id",
+        "started_at",
+    ),
+    # Partial uniqueness permits retained terminal history while structurally
+    # preventing two experiments from controlling the same traffic concurrently.
+    Index(
+        "uq_valuemaxx_optimization_experiment_active_call_site",
+        "tenant_id",
+        "call_site_id",
+        unique=True,
+        postgresql_where=text("state IN ('pending', 'running', 'held')"),
+        sqlite_where=text("state IN ('pending', 'running', 'held')"),
+    ),
+)
+
+
+optimization_deployment = Table(
+    "valuemaxx_optimization_deployment",
+    metadata,
+    Column("id", String(), primary_key=True),
+    _tenant_id_column(),
+    Column("call_site_id", String(), nullable=False),
+    Column("kill_switch_active", Boolean(), nullable=False),
+    Column("authorized_at", DateTime(timezone=True), nullable=False),
+    Column("payload", jsonb(), nullable=False),
+    Index("ix_valuemaxx_optimization_deployment_tenant", "tenant_id"),
+    Index(
+        "ix_valuemaxx_optimization_deployment_call_site",
+        "tenant_id",
+        "call_site_id",
+        "authorized_at",
+    ),
+)
+
+
 __all__ = [
     "allocation_line",
     "allocation_rollup",
@@ -314,6 +438,11 @@ __all__ = [
     "eval_dataset",
     "eval_recommendation",
     "metadata",
+    "optimization_baseline",
+    "optimization_deployment",
+    "optimization_experiment",
+    "optimization_finding",
+    "optimization_frontier",
     "outcome_event",
     "raw_record",
     "reconciliation_record",

@@ -10,13 +10,15 @@
  * - `x-vmx-agent`      which agent to group it under
  * - `x-vmx-entity-*`   durable business ids the unit is about
  * - `x-vmx-outcome`    the business outcome this call completes
+ * - `x-vmx-call-site`  a confirmed call site eligible for bounded deployment
+ * - `x-vmx-bypass`     the immediate original-config escape hatch
  * - `x-vmx-experiment` / `x-vmx-variant` / `x-vmx-app`  which arm of which comparison
  *   this call belongs to. No engine reads them yet; they are captured now because a
  *   variant stamp cannot be added to traffic after the fact.
  *
  * Every `x-vmx-*` header is STRIPPED before the request is forwarded upstream: the
- * provider must see exactly the request the host wrote, or the gateway has changed
- * the semantics of the call it was only supposed to observe.
+ * provider never sees gateway control metadata. Request-body deployment is handled
+ * separately and remains disabled by default.
  */
 
 /** Header names, lowercased — Workers' `Headers` is case-insensitive but iteration is not. */
@@ -31,6 +33,10 @@ export const H_VARIANT = "x-vmx-variant";
 /** The arms of the experiment, comma-separated — what the gateway assigns FROM. */
 export const H_VARIANTS = "x-vmx-variants";
 export const H_APP = "x-vmx-app";
+/** Stable confirmed call-site identity; required before a deployment can apply. */
+export const H_CALL_SITE = "x-vmx-call-site";
+/** One-line host escape hatch: truthy means serve the host's original body. */
+export const H_BYPASS = "x-vmx-bypass";
 /** W3C baggage — the standard alias for `x-vmx-run-id`, so existing tracing works. */
 export const H_BAGGAGE = "baggage";
 /** The run id is echoed back so a host can stamp it into an external system later. */
@@ -64,6 +70,8 @@ export interface CaptureIntent {
   readonly variants: readonly string[];
   /** Which of the host's apps/surfaces made the call — one tenant, several products. */
   readonly app: string | undefined;
+  readonly callSiteId: string | undefined;
+  readonly bypassOptimization: boolean;
 }
 
 /**
@@ -101,7 +109,13 @@ export function readIntent(
     variant: headers.get(H_VARIANT)?.trim() || undefined,
     variants: parseVariants(headers.get(H_VARIANTS)),
     app: headers.get(H_APP)?.trim() || undefined,
+    callSiteId: headers.get(H_CALL_SITE)?.trim() || undefined,
+    bypassOptimization: isTruthy(headers.get(H_BYPASS)),
   };
+}
+
+function isTruthy(raw: string | null): boolean {
+  return raw === "1" || raw?.toLowerCase() === "true" || raw?.toLowerCase() === "on";
 }
 
 /**

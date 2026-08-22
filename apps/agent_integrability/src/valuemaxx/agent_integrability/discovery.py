@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 _I = TypeVar("_I", bound="BaseModel")
 _O = TypeVar("_O", bound="BaseModel")
 
-# The nine logic packages, in deterministic registration order. ``outcomes``
+# The logic packages, in deterministic registration order. ``outcomes``
 # precedes ``onboarding`` so the outcomes-owned ``validate_outcome_rule`` wins.
 DEFAULT_CAPABILITY_MODULES: list[str] = [
     "valuemaxx.capture.capabilities",
@@ -43,6 +43,7 @@ DEFAULT_CAPABILITY_MODULES: list[str] = [
     "valuemaxx.allocation.capabilities",
     "valuemaxx.metrics.capabilities",
     "valuemaxx.eval.capabilities",
+    "valuemaxx.optimization.capabilities",
     "valuemaxx.onboarding.service",
     "valuemaxx.store.capabilities",
 ]

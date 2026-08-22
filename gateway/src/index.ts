@@ -1,7 +1,7 @@
 /**
  * The valuemaxx capture gateway.
  *
- * An observe-only reverse proxy in front of the LLM providers. A host swaps its
+ * An observe-only-by-default reverse proxy in front of the LLM providers. A host swaps its
  * `baseURL` and sets a couple of headers; the gateway forwards the request byte for
  * byte, watches the response go past, and reports cost to the backend out of band.
  *
@@ -10,9 +10,9 @@
  *  1. **Never break the caller.** Any failure in our own logic falls back to a plain
  *     `fetch` passthrough with capture disabled. Losing a span is acceptable; losing
  *     a customer's request is not. This is why every capture step is wrapped.
- *  2. **Never change the request.** `x-vmx-*` headers are stripped; everything else
- *     — including the caller's provider key, which we do not store — is forwarded
- *     verbatim. The provider must see exactly what the host wrote.
+ *  2. **Never change the request by default.** `x-vmx-*` headers are stripped and
+ *     everything else is forwarded verbatim. A bounded config change is possible
+ *     only under an explicit, source-matched, call-site-scoped deployment policy.
  *  3. **Never delay the response.** The response body is `tee()`d: one branch streams
  *     to the client untouched and unbuffered, the other feeds the accumulator. Capture
  *     and reporting happen in `waitUntil`, after the client already has its bytes.
@@ -27,6 +27,7 @@ import {
   type Provider,
   type StreamAccumulator,
 } from "./capture.js";
+import { prepareRequestBody, type ConfigIdentity } from "./config.js";
 import {
   H_RUN_ID_ECHO,
   forwardableHeaders,
@@ -40,6 +41,10 @@ import { reportOutcome, reportSpan } from "./report.js";
 export interface Env {
   /** Backend base URL, e.g. https://api.valuemaxx.dev */
   readonly VALUEMAXX_BACKEND: string;
+  /** Observe-only unless explicitly set to `true` or `1`. */
+  readonly VALUEMAXX_ENFORCEMENT_ENABLED?: string;
+  /** A strictly validated, source-matched deployment snapshot. */
+  readonly VALUEMAXX_DEPLOYMENT_POLICY?: string;
 }
 
 /** Where each route prefix forwards to, and how to read usage from it. */
@@ -104,6 +109,9 @@ export default {
       route.upstream,
     );
 
+    // Clone before proxy() consumes the body. If our path throws afterwards, the
+    // fallback still owns an untouched stream and can send the host's original bytes.
+    const fallbackRequest = request.clone();
     try {
       return await proxy(request, upstreamUrl, route.provider, env, ctx);
     } catch {
@@ -113,7 +121,7 @@ export default {
         new Request(upstreamUrl, {
           method: request.method,
           headers: forwardableHeaders(request.headers),
-          body: request.body,
+          body: fallbackRequest.body,
         }),
       );
     }
@@ -165,10 +173,20 @@ async function proxy(
   // The request body is needed twice: forwarded upstream, and read for the model
   // name (the response does not always carry it, e.g. Anthropic streaming). Buffer
   // it — LLM request bodies are prompts, not uploads.
-  const requestBody =
+  const originalRequestBody =
     request.method === "GET" || request.method === "HEAD"
       ? undefined
       : await request.text();
+  const prepared = await prepareRequestBody({
+    provider,
+    originalBody: originalRequestBody,
+    runId: intent.runId,
+    callSiteId: intent.callSiteId,
+    bypass: intent.bypassOptimization,
+    enforcementEnabled: enforcementEnabled(env.VALUEMAXX_ENFORCEMENT_ENABLED),
+    policyRaw: env.VALUEMAXX_DEPLOYMENT_POLICY,
+  });
+  const requestBody = prepared.body;
   const requestedModel = readModel(requestBody);
 
   const startedAt = Date.now();
@@ -202,6 +220,7 @@ async function proxy(
       env,
       status: upstream.status,
       startedAt,
+      configIdentity: prepared.identity,
     }),
   );
 
@@ -239,6 +258,7 @@ async function capture(args: {
   env: Env;
   status: number;
   startedAt: number;
+  configIdentity: ConfigIdentity | undefined;
 }): Promise<void> {
   const {
     stream,
@@ -250,23 +270,28 @@ async function capture(args: {
     env,
     status,
     startedAt,
+    configIdentity,
   } = args;
   try {
     const observation = isStream
       ? await readStreaming(stream, provider, model, includeUsage)
       : await readNonStreaming(stream, provider, model);
 
-    if (observation) {
-      // Measured here rather than at the response, so a stream is timed to its LAST
-      // byte. Timing a 30s generation to its headers would report ~200ms and make
-      // every streaming model look equally fast.
-      await reportSpan(env.VALUEMAXX_BACKEND, intent, observation.observation, {
-        ...(observation.inlineCostUsd === undefined
-          ? {}
-          : { inlineCostUsd: observation.inlineCostUsd }),
-        latencyMs: Date.now() - startedAt,
-      });
-    }
+    // Provider errors commonly omit usage. They must still become attempts or the
+    // fast error-rate rollback signal sees only successful traffic. Zero tokens plus
+    // `partialRecovered` says usage was unavailable; it does not invent billed use.
+    const reported = observation?.observation ?? emptyObservation(provider, model, isStream);
+    // Measured here rather than at the response, so a stream is timed to its LAST
+    // byte. Timing a 30s generation to its headers would report ~200ms and make
+    // every streaming model look equally fast.
+    await reportSpan(env.VALUEMAXX_BACKEND, intent, reported, {
+      ...(observation?.inlineCostUsd === undefined
+        ? {}
+        : { inlineCostUsd: observation.inlineCostUsd }),
+      latencyMs: Date.now() - startedAt,
+      status,
+      ...(configIdentity === undefined ? {} : { configIdentity }),
+    });
 
     // The outcome fires only on a successful call. A failed request is not an
     // outcome, and recording one would inflate the denominator with work that did
@@ -283,6 +308,27 @@ async function capture(args: {
 interface CaptureResult {
   readonly observation: ReturnType<StreamAccumulator["finalizeObservation"]>;
   readonly inlineCostUsd?: number;
+}
+
+function emptyObservation(
+  provider: Provider,
+  model: string,
+  isStreaming: boolean,
+): ReturnType<StreamAccumulator["finalizeObservation"]> {
+  return {
+    provider,
+    model,
+    tokens: {
+      inputUncached: 0,
+      cacheRead: 0,
+      cacheWrite5m: 0,
+      cacheWrite1h: 0,
+      output: 0,
+      reasoning: 0,
+    },
+    isStreaming,
+    partialRecovered: true,
+  };
 }
 
 async function readStreaming(
@@ -357,4 +403,8 @@ function json(body: unknown, status: number): Response {
     status,
     headers: { "content-type": "application/json" },
   });
+}
+
+function enforcementEnabled(raw: string | undefined): boolean {
+  return raw === "1" || raw?.toLowerCase() === "true";
 }

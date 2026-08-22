@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
+from pydantic import Field, model_validator
 from valuemaxx.core.base import TenantScopedModel
 from valuemaxx.core.enums import CaptureGranularity
 from valuemaxx.core.ids import AttemptId, CostEventId, RunId
@@ -39,6 +40,24 @@ class CostEvent(TenantScopedModel):
     # instantaneous, and only the proxy that made the call ever sees this clock —
     # there is no later stage that could backfill it.
     latency_ms: int | None = None
+    # Gateway-computed request configuration. Optional for legacy/SDK spans, but an
+    # observed stamp is complete so attribution never mixes partial identities.
+    call_site_id: str | None = None
+    system_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    tools_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    params_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    config_identity: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    config_identity_weak: bool = False
+    http_status: int | None = Field(default=None, ge=100, le=599)
+
+    @model_validator(mode="after")
+    def _config_stamp_is_complete(self) -> CostEvent:
+        hashes = (self.system_hash, self.tools_hash, self.params_hash, self.config_identity)
+        if any(value is not None for value in hashes) and any(value is None for value in hashes):
+            raise ValueError("gateway config stamp hashes must be supplied together")
+        if self.config_identity_weak and self.config_identity is None:
+            raise ValueError("a weak identity label requires a config stamp")
+        return self
 
     @property
     def idempotency_key(self) -> tuple[RunId, AttemptId]:

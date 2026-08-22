@@ -25,8 +25,8 @@ _IDS = [r.name for r in _RULES]
 def test_rules_were_discovered() -> None:
     """Collection is non-empty — the harness is wired, not silently empty."""
     assert _RULES, "no conformance rules discovered"
-    # the full §3 rule list (26 static + 4 behavioral = 30 rules)
-    assert len(_RULES) == 30, f"expected 30 rules, found {len(_RULES)}: {_IDS}"
+    # the full §3 rule list plus continuous-optimization application safety.
+    assert len(_RULES) == 31, f"expected 31 rules, found {len(_RULES)}: {_IDS}"
 
 
 @pytest.mark.conformance
@@ -69,6 +69,7 @@ def test_static_behavioral_split() -> None:
         "sdk_fails_open",
         "honesty_axes_invariants",
         "otlp_collector_wire_roundtrips",
+        "optimization_application_safety",
     }
 
 
@@ -117,6 +118,7 @@ def test_full_rule_list_present() -> None:
         "sdk_fails_open",
         "honesty_axes_invariants",
         "otlp_collector_wire_roundtrips",
+        "optimization_application_safety",
     }
     actual = {r.name for r in _RULES}
     assert actual == expected, f"missing: {expected - actual}; extra: {actual - expected}"

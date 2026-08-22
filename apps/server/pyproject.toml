@@ -10,6 +10,7 @@ dependencies = [
     "valuemaxx-capabilities",
     "valuemaxx-capture",
     "valuemaxx-metrics",
+    "valuemaxx-optimization",
     "valuemaxx-store",
     "valuemaxx-agent-integrability",
     "valuemaxx-api",
@@ -41,6 +42,7 @@ valuemaxx-core = { workspace = true }
 valuemaxx-capabilities = { workspace = true }
 valuemaxx-capture = { workspace = true }
 valuemaxx-metrics = { workspace = true }
+valuemaxx-optimization = { workspace = true }
 valuemaxx-store = { workspace = true }
 valuemaxx-agent-integrability = { workspace = true }
 valuemaxx-api = { workspace = true }

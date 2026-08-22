@@ -98,6 +98,11 @@ def run_metric(
     )
 
 
+def post_json(client: TestClient, *, path: str, api_key: str, body: object) -> httpx.Response:
+    """POST an authenticated capability request through the typed client view."""
+    return cast("_HttpClient", client).post(path, json=body, headers={"X-API-Key": api_key})
+
+
 def route_paths(app: object) -> set[str]:
     """The set of mounted route paths on a FastAPI app (typed access to opaque routes)."""
     routes = cast("list[object]", getattr(app, "routes", []))
@@ -132,6 +137,7 @@ __all__ = [
     "KEY_B",
     "WEBHOOK_SECRET",
     "ingest_span",
+    "post_json",
     "route_paths",
     "run_metric",
     "sign",

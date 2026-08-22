@@ -1,6 +1,9 @@
 # Continuous optimization: configuration search over observed traffic
 
-Status: design, not built. Written 22 Aug 2026.
+Status: implemented foundation and bounded model/reasoning/token deployment slice.
+Written and implemented 22 Aug 2026. Cache-breakpoint and history-depth application
+remain represented in the search/frontier contracts but are not mutated by the
+gateway until provider-specific semantics can be enforced safely.
 
 ## What this is
 

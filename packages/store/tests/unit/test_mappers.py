@@ -80,6 +80,13 @@ def test_cost_event_roundtrips_with_decimal_and_tokens() -> None:
         billing_uncertain_abort=False,
         provenance_warnings=("late_usage",),
         occurred_at=datetime(2026, 6, 27, 12, 1, tzinfo=UTC),
+        call_site_id="support.classify",
+        system_hash="a" * 64,
+        tools_hash="b" * 64,
+        params_hash="c" * 64,
+        config_identity="d" * 64,
+        config_identity_weak=True,
+        http_status=429,
     )
     row = mappers.cost_event_to_row(tenant, model)
     assert mappers.row_to_cost_event(row) == model

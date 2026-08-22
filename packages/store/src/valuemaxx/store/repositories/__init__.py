@@ -14,6 +14,13 @@ from valuemaxx.store.repositories.cost_event import PgCostEventRepository
 from valuemaxx.store.repositories.entity_alias import PgEntityAliasRepository
 from valuemaxx.store.repositories.eval_dataset import PgEvalDatasetRepository
 from valuemaxx.store.repositories.eval_recommendation import PgEvalRecommendationRepository
+from valuemaxx.store.repositories.optimization import (
+    PgBaselineRepository,
+    PgDeploymentRepository,
+    PgExperimentRepository,
+    PgFindingRepository,
+    PgFrontierRepository,
+)
 from valuemaxx.store.repositories.outcome_event import PgOutcomeEventRepository
 from valuemaxx.store.repositories.raw_record import PgRawRecordRepository
 from valuemaxx.store.repositories.reconciliation import PgReconciliationRepository
@@ -23,10 +30,15 @@ from valuemaxx.store.repositories.run import PgRunRepository
 __all__ = [
     "PgAllocationRepository",
     "PgAttributionResultRepository",
+    "PgBaselineRepository",
     "PgCostEventRepository",
+    "PgDeploymentRepository",
     "PgEntityAliasRepository",
     "PgEvalDatasetRepository",
     "PgEvalRecommendationRepository",
+    "PgExperimentRepository",
+    "PgFindingRepository",
+    "PgFrontierRepository",
     "PgOutcomeEventRepository",
     "PgRawRecordRepository",
     "PgReconciliationRepository",

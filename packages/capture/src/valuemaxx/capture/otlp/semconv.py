@@ -59,6 +59,27 @@ AI_MARGIN_VARIANT = "ai_margin.variant"
 AI_MARGIN_APP = "ai_margin.app"
 """Which of the tenant's apps/surfaces made the call."""
 
+AI_MARGIN_CALL_SITE_ID = "ai_margin.call_site_id"
+"""The confirmed or derived call site this attempt belongs to."""
+
+AI_MARGIN_SYSTEM_HASH = "ai_margin.config.system_hash"
+"""Hash of the observed system-message template or raw fallback."""
+
+AI_MARGIN_TOOLS_HASH = "ai_margin.config.tools_hash"
+"""Hash of the complete tool definitions."""
+
+AI_MARGIN_PARAMS_HASH = "ai_margin.config.params_hash"
+"""Hash of provider, model, reasoning, token, and cache parameters."""
+
+AI_MARGIN_CONFIG_IDENTITY = "ai_margin.config.identity"
+"""Combined hash used to group attempts by served configuration."""
+
+AI_MARGIN_CONFIG_IDENTITY_WEAK = "ai_margin.config.identity_weak"
+"""True when dynamic prompt structure forced a weak identity fallback."""
+
+AI_MARGIN_HTTP_STATUS = "ai_margin.http_status"
+"""Provider HTTP status used by fast live guardrails."""
+
 AI_MARGIN_RUN_ID = "ai_margin.run_id"
 """The agent run id this attempt belongs to."""
 
@@ -105,6 +126,13 @@ ALL_KEYS: frozenset[str] = frozenset(
         AI_MARGIN_EXPERIMENT,
         AI_MARGIN_VARIANT,
         AI_MARGIN_APP,
+        AI_MARGIN_CALL_SITE_ID,
+        AI_MARGIN_SYSTEM_HASH,
+        AI_MARGIN_TOOLS_HASH,
+        AI_MARGIN_PARAMS_HASH,
+        AI_MARGIN_CONFIG_IDENTITY,
+        AI_MARGIN_CONFIG_IDENTITY_WEAK,
+        AI_MARGIN_HTTP_STATUS,
     }
 )
 """The authoritative set of every OTLP key the capture path uses."""
@@ -127,16 +155,23 @@ __all__ = [
     "AI_MARGIN_CACHE_READ",
     "AI_MARGIN_CACHE_WRITE_1H",
     "AI_MARGIN_CACHE_WRITE_5M",
+    "AI_MARGIN_CALL_SITE_ID",
     "AI_MARGIN_CAPTURE_GRANULARITY",
+    "AI_MARGIN_CONFIG_IDENTITY",
+    "AI_MARGIN_CONFIG_IDENTITY_WEAK",
     "AI_MARGIN_COST_USD",
     "AI_MARGIN_EXPERIMENT",
+    "AI_MARGIN_HTTP_STATUS",
     "AI_MARGIN_IS_STREAMING",
     "AI_MARGIN_LATENCY_MS",
+    "AI_MARGIN_PARAMS_HASH",
     "AI_MARGIN_PARTIAL_RECOVERED",
     "AI_MARGIN_PROVENANCE",
     "AI_MARGIN_REASONING",
     "AI_MARGIN_RUN_ID",
+    "AI_MARGIN_SYSTEM_HASH",
     "AI_MARGIN_TENANT_ID",
+    "AI_MARGIN_TOOLS_HASH",
     "AI_MARGIN_VARIANT",
     "ALL_KEYS",
     "GEN_AI_REQUEST_MODEL",

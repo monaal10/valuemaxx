@@ -22,6 +22,7 @@ members = [
     "valuemaxx-metrics",
     "valuemaxx-notify",
     "valuemaxx-onboarding",
+    "valuemaxx-optimization",
     "valuemaxx-outcomes",
     "valuemaxx-reconciliation",
     "valuemaxx-server",
@@ -1513,6 +1514,7 @@ dependencies = [
     { name = "valuemaxx-eval" },
     { name = "valuemaxx-metrics" },
     { name = "valuemaxx-onboarding" },
+    { name = "valuemaxx-optimization" },
     { name = "valuemaxx-outcomes" },
     { name = "valuemaxx-reconciliation" },
     { name = "valuemaxx-store" },
@@ -1536,6 +1538,7 @@ requires-dist = [
     { name = "valuemaxx-eval", editable = "packages/eval" },
     { name = "valuemaxx-metrics", editable = "packages/metrics" },
     { name = "valuemaxx-onboarding", editable = "packages/onboarding" },
+    { name = "valuemaxx-optimization", editable = "packages/optimization" },
     { name = "valuemaxx-outcomes", editable = "packages/outcomes" },
     { name = "valuemaxx-reconciliation", editable = "packages/reconciliation" },
     { name = "valuemaxx-store", editable = "packages/store" },
@@ -1854,6 +1857,21 @@ requires-dist = [
 dev = [{ name = "types-pyyaml", specifier = ">=6" }]
 
 [[package]]
+name = "valuemaxx-optimization"
+version = "0.0.0"
+source = { editable = "packages/optimization" }
+dependencies = [
+    { name = "valuemaxx-capabilities" },
+    { name = "valuemaxx-core" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "valuemaxx-capabilities", editable = "packages/capabilities" },
+    { name = "valuemaxx-core", editable = "packages/core" },
+]
+
+[[package]]
 name = "valuemaxx-outcomes"
 version = "0.0.0"
 source = { editable = "packages/outcomes" }
@@ -1930,6 +1948,7 @@ dependencies = [
     { name = "valuemaxx-capture" },
     { name = "valuemaxx-core" },
     { name = "valuemaxx-metrics" },
+    { name = "valuemaxx-optimization" },
     { name = "valuemaxx-store" },
 ]
 
@@ -1954,6 +1973,7 @@ requires-dist = [
     { name = "valuemaxx-capture", editable = "packages/capture" },
     { name = "valuemaxx-core", editable = "packages/core" },
     { name = "valuemaxx-metrics", editable = "packages/metrics" },
+    { name = "valuemaxx-optimization", editable = "packages/optimization" },
     { name = "valuemaxx-store", editable = "packages/store" },
 ]
 

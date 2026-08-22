@@ -12,6 +12,7 @@
 
 import type { AttemptObservation } from "../../sdks/typescript/src/observation.js";
 import * as semconv from "../../sdks/typescript/src/semconv.js";
+import type { ConfigIdentity } from "./config.js";
 import { BAGGAGE_RUN_ID_KEY, type CaptureIntent } from "./headers.js";
 
 /** Ship one captured attempt to the backend's span ingest. */
@@ -19,7 +20,12 @@ export async function reportSpan(
   backend: string,
   intent: CaptureIntent,
   observation: AttemptObservation,
-  opts: { inlineCostUsd?: number; latencyMs?: number } = {},
+  opts: {
+    inlineCostUsd?: number;
+    latencyMs?: number;
+    status?: number;
+    configIdentity?: ConfigIdentity;
+  } = {},
 ): Promise<void> {
   const { tokens } = observation;
   const attributes: Record<string, string | number | boolean> = {
@@ -44,6 +50,21 @@ export async function reportSpan(
   }
   if (opts.latencyMs !== undefined) {
     attributes[semconv.AI_MARGIN_LATENCY_MS] = opts.latencyMs;
+  }
+  if (opts.status !== undefined) {
+    attributes[semconv.AI_MARGIN_HTTP_STATUS] = opts.status;
+  }
+  if (intent.callSiteId) {
+    attributes[semconv.AI_MARGIN_CALL_SITE_ID] = intent.callSiteId;
+  }
+  if (opts.configIdentity) {
+    attributes[semconv.AI_MARGIN_SYSTEM_HASH] = opts.configIdentity.systemHash;
+    attributes[semconv.AI_MARGIN_TOOLS_HASH] = opts.configIdentity.toolsHash;
+    attributes[semconv.AI_MARGIN_PARAMS_HASH] = opts.configIdentity.paramsHash;
+    attributes[semconv.AI_MARGIN_CONFIG_IDENTITY] = opts.configIdentity.configId;
+    // This is the request-local raw system identity. A stateful template learner can
+    // later replace it with a strong identity; never overclaim that work here.
+    attributes[semconv.AI_MARGIN_CONFIG_IDENTITY_WEAK] = true;
   }
   // Recorded with no engine reading them: a variant stamp is impossible to add to
   // traffic after it has already run, so history has to carry it from the start.
